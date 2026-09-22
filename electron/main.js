@@ -345,6 +345,11 @@ function showApp() {
     mainAppWindow.focus();
 }
 
+function isInterviewSessionPage() {
+    try { return Boolean(mainAppWindow && !mainAppWindow.isDestroyed() && new URL(mainAppWindow.webContents.getURL()).pathname === '/interview'); }
+    catch { return false; }
+}
+
 function setupIpcHandlers() {
     const onTrusted = (channel, handler) => ipcMain.on(channel, (event, ...args) => {
         if (!isTrustedPage(event, channel)) return;
@@ -377,6 +382,7 @@ function setupIpcHandlers() {
             }
             return { active: false };
         } else {
+            if (!isInterviewSessionPage()) return { active: false, error: 'Start an interview session in the main window first.' };
             createScannerFrame();
             return { active: true };
         }
@@ -518,11 +524,7 @@ function setupIpcHandlers() {
     handleTrusted('submit-overlay-question', async (event, value) => {
         const question = typeof value === 'string' ? value.trim().slice(0, 12000) : '';
         if (!question || !mainAppWindow || mainAppWindow.isDestroyed()) return { success: false, error: 'Enter a question first.' };
-        try {
-            if (new URL(mainAppWindow.webContents.getURL()).pathname !== '/interview') {
-                return { success: false, error: 'Start an interview session in the main window first.' };
-            }
-        } catch { return { success: false, error: 'The interview session is not ready.' }; }
+        if (!isInterviewSessionPage()) return { success: false, error: 'Start an interview session in the main window first.' };
         mainAppWindow.webContents.send('overlay-manual-question', question);
         return { success: true };
     });
