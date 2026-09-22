@@ -9,6 +9,7 @@ export default function ScannerFrame() {
     const [isScanning, setIsScanning] = useState(false);
     const [isResizing, setIsResizing] = useState<ResizeDirection>(null);
     const [isMoving, setIsMoving] = useState(false);
+    const [captureMessage, setCaptureMessage] = useState("Position this frame over text, then press Capture.");
     const initialPos = useRef({ x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 });
     const lastUpdate = useRef<number>(0);
 
@@ -25,6 +26,7 @@ export default function ScannerFrame() {
     const handleScan = async () => {
         if (isScanning) return;
         setIsScanning(true);
+        setCaptureMessage("Capturing…");
         try {
             const bounds = {
                 x: window.screenX,
@@ -33,10 +35,12 @@ export default function ScannerFrame() {
                 height: window.innerHeight
             };
             if (window.electronAPI) {
-                await window.electronAPI.captureScannerArea(bounds);
+                const result = await window.electronAPI.captureScannerArea(bounds);
+                setCaptureMessage(result.success ? "Captured. OCR is processing in the main session." : (result.error || "Capture failed."));
             }
         } catch (err) {
             console.error("Scan failed:", err);
+            setCaptureMessage(err instanceof Error ? err.message : "Capture failed.");
         } finally {
             setTimeout(() => setIsScanning(false), 2000);
         }
@@ -205,7 +209,7 @@ export default function ScannerFrame() {
                     </div>
 
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-40">
-                        <span className="text-[8px] font-mono text-emerald-400 uppercase tracking-widest">Grab Edges to Resize</span>
+                        <span className="max-w-[320px] text-center text-[8px] font-mono text-emerald-400 uppercase tracking-widest">{captureMessage}</span>
                         <ChevronDown size={12} className="text-emerald-400 animate-bounce mt-1" />
                     </div>
                 </div>

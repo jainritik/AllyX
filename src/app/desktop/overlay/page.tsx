@@ -1,163 +1,121 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-
+import { useEffect, useRef, useState } from "react";
+import { ExternalLink, Eye, EyeOff, Minus, MousePointer2 } from "lucide-react";
 
 export default function OverlayPage() {
     const [transcript, setTranscript] = useState("");
     const [answer, setAnswer] = useState("");
-    const [isListening, setIsListening] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(false); // Start MINIMIZED as an icon by default
+    const [isExpanded, setIsExpanded] = useState(true);
+    const [interactive, setInteractive] = useState(true);
+    const [opacity, setOpacity] = useState(82);
+    const [fontSize, setFontSize] = useState(15);
     const answerRef = useRef<HTMLDivElement>(null);
 
-    // FORCE TRANSPARENT BACKGROUND
-    // This is critical because globals.css sets body background to white/black
-    // We override it locally here for the overlay window.
     useEffect(() => {
-        document.documentElement.style.background = 'transparent';
-        document.body.style.background = 'transparent';
+        document.documentElement.style.background = "transparent";
+        document.body.style.background = "transparent";
+        document.body.style.overflow = "hidden";
+
+        const api = window.electronAPI;
+        if (!api) return;
+        queueMicrotask(() => setInteractive(api.getOverlayState?.().interactive ?? true));
+        const removeTranscript = api.onTranscript(setTranscript);
+        const removeAnswer = api.onAnswer((text) => {
+            setAnswer(text);
+            setIsExpanded(true);
+        });
+        const removeInteraction = api.onOverlayInteractionChange?.(setInteractive);
+
         return () => {
-            document.documentElement.style.background = '';
-            document.body.style.background = '';
+            removeTranscript?.();
+            removeAnswer?.();
+            removeInteraction?.();
+            document.documentElement.style.background = "";
+            document.body.style.background = "";
+            document.body.style.overflow = "";
         };
     }, []);
 
-
-    // Handle Resize Effect
     useEffect(() => {
-        if (window.electronAPI) {
-            if (isExpanded) {
-                window.electronAPI.resizeOverlay(420, 520);
-            } else {
-                window.electronAPI.resizeOverlay(60, 60);
-            }
-        }
+        window.electronAPI?.resizeOverlay(isExpanded ? 480 : 320, isExpanded ? 460 : 220);
     }, [isExpanded]);
 
     useEffect(() => {
-        if (typeof window !== "undefined" && window.electronAPI) {
-            window.electronAPI.onTranscript((text: string) => {
-                setTranscript(text);
-                // Auto-expand if new transcript arrives? Maybe optional.
-            });
+        answerRef.current?.scrollTo({ top: 0 });
+    }, [answer]);
 
-            window.electronAPI.onAnswer((ans: string) => {
-                setAnswer(ans);
-                setIsLoading(false);
-                // Auto-expand on answer
-                setIsExpanded(true);
-            });
-        }
-    }, []);
+    const setClickThrough = () => {
+        setInteractive(false);
+        window.electronAPI?.setIgnoreMouseEvents(true, { forward: true });
+    };
 
-    if (!isExpanded) {
-        return (
-            <button
-                onClick={() => setIsExpanded(true)}
-                className="w-full h-full rounded-2xl bg-emerald-900/90 hover:bg-emerald-800 flex items-center justify-center border border-emerald-500/50 shadow-lg cursor-pointer transition-all group overflow-hidden"
-            >
-                <div className="text-white font-bold text-[10px] leading-tight group-hover:scale-110 transition-transform flex flex-col items-center">
-                    <span>ZEDX</span>
-                    <span className="text-emerald-400">AI</span>
-                </div>
-            </button>
-        );
-    }
-
-    // EXPANDED MODE (Full UI)
     return (
-        <div className="w-full h-full bg-transparent overflow-hidden flex flex-col p-2">
-            <div className="flex-1 rounded-2xl overflow-hidden backdrop-blur-2xl bg-zinc-900/95 border border-zinc-700 shadow-2xl flex flex-col">
-
-                {/* DRAGGABLE HEADER */}
-                <div
-                    className="px-3 py-3 bg-gradient-to-r from-zinc-800 to-zinc-900 border-b border-zinc-700 flex items-center justify-between"
-                    style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        <main className="h-screen w-screen overflow-hidden bg-transparent p-2 text-white">
+            <section
+                className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/15 shadow-2xl backdrop-blur-xl"
+                style={{ backgroundColor: `rgba(9, 9, 11, ${opacity / 100})` }}
+            >
+                <header
+                    className="flex min-h-11 items-center gap-2 border-b border-white/10 px-3"
+                    style={{ WebkitAppRegion: interactive ? "drag" : "no-drag" } as React.CSSProperties}
                 >
-                    <div className="flex items-center gap-2">
-                        {/* Status Dot */}
-                        <div className={`w-2.5 h-2.5 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'} shadow-lg`} />
-                        <span className="text-zinc-100 font-bold text-sm tracking-wide">ZEDX ASSISTANT</span>
-                    </div>
-
-                    <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-                        {/* Toggle Mic */}
-                        <button
-                            onClick={() => setIsListening(!isListening)}
-                            className={`p-1.5 rounded-lg transition-colors ${isListening
-                                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                                : "bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600"
-                                }`}
-                            title="Toggle Mic"
-                        >
-                            {isListening ? (
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                                </svg>
-                            ) : (
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                                </svg>
-                            )}
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+                    <strong className="text-xs tracking-[0.16em]">ZEDX OVERLAY</strong>
+                    <span className="ml-1 text-[10px] text-zinc-400">{interactive ? "Interactive" : "Click-through"}</span>
+                    <div className="ml-auto flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+                        <button onClick={setClickThrough} className="rounded-lg p-2 text-zinc-300 hover:bg-white/10" title="Click-through mode — unlock with Cmd/Ctrl+Shift+O">
+                            <MousePointer2 size={15} />
                         </button>
-
-                        {/* Open Main App */}
-                        <button
-                            onClick={() => window.electronAPI?.showApp()}
-                            className="p-1.5 rounded-lg bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600 transition-colors"
-                            title="Open Main App"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                            </svg>
+                        <button onClick={() => window.electronAPI?.showApp()} className="rounded-lg p-2 text-zinc-300 hover:bg-white/10" title="Open full application">
+                            <ExternalLink size={15} />
                         </button>
-
-                        {/* Minimize */}
-                        <button
-                            onClick={() => setIsExpanded(false)}
-                            className="p-1.5 rounded-lg bg-zinc-700/50 text-zinc-300 hover:bg-zinc-600 transition-colors"
-                            title="Minimize"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
-                            </svg>
+                        <button onClick={() => setIsExpanded(value => !value)} className="rounded-lg p-2 text-zinc-300 hover:bg-white/10" title={isExpanded ? "Compact overlay" : "Expand overlay"}>
+                            {isExpanded ? <Minus size={15} /> : <Eye size={15} />}
+                        </button>
+                        <button onClick={() => window.electronAPI?.hideOverlay()} className="rounded-lg p-2 text-zinc-300 hover:bg-white/10" title="Hide overlay">
+                            <EyeOff size={15} />
                         </button>
                     </div>
-                </div>
+                </header>
 
-                {/* Content */}
-                <div className="px-4 py-3 bg-black/40 border-b border-white/5">
-                    <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-2 flex justify-between">
-                        <span>LIVE TRANSCRIPT</span>
-                        {transcript && <span className="text-emerald-500">Active</span>}
+                {!interactive && (
+                    <div className="border-b border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] text-emerald-200">
+                        Clicks pass through. Press ⌘⇧O on Mac or Ctrl+Shift+O on Windows to interact.
                     </div>
-                    <div className="text-sm text-zinc-300 font-medium leading-snug min-h-[40px] max-h-[60px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                        {transcript || <span className="text-zinc-600 italic">Listening for interview application...</span>}
-                    </div>
-                </div>
+                )}
 
-                <div className="flex-1 px-4 py-2 overflow-hidden flex flex-col bg-black/10">
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="text-[10px] text-emerald-500/80 font-bold uppercase tracking-wider">SUGGESTED ANSWER</div>
-                    </div>
-                    <div
-                        ref={answerRef}
-                        className="text-sm text-zinc-100 h-full overflow-y-auto pr-1 leading-relaxed scrollbar-thin scrollbar-thumb-zinc-600"
-                    >
-                        {isLoading ? (
-                            <div className="flex items-center gap-2 text-zinc-400 animate-pulse">
-                                <span>Generating smart response...</span>
+                {isExpanded ? (
+                    <>
+                        <div className="border-b border-white/10 px-4 py-2">
+                            <div className="mb-1 text-[10px] font-bold tracking-wider text-zinc-500">LIVE QUESTION</div>
+                            <div className="max-h-14 overflow-y-auto text-xs leading-relaxed text-zinc-300">
+                                {transcript || "Listening for the next question…"}
                             </div>
-                        ) : answer ? (
-                            <div className="whitespace-pre-wrap font-light">{answer}</div>
-                        ) : (
-                            <span className="text-zinc-600 italic text-xs">Waiting for key question...</span>
-                        )}
+                        </div>
+                        <div className="min-h-0 flex-1 px-4 py-3">
+                            <div className="mb-2 text-[10px] font-bold tracking-wider text-emerald-400">SUGGESTED ANSWER</div>
+                            <div ref={answerRef} className="h-full overflow-y-auto whitespace-pre-wrap pr-2 text-zinc-100 selection:bg-emerald-500/30" style={{ fontSize, lineHeight: 1.55 }}>
+                                {answer || <span className="text-zinc-500">The next generated answer will appear here automatically.</span>}
+                            </div>
+                        </div>
+                        <footer className="flex items-center gap-3 border-t border-white/10 px-3 py-2 text-[10px] text-zinc-400" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+                            <label className="flex items-center gap-2">
+                                Opacity
+                                <input aria-label="Overlay opacity" type="range" min="55" max="96" value={opacity} onChange={event => setOpacity(Number(event.target.value))} className="w-20 accent-emerald-400" />
+                            </label>
+                            <label className="ml-auto flex items-center gap-2">
+                                Text
+                                <input aria-label="Answer text size" type="range" min="12" max="20" value={fontSize} onChange={event => setFontSize(Number(event.target.value))} className="w-16 accent-emerald-400" />
+                            </label>
+                        </footer>
+                    </>
+                ) : (
+                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-sm leading-relaxed text-zinc-100" style={{ fontSize }}>
+                        {answer || "Waiting for an answer…"}
                     </div>
-                </div>
-            </div>
-        </div>
+                )}
+            </section>
+        </main>
     );
 }

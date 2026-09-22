@@ -6,10 +6,13 @@ import { Plus, Trash2, FileText, Calendar, ArrowRight, RefreshCw, AlertCircle } 
 import { resumeService, Resume } from "@/lib/resume-service";
 import { useRouter } from "next/navigation";
 import { useConfirmDialog } from "@/components/confirm-dialog";
+import { saveResumeHandoff } from "@/lib/interview-context";
+import { useAuth } from "@/lib/auth";
 
 export default function MyResumesPage() {
     const router = useRouter();
     const { confirm, showToast } = useConfirmDialog();
+    const accountId = useAuth(state => state.user?.id);
     const [resumes, setResumes] = useState<Resume[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
@@ -45,16 +48,19 @@ export default function MyResumesPage() {
         if (!newResumeName.trim() || !newResumeContent.trim()) return;
 
         try {
+            setError(null);
             setIsAdding(false);
             setIsLoading(true);
-            await resumeService.createResume(newResumeName, newResumeContent);
+            await resumeService.createResume(newResumeName.trim(), newResumeContent.trim());
             await loadResumes();
             setNewResumeName("");
             setNewResumeContent("");
             showToast("Resume saved successfully", "success");
-        } catch (error) {
+        } catch (error: unknown) {
             console.error("Failed to add resume:", error);
-            showToast("Failed to save resume. Please try again.", "error");
+            const message = error instanceof Error ? error.message : "Failed to save resume. Please try again.";
+            setError(message);
+            showToast(message, "error");
             setIsAdding(true);
         } finally {
             setIsLoading(false);
@@ -74,6 +80,7 @@ export default function MyResumesPage() {
         formData.append("file", file);
 
         try {
+            setError(null);
             const res = await fetch("/api/parse-resume", {
                 method: "POST",
                 body: formData,
@@ -84,9 +91,11 @@ export default function MyResumesPage() {
 
             setNewResumeContent(data.text);
             showToast("Resume uploaded successfully", "success");
-        } catch (err) {
-            console.error((err as Error).message);
-            showToast("Failed to upload/parse resume", "error");
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to upload or parse resume.";
+            console.error(message);
+            setError(message);
+            showToast(message, "error");
         } finally {
             setIsUploading(false);
         }
@@ -104,17 +113,22 @@ export default function MyResumesPage() {
                 await resumeService.deleteResume(id);
                 setResumes((prev) => prev.filter(r => r.id !== id));
                 showToast("Resume deleted", "success");
-            } catch (error) {
+            } catch (error: unknown) {
                 console.error("Failed to delete resume:", error);
-                showToast("Failed to delete resume", "error");
+                const message = error instanceof Error ? error.message : "Failed to delete resume.";
+                setError(message);
+                showToast(message, "error");
             }
         }
     };
 
     const handleUseResume = (resume: Resume) => {
-        // Keep this in localStorage as it's just passing context to the next page
-        localStorage.setItem("interview_context_resume", resume.content);
-        router.push("/dashboard/new");
+        try {
+            saveResumeHandoff(accountId || "", resume.content);
+            router.push("/dashboard/new");
+        } catch {
+            showToast("Could not select this resume. Reload and try again.", "error");
+        }
     };
 
     return (

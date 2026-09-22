@@ -12,6 +12,7 @@ export interface SessionAnalysis {
     ai_responses?: string[];
     duration_minutes?: number;
     questions?: string[];
+    model_used?: string;
 }
 
 /**
@@ -84,7 +85,8 @@ export const interviewService = {
     saveInterview: async (
         title: string,
         transcript: string,
-        analysis: SessionAnalysis
+        analysis: SessionAnalysis,
+        sessionId?: string
     ): Promise<Interview> => {
         try {
             const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -92,16 +94,38 @@ export const interviewService = {
                 throw new InterviewServiceError("User not authenticated", authError);
             }
 
-            const { data, error } = await supabase
-                .from('interviews')
-                .insert({
-                    user_id: user.id,
-                    title,
-                    transcript,
-                    analysis
-                })
-                .select()
-                .single();
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            let data: Interview | null = null;
+            let error: PostgrestError | null = null;
+            try {
+                const result = await supabase
+                    .from('interviews')
+                    .insert({
+                        ...(sessionId ? { id: sessionId } : {}),
+                        user_id: user.id,
+                        title,
+                        transcript,
+                        analysis
+                    })
+                    .select()
+                    .abortSignal(controller.signal)
+                    .single();
+                data = result.data as Interview | null;
+                error = result.error;
+            } finally {
+                clearTimeout(timeout);
+            }
+
+            if (error?.code === '23505' && sessionId) {
+                const { data: existing, error: readError } = await supabase
+                    .from('interviews')
+                    .select('*')
+                    .eq('id', sessionId)
+                    .eq('user_id', user.id)
+                    .single();
+                if (!readError && existing) return existing as Interview;
+            }
 
             if (error) {
                 throw new InterviewServiceError("Failed to save meeting session", error);

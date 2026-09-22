@@ -1,4 +1,4 @@
-appId: com.zedxai.desktop
+appId: com.zedx.ai
 productName: ZEDX AI
 copyright: Copyright (c) 2024 ZEDX AI
 
@@ -8,11 +8,9 @@ directories:
 
 files:
   - electron/**/*
-  - .next/**/*
-  - public/**/*
+  - public/favicon.ico
   - package.json
   - "!node_modules/**/*"
-  - node_modules/**/*
 
 extraResources:
   - from: electron/assets/
@@ -25,7 +23,7 @@ win:
     - target: nsis
       arch:
         - x64
-  icon: public/favicon.png
+  icon: electron/assets/icon.png
   artifactName: ZEDX-AI-${version}-Setup.${ext}
 
 nsis:
@@ -38,13 +36,15 @@ nsis:
 
 mac:
   target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
-  icon: public/favicon.png
-  artifactName: ZEDX-AI-${version}.${ext}
+    - dmg
+  icon: electron/assets/icon.png
+  artifactName: ZEDX-AI-${version}-${arch}.${ext}
   category: public.app-category.productivity
+  extendInfo:
+    NSMicrophoneUsageDescription: ZEDX AI uses the microphone for practice-session transcription.
+    NSAudioCaptureUsageDescription: ZEDX AI captures system audio only when you enable system-audio transcription.
+    NSCameraUsageDescription: ZEDX AI uses the camera only when you enable practice-session video.
+    NSScreenCaptureUsageDescription: ZEDX AI captures a selected practice area for OCR when you request it.
 
 dmg:
   contents:
@@ -60,5 +60,5 @@ linux:
     - target: AppImage
       arch:
         - x64
-  icon: public/favicon.png
+  icon: electron/assets/icon.png
   category: Utility

@@ -231,7 +231,7 @@ export default function Home() {
                     Live Verification
                   </span>
                 </div>
-                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Instant Feedback</h3>
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Instant Answers</h3>
 
                 {/* Visual: Chat Bubble */}
                 <div className="flex-grow flex items-center justify-center mb-8 w-full">
@@ -284,14 +284,14 @@ export default function Home() {
                 </p>
               </div>
 
-              {/* Feature 4: AI Analysis */}
+              {/* Feature 4: Session Review */}
               <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-8 border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col h-full">
                 <div className="mb-4">
                   <span className="inline-block px-4 py-1.5 rounded-full bg-[#84cc16] dark:bg-green-700 text-black dark:text-white text-xs font-bold tracking-wider uppercase">
-                    Analysis
+                    Review
                   </span>
                 </div>
-                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Performance Analysis</h3>
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Session History</h3>
 
                 {/* Visual: Summary Card Mockup */}
                 <div className="flex-grow flex items-center justify-center mb-8">
@@ -321,7 +321,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  After each practice session, get detailed automated feedback and AI-powered action items to improve your answers.
+                  Review the saved transcript, questions, and AI answers from each completed practice session.
                 </p>
               </div>
 

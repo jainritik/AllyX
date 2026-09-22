@@ -1,15 +1,9 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import ErrorBoundary from "@/components/error-boundary";
 import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { DesktopNavBar } from "@/components/desktop-nav";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://zedx-ai-assistant-1.vercel.app"),
@@ -23,7 +17,7 @@ export const metadata: Metadata = {
     default: "ZEDX Copilot - Interview Simulation & Training Assistant",
     template: "%s | ZEDX Copilot"
   },
-  description: "ZEDX Copilot is a real-time AI interview simulation assistant providing live transcriptions, benchmark answers, and feedback for job seekers and fresh graduates.",
+  description: "ZEDX Copilot is a real-time AI interview simulation assistant providing live transcriptions, benchmark answers, and saved session history.",
   keywords: [
     "ZEDX", "ZEDX AI", "ZEDX Copilot", "Mock Interview Assistant", "Live Transcription",
     "Interview Simulation", "Mock Interview Copilot", "AI Interview Notes", "Real-time AI Assistant",
@@ -240,7 +234,7 @@ export default async function RootLayout({
 
       </head>
       <body
-        className={`${inter.variable} antialiased ${isScanner ? 'bg-transparent overflow-hidden' : ''}`}
+        className={`antialiased ${isScanner ? 'bg-transparent overflow-hidden' : ''}`}
         suppressHydrationWarning
       >
         {!isHideNav && <DesktopNavBar />}
@@ -253,4 +247,3 @@ export default async function RootLayout({
     </html>
   );
 }
-

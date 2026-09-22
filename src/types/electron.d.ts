@@ -10,31 +10,41 @@ export interface ElectronAPI {
     goBack: () => void;
     canGoBack: () => boolean;
     isDesktopMode: () => boolean;
+    isPresentationSafeMode: () => boolean;
+    setPresentationSafeMode: (active: boolean) => Promise<{ active: boolean }>;
+    togglePresentationSafeMode: () => Promise<{ active: boolean }>;
+    onPresentationSafeModeChange: (callback: (active: boolean) => void) => () => void;
     // Utils
     copyToClipboard: (text: string) => void;
     sendTranscript: (transcript: string) => void;
     sendAnswer: (answer: string) => void;
+    sendCapturedText: (text: string) => void;
     // Audio
     startSystemAudioCapture: () => Promise<{ success: boolean; sourceId?: string; error?: string }>;
-    stopSystemAudioCapture: () => Promise<void>;
-    onAudioSourceReady: (callback: (sourceId: string) => void) => void;
+    stopSystemAudioCapture: () => Promise<{ success: boolean }>;
+    onStopAudioSource: (callback: () => void) => () => void;
+    onAudioSourceReady: (callback: (sourceId: string) => void) => (() => void);
     // Events
-    onTranscript: (callback: (text: string) => void) => void;
-    onAnswer: (callback: (answer: string) => void) => void;
+    onTranscript: (callback: (text: string) => void) => () => void;
+    onAnswer: (callback: (answer: string) => void) => () => void;
+    onOverlayCapturedText: (callback: (text: string) => void) => () => void;
     // Overlay Controls
     resizeOverlay: (width: number, height: number) => void;
     setIgnoreMouseEvents: (ignore: boolean, options?: { forward?: boolean }) => void;
-    // Stealth Scanner
-    toggleScannerFrame: () => Promise<{ active: boolean }>;
-    updateScannerBounds: (bounds: { x: number, y: number, width: number, height: number }) => void;
-    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{ success: boolean; error?: string }>;
-    onProcessOcr: (callback: (data: { sourceId: string, bounds: { x: number, y: number, width: number, height: number }, scaleFactor?: number }) => void) => void;
-    onScannerStateChange: (callback: (active: boolean) => void) => () => void;
-    // Updater
+    getOverlayState: () => { interactive: boolean };
+    onOverlayInteractionChange: (callback: (interactive: boolean) => void) => () => void;
+    submitOverlayQuestion: (question: string) => Promise<{ success: boolean; error?: string }>;
+    onOverlayManualQuestion: (callback: (question: string) => void) => () => void;
     downloadUpdate: () => void;
     installUpdate: () => void;
     onUpdateAvailable: (callback: (version: string) => void) => () => void;
     onUpdateReady: (callback: () => void) => () => void;
+    // Stealth Scanner
+    toggleScannerFrame: () => Promise<{ active: boolean }>;
+    updateScannerBounds: (bounds: { x: number, y: number, width: number, height: number }) => void;
+    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{ success: boolean; error?: string }>;
+    onProcessOcr: (callback: (data: { imageData: string }) => void) => () => void;
+    onScannerStateChange: (callback: (active: boolean) => void) => () => void;
     isElectron: boolean;
 }
 

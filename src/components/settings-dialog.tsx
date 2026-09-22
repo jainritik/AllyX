@@ -1,5 +1,7 @@
 "use client";
 
+import { signOutAndClear } from "@/lib/auth";
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Settings, User, LogOut, Trash2 } from "lucide-react";
@@ -31,12 +33,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     const handleSignOut = async () => {
         setIsLoading(true);
         try {
-            await supabase.auth.signOut();
-            // Clear auth cookie
-            document.cookie = "auth_token=; path=/; max-age=0";
+            await signOutAndClear();
             window.location.href = "/login";
         } catch (error) {
             console.error("Sign out error:", error);
+            window.alert("Could not sign out. Please try again.");
         } finally {
             setIsLoading(false);
         }

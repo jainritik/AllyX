@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuth, signOutAndClear } from "@/lib/auth";
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
@@ -163,49 +165,14 @@ export function Navbar() {
 }
 
 function AuthButtons({ onSheetClose }: { onSheetClose?: () => void }) {
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-    const [userName, setUserName] = useState<string | null>(null);
-    const [userEmail, setUserEmail] = useState<string | null>(null);
-    const [userAvatar, setUserAvatar] = useState<string | null>(null);
+    const { user, checkSession } = useAuth();
+    const isLoggedIn = Boolean(user);
+    const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || null;
+    const userEmail = user?.email || null;
+    const userAvatar = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-    useEffect(() => {
-        const checkAuth = async () => {
-            // First check cookie
-            const hasToken = document.cookie.split(';').some((item) => item.trim().startsWith('auth_token='));
-
-            if (hasToken) {
-                setIsLoggedIn(true);
-            }
-
-            // Also check Supabase session
-            try {
-                const { supabase } = await import("@/lib/supabase");
-                const { data } = await supabase.auth.getSession();
-
-                if (data.session) {
-                    setIsLoggedIn(true);
-                    setUserName(data.session.user.user_metadata?.full_name || data.session.user.email?.split('@')[0] || null);
-                    setUserEmail(data.session.user.email || null);
-                    setUserAvatar(data.session.user.user_metadata?.avatar_url || data.session.user.user_metadata?.picture || null);
-
-                    // Ensure cookie is set
-                    if (!hasToken) {
-                        const sessionId = data.session.access_token.slice(0, 32);
-                        document.cookie = `auth_token=${sessionId}; path=/; max-age=86400; SameSite=Lax`;
-                    }
-                }
-            } catch (e) {
-                console.error("Auth check error:", e);
-            }
-        };
-
-        checkAuth();
-
-        // Re-check less frequently to reduce resource usage
-        const interval = setInterval(checkAuth, 60000);
-        return () => clearInterval(interval);
-    }, []);
+    useEffect(() => { void checkSession(); }, [checkSession]);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -221,27 +188,13 @@ function AuthButtons({ onSheetClose }: { onSheetClose?: () => void }) {
 
     const handleLogout = async () => {
         try {
-            const { supabase } = await import("@/lib/supabase");
-            await supabase.auth.signOut();
-        } catch (e) {
-            console.error("Logout error:", e);
+            await signOutAndClear();
+            window.location.href = "/login";
+        } catch {
+            window.alert("Could not sign out. Please check your connection and try again.");
         }
-        document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-        setIsLoggedIn(false);
-        window.location.href = "/login";
     };
-
-    const handleSwitchAccount = async () => {
-        // Sign out first, then redirect to login
-        try {
-            const { supabase } = await import("@/lib/supabase");
-            await supabase.auth.signOut();
-        } catch (e) {
-            console.error("Switch account error:", e);
-        }
-        document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-        window.location.href = "/login";
-    };
+    const handleSwitchAccount = handleLogout;
 
     if (isLoggedIn) {
         return (

@@ -11,6 +11,8 @@ import { SUPPORTED_LANGUAGES } from "@/lib/languages";
 import { resumeService, Resume } from "@/lib/resume-service";
 import { ModelChat } from "@/components/dashboard/model-chat";
 import { motion } from "framer-motion";
+import { consumeResumeHandoff, readInterviewContext, saveInterviewContext } from "@/lib/interview-context";
+import { useAuth } from "@/lib/auth";
 
 // Custom SVG Icons
 const BriefcaseIcon = () => (
@@ -79,33 +81,47 @@ const AI_MODELS = [
 
 export default function NewInterviewPage() {
     const router = useRouter();
+    const accountId = useAuth(state => state.user?.id);
     const [jobDescription, setJobDescription] = useState("");
     const [resume, setResume] = useState("");
     const [interviewType, setInterviewType] = useState("Technical");
     const [language, setLanguage] = useState("en-US");
     const [selectedModel, setSelectedModel] = useState("llama-3.1-8b-instant");
     const [isLoading, setIsLoading] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [savedResumes, setSavedResumes] = useState<Resume[]>([]);
 
     // Load saved resumes
     useEffect(() => {
+        if (!accountId) return;
         const loadResumes = async () => {
             try {
                 const data = await resumeService.getUserResumes();
                 setSavedResumes(data);
             } catch {
-                // Silent catch
+                setError("Saved resumes could not be loaded. You can paste a resume or retry after checking your connection.");
             }
         };
         loadResumes();
 
         try {
-            const savedModel = localStorage.getItem("selected_ai_model");
-            if (savedModel) setSelectedModel(savedModel);
-        } catch { }
-    }, [router]);
+            const handoff = consumeResumeHandoff(accountId);
+            const context = readInterviewContext(accountId);
+            if (handoff) setResume(handoff);
+            else if (context) setResume(context.resume);
+            if (context) {
+                setJobDescription(context.jd);
+                setInterviewType(context.type);
+                setLanguage(context.lang);
+                setSelectedModel(context.model);
+            } else {
+                const savedModel = localStorage.getItem("selected_ai_model");
+                if (savedModel) setSelectedModel(savedModel);
+            }
+        } catch { setError("Saved interview setup could not be read. You can enter it again below."); }
+    }, [accountId]);
 
     const isValid = jobDescription.trim().length > 10 && resume.trim().length > 10;
 
@@ -116,6 +132,9 @@ export default function NewInterviewPage() {
         const formData = new FormData();
         formData.append("file", file);
 
+        setIsUploading(true);
+        setError(null);
+        setSuccessMessage(null);
         try {
             const res = await fetch("/api/parse-resume", {
                 method: "POST",
@@ -126,18 +145,26 @@ export default function NewInterviewPage() {
             if (!res.ok) throw new Error(data.error || "Failed to parse PDF");
 
             setResume(data.text);
-            setError(null);
-            setSuccessMessage(`Resume "${file.name}" uploaded successfully!`);
 
             try {
-                const fileName = file.name.replace('.pdf', '').replace('.PDF', '');
+                const fileName = file.name.replace(/\.(pdf|txt)$/i, '');
                 await resumeService.createResume(fileName, data.text);
                 const updatedResumes = await resumeService.getUserResumes();
                 setSavedResumes(updatedResumes);
-            } catch (saveErr) { console.warn(saveErr); }
+                setSuccessMessage(`Resume "${file.name}" is ready and saved to your account.`);
+            } catch (saveErr) {
+                console.warn(saveErr);
+                setSuccessMessage(`Resume "${file.name}" is ready for this interview.`);
+                setError(saveErr instanceof Error
+                    ? `The resume text was loaded, but it was not saved to My Resumes: ${saveErr.message}`
+                    : "The resume text was loaded, but it was not saved to My Resumes.");
+            }
         } catch (err: unknown) {
             const error = err as Error;
             setError(error.message || "Upload Failed. Please try converting to .txt");
+        } finally {
+            setIsUploading(false);
+            e.target.value = "";
         }
     };
 
@@ -149,13 +176,20 @@ export default function NewInterviewPage() {
 
         setIsLoading(true);
         try {
-            localStorage.setItem("interview_context_jd", jobDescription);
-            localStorage.setItem("interview_context_resume", resume);
-            localStorage.setItem("interview_context_type", interviewType);
-            localStorage.setItem("interview_context_lang", language);
+            saveInterviewContext({
+                accountId: accountId || "",
+                jd: jobDescription,
+                resume,
+                type: interviewType,
+                lang: language,
+                model: selectedModel,
+            });
             localStorage.setItem("selected_ai_model", selectedModel);
         } catch (e) {
-            console.warn(e);
+            console.warn("Could not save interview setup:", e);
+            setError(e instanceof Error ? e.message : "Your interview setup could not be saved on this device. Check available storage and try again.");
+            setIsLoading(false);
+            return;
         }
 
         setTimeout(() => {
@@ -246,8 +280,8 @@ export default function NewInterviewPage() {
                                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                                     <label className="h-11 sm:h-12 px-6 flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl cursor-pointer transition-colors w-full sm:w-auto shadow-lg shadow-emerald-500/20 order-1">
                                         <Upload size={18} />
-                                        Upload New CV
-                                        <input type="file" className="hidden" accept=".pdf,.txt" onChange={handleFileUpload} />
+                                        {isUploading ? "Reading CV…" : "Upload New CV"}
+                                        <input type="file" className="hidden" accept=".pdf,.txt" onChange={handleFileUpload} disabled={isUploading} />
                                     </label>
                                     <select
                                         className="h-11 sm:h-12 px-4 w-full sm:w-56 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-600 dark:text-gray-300 focus:outline-none focus:border-emerald-500/50 truncate order-2"
@@ -441,4 +475,3 @@ export default function NewInterviewPage() {
         </div>
     );
 }
-

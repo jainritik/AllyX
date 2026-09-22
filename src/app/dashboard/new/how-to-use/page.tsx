@@ -16,17 +16,29 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { readInterviewContext } from "@/lib/interview-context";
+import { useAuth } from "@/lib/auth";
 
 export default function HowToUsePage() {
     const router = useRouter();
+    const accountId = useAuth(state => state.user?.id);
     const [isElectron, setIsElectron] = useState(false);
+    const [setupReady, setSetupReady] = useState(false);
+    const [setupError, setSetupError] = useState("");
 
     useEffect(() => {
-        if (window.electronAPI) {
-            // Deferred to next tick to avoid synchronous state update warning
-            setTimeout(() => setIsElectron(true), 0);
-        }
-    }, []);
+        const timer = setTimeout(() => {
+            setIsElectron(Boolean(window.electronAPI));
+            try {
+                const ready = Boolean(accountId && readInterviewContext(accountId));
+                setSetupReady(ready);
+                setSetupError(ready ? "" : "Interview context is missing. Return to setup to add a job description and resume.");
+            } catch {
+                setSetupError("Interview setup could not be read on this device. Return to setup and try again.");
+            }
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [accountId]);
 
     const instructions = [
         {
@@ -82,6 +94,16 @@ export default function HowToUsePage() {
     ];
 
     const handleStart = () => {
+        try {
+            if (!accountId || !readInterviewContext(accountId)) {
+                setSetupReady(false);
+                setSetupError("Interview context is missing. Return to setup to add a job description and resume.");
+                return;
+            }
+        } catch {
+            setSetupError("Interview setup could not be read on this device. Return to setup and try again.");
+            return;
+        }
         router.push("/interview");
     };
 
@@ -141,18 +163,21 @@ export default function HowToUsePage() {
                     transition={{ delay: 0.6 }}
                     className="flex flex-col items-center gap-6"
                 >
+                    {setupError && <p role="alert" className="max-w-xl text-center text-red-600 dark:text-red-400">{setupError}</p>}
                     <Button
                         onClick={handleStart}
+                        disabled={!setupReady}
                         className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
                     >
                         Got it, Start Interview!
                         <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
                     </Button>
 
-                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                    {!setupReady && <Button variant="outline" onClick={() => router.push("/dashboard/new")}>Return to setup</Button>}
+                    {setupReady && <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
                         <CheckCircle2 size={18} />
-                        <span>Setup Complete • Stealth Mode Active</span>
-                    </div>
+                        <span>Interview context ready</span>
+                    </div>}
                 </motion.div>
             </div>
 

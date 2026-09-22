@@ -1,0 +1,9 @@
+dist/
+electron/
+node_modules/
+.next/
+.git/
+.env*
+tests/
+*.md
+main.js

@@ -1,5 +1,7 @@
 "use client";
 
+import { signOutAndClear } from "@/lib/auth";
+
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Video, FileText, LogOut, Clock, Loader2 } from "lucide-react";
@@ -45,9 +47,10 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
                     variant="ghost"
                     className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                     onClick={async () => {
-                        await supabase.auth.signOut();
-                        document.cookie = "auth_token=; path=/; max-age=0";
-                        window.location.href = "/login";
+                        try {
+                            await signOutAndClear();
+                            window.location.href = "/login";
+                        } catch { window.alert("Could not sign out. Please try again."); }
                     }}
                 >
                     <LogOut size={20} />
@@ -67,22 +70,42 @@ export default function DashboardLayout({
     const [showSettings, setShowSettings] = useState(false);
     const [, setMobileMenuOpen] = useState(false);
     const [isAuthChecking, setIsAuthChecking] = useState(true);
+    const [authError, setAuthError] = useState(false);
 
     useEffect(() => {
         const checkAuth = async () => {
-            const { data } = await supabase.auth.getSession();
-            if (!data.session) {
-                router.push("/login");
-                return;
-            }
-            setIsAuthChecking(false);
+            try {
+                const { data, error } = await supabase.auth.getUser();
+                if (error) {
+                    if (error.name === 'AuthSessionMissingError' || error.status === 401 || error.status === 403) {
+                        router.replace("/login");
+                    } else { setAuthError(true); }
+                    return;
+                }
+                if (!data.user) { router.replace("/login"); return; }
+                setIsAuthChecking(false);
+            } catch { setAuthError(true); }
         };
         checkAuth();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === 'SIGNED_OUT') router.replace("/login");
+        });
 
         const handleOpenSettings = () => setShowSettings(true);
         window.addEventListener('openSettings', handleOpenSettings);
-        return () => window.removeEventListener('openSettings', handleOpenSettings);
+        return () => {
+            subscription.unsubscribe();
+            window.removeEventListener('openSettings', handleOpenSettings);
+        };
     }, [router]);
+
+    if (authError) {
+        return <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+            <p>Could not verify your session. Check your connection and retry.</p>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Link href="/login">Return to sign in</Link>
+        </div>;
+    }
 
     if (isAuthChecking) {
         return (

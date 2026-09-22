@@ -1,0 +1,41 @@
+name: Desktop installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: macos-arm64
+            command: npx electron-builder --mac --arm64
+          - os: macos-15-intel
+            artifact: macos-x64
+            command: npx electron-builder --mac --x64
+          - os: windows-latest
+            artifact: windows-x64
+            command: npx electron-builder --win --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: node --test tests/*.test.cjs electron/*.test.cjs
+      - run: ${{ matrix.command }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zedx-${{ matrix.artifact }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+          if-no-files-found: error

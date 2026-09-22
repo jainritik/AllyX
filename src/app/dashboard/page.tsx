@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Clock, CheckCircle, Calendar, ArrowRight, Trash2 } from "lucide-react";
+import { Plus, Clock, CheckCircle, Calendar, ArrowRight, Trash2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { interviewService, Interview } from "@/lib/interview-service";
@@ -11,24 +11,25 @@ import { useConfirmDialog } from "@/components/confirm-dialog";
 
 export default function DashboardPage() {
     const router = useRouter();
-    const { confirm } = useConfirmDialog();
+    const { confirm, showToast } = useConfirmDialog();
     const [stats, setStats] = useState({ totalInterviews: 0, totalMinutes: 0 });
     const [recentSessions, setRecentSessions] = useState<Interview[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthChecking, setIsAuthChecking] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const loadData = async () => {
+    const loadData = useCallback(async () => {
             try {
                 setIsLoading(true);
+                setError(null);
                 const interviews = await interviewService.getUserInterviews();
                 setIsAuthChecking(false); // Auth passed
                 setRecentSessions(interviews.slice(0, 3)); // Get top 3
 
-                // Calculate total minutes from actual durations, fallback to 1 min per interview
+                // Only count measured duration; never invent time for short sessions.
                 const totalMins = interviews.reduce((sum, iv) => {
-                    const duration = iv.analysis?.duration_minutes || 1;
-                    return sum + duration;
+                    const duration = iv.analysis?.duration_minutes;
+                    return sum + (typeof duration === "number" && duration > 0 ? duration : 0);
                 }, 0);
 
                 setStats({
@@ -43,13 +44,15 @@ export default function DashboardPage() {
                 }
                 setIsAuthChecking(false);
                 console.error(err);
+                setError("Could not load your dashboard. Check your connection and retry.");
             } finally {
                 setIsLoading(false);
             }
-        };
-
-        loadData();
     }, [router]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.preventDefault();
@@ -64,13 +67,13 @@ export default function DashboardPage() {
 
         try {
             await interviewService.deleteInterview(id);
-            setRecentSessions(prev => prev.filter(s => s.id !== id));
-            setStats(prev => ({ ...prev, totalInterviews: prev.totalInterviews - 1 }));
+            await loadData();
+            showToast("Interview deleted", "success");
         } catch (e: unknown) {
             const err = e as Error;
             console.error(err);
             // FIX: Show user-facing error message when delete fails
-            alert("Failed to delete interview:" + (err.message || "Try again"));
+            showToast(err.message || "Failed to delete interview. Try again.", "error");
         }
     };
 
@@ -97,6 +100,13 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-8">
+            {error && (
+                <div role="alert" className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                    <AlertCircle size={20} />
+                    <span className="flex-1">{error}</span>
+                    <Button variant="outline" size="sm" onClick={loadData} disabled={isLoading}>Retry</Button>
+                </div>
+            )}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>

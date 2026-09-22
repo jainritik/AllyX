@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { interviewService } from "@/lib/interview-service";
+import { useAuth } from "@/lib/auth";
+import { readInterviewContext } from "@/lib/interview-context";
 
 // --- Types for Web Speech API ---
 interface SpeechRecognitionEvent extends Event {
@@ -44,19 +46,45 @@ interface SpeechRecognition extends EventTarget {
     abort(): void;
 }
 
+function compactContext(value: string, limit: number): string {
+    if (value.length <= limit) return value;
+    const startLength = Math.floor(limit * 0.7);
+    const endLength = limit - startLength;
+    return `${value.slice(0, startLength)}\n\n[Earlier context shortened]\n\n${value.slice(-endLength)}`;
+}
+
 export default function InterviewPage() {
     const router = useRouter();
+    const accountId = useAuth(state => state.user?.id);
     const { showToast } = useConfirmDialog();
     const videoRef = useRef<HTMLVideoElement>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
+    const recognitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    const isRecordingRef = useRef(false);
+    const deviceRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const autoAnswerPreferenceRef = useRef(true);
     const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
     const isAiSpeakingRef = useRef(false);
     const isRecognitionActiveRef = useRef(false);
+    const isSavingRef = useRef(false);
+    const answerInFlightRef = useRef(false);
+    const answerAbortRef = useRef<AbortController | null>(null);
+    const pendingQuestionRef = useRef("");
+    const sessionEndingRef = useRef(false);
+    const captureEpochRef = useRef(0);
+    const recordingStartRef = useRef(false);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
+    const draftHydratedRef = useRef(false);
+    const sessionIdRef = useRef("");
+    const fullTranscriptRef = useRef("");
 
     // API Key no longer needed - using server-side Groq
     const [showSettings, setShowSettings] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [isFinalizingCapture, setIsFinalizingCapture] = useState(false);
     const [transcript, setTranscript] = useState("");
+    const [fullTranscript, setFullTranscript] = useState("");
     const [interimTranscript, setInterimTranscript] = useState("");
     const [aiResponse, setAiResponse] = useState("## Ready to Assist\n\nI am your AI Copilot. I will listen to your meeting and provide real-time context.\n\n**Instructions:**\n1. Click the microphone to start listening.\n2. Speak your question or discussion point.\n3. When you need context, click **Get Answer**.");
     const [isCameraOn, setIsCameraOn] = useState(false);
@@ -66,7 +94,9 @@ export default function InterviewPage() {
     const [systemStatus, setSystemStatus] = useState({ browser: true, camera: false, mic: false });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _ignoreStatus = systemStatus;
-    const [interviewContext, setInterviewContext] = useState({ type: "", jd: "", resume: "", lang: "en-US" });
+    const [interviewContext, setInterviewContext] = useState({ type: "", jd: "", resume: "", lang: "en-US", model: "llama-3.1-8b-instant" });
+    const [answerModel, setAnswerModel] = useState<string | null>(null);
+    const [answerTruncated, setAnswerTruncated] = useState(false);
     const [isAutoMode, setIsAutoMode] = useState(true); // Auto Answer ON by default
     const [lastTranscript, setLastTranscript] = useState<string>(""); // For retry functionality
     const [allQAPairs, setAllQAPairs] = useState<{ question: string, answer: string }[]>([]); // Track Q&A pairs
@@ -81,9 +111,51 @@ export default function InterviewPage() {
     const screenSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const [isScannerActive, setIsScannerActive] = useState(false);
     const [hasMounted, setHasMounted] = useState(false);
+    const [contextReady, setContextReady] = useState(false);
 
     // Constants
     const MAX_TRANSCRIPT_LENGTH = 4000; // Limit transcript to prevent API issues
+
+    const appendFullTranscript = useCallback((text: string) => {
+        const clean = text.trim();
+        if (!clean) return;
+        const previous = fullTranscriptRef.current;
+        const next = `${previous}${previous ? ' ' : ''}${clean}`.slice(-100000);
+        fullTranscriptRef.current = next;
+        setFullTranscript(next);
+    }, []);
+
+    useEffect(() => {
+        isRecordingRef.current = isRecording;
+    }, [isRecording]);
+
+    useEffect(() => {
+        if (!accountId || draftHydratedRef.current) return;
+        draftHydratedRef.current = true;
+        try {
+            const draft = JSON.parse(localStorage.getItem('interview_draft') || 'null');
+            if (draft?.accountId === accountId) {
+                sessionIdRef.current = typeof draft.sessionId === 'string' ? draft.sessionId : crypto.randomUUID();
+                if (typeof draft.transcript === 'string') setTranscript(draft.transcript);
+                if (typeof draft.fullTranscript === 'string') {
+                    fullTranscriptRef.current = draft.fullTranscript;
+                    setFullTranscript(draft.fullTranscript);
+                }
+                if (typeof draft.interimTranscript === 'string') setInterimTranscript(draft.interimTranscript);
+                if (Array.isArray(draft.qaPairs)) setAllQAPairs(draft.qaPairs.filter((qa: { question?: unknown; answer?: unknown }) => typeof qa.question === 'string' && typeof qa.answer === 'string'));
+                if (typeof draft.manualQuestion === 'string') setManualQuestion(draft.manualQuestion);
+            }
+            if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
+        } catch { /* Ignore corrupt local draft. */ }
+        if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
+    }, [accountId]);
+
+    useEffect(() => {
+        if (!accountId || !draftHydratedRef.current) return;
+        try {
+            localStorage.setItem('interview_draft', JSON.stringify({ sessionId: sessionIdRef.current, accountId, transcript, fullTranscript, interimTranscript, qaPairs: allQAPairs, manualQuestion, savedAt: Date.now() }));
+        } catch { /* Saving can still be retried on this screen. */ }
+    }, [accountId, transcript, fullTranscript, interimTranscript, allQAPairs, manualQuestion]);
 
     // --- DESK_TOP STT ---
 
@@ -103,16 +175,20 @@ export default function InterviewPage() {
     }, []);
 
     useEffect(() => {
+        if (!accountId) return;
         setHasMounted(true);
         try {
-            const savedType = localStorage.getItem("interview_context_type") || "General";
-            const savedJD = localStorage.getItem("interview_context_jd") || "";
-            const savedResume = localStorage.getItem("interview_context_resume") || "";
-            const savedLang = localStorage.getItem("interview_context_lang") || "en-US";
-            setInterviewContext({ type: savedType, jd: savedJD, resume: savedResume, lang: savedLang });
+            const saved = readInterviewContext(accountId);
+            if (!saved) {
+                setError("Interview setup is missing. Return to setup and start again.");
+                router.replace("/dashboard/new");
+                return;
+            }
+            setInterviewContext({ type: saved.type, jd: saved.jd, resume: saved.resume, lang: saved.lang, model: saved.model });
+            setContextReady(true);
         } catch {
             // localStorage unavailable (private mode)
-            setInterviewContext({ type: "General", jd: "", resume: "", lang: "en-US" });
+            setInterviewContext({ type: "General", jd: "", resume: "", lang: "en-US", model: "llama-3.1-8b-instant" });
         }
 
         // v18.0: Listen for scanner state changes (Atomic Sync)
@@ -123,18 +199,21 @@ export default function InterviewPage() {
             });
             return cleanup;
         }
-    }, []);
+    }, [accountId, router]);
 
     // Initialize Camera
     useEffect(() => {
         let currentStream: MediaStream | null = null;
+        let cancelled = false;
 
         const startCamera = async () => {
             try {
                 if (!navigator.mediaDevices?.getUserMedia) {
                     throw new Error("Camera API not supported in this browser.");
                 }
-                currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                if (cancelled) { stream.getTracks().forEach(track => track.stop()); return; }
+                currentStream = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = currentStream;
                 }
@@ -159,6 +238,7 @@ export default function InterviewPage() {
 
         const videoElem = videoRef.current;
         return () => {
+            cancelled = true;
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
@@ -168,20 +248,30 @@ export default function InterviewPage() {
             }
         };
     }, [isCameraOn, isCameraVisible]);
-    const getAiAnswer = useCallback(async (retryTranscript?: string) => {
-        const transcriptToUse = retryTranscript || transcript;
+    const isElectron = hasMounted && typeof window !== 'undefined' && (window as unknown as { electronAPI?: { isElectron: boolean } }).electronAPI?.isElectron;
+
+    const getAiAnswer = useCallback(async (explicitQuestion?: string, continuation = false) => {
+        const consumesLiveTranscript = explicitQuestion === undefined;
+        const transcriptToUse = explicitQuestion || transcript;
 
         // No API key check needed - server has Groq configuration
         if (!transcriptToUse.trim()) {
             if (!isAutoMode) setError("No transcript to analyze. Please speak first.");
             return;
         }
+        if (answerInFlightRef.current) return;
+        answerInFlightRef.current = true;
 
         // Limit transcript length
         const currentTranscript = transcriptToUse.slice(0, MAX_TRANSCRIPT_LENGTH);
-        setLastTranscript(currentTranscript); // Save for retry
-        setTranscript("");
-        setInterimTranscript(""); // Clear interim too
+        if (!continuation) {
+            pendingQuestionRef.current = currentTranscript;
+            setLastTranscript(currentTranscript);
+        }
+        if (consumesLiveTranscript) {
+            setTranscript("");
+            setInterimTranscript("");
+        }
 
         setIsLoading(true);
         setError(null);
@@ -193,12 +283,21 @@ export default function InterviewPage() {
         }
 
         try {
-            // Get user's selected model
-            let selectedModel = "llama-3.1-8b-instant";
-            try {
-                selectedModel = localStorage.getItem("selected_ai_model") || "llama-3.1-8b-instant";
-            } catch { /* localStorage unavailable */ }
-
+            const controller = new AbortController();
+            answerAbortRef.current = controller;
+            const jobContext = compactContext(interviewContext.jd, 3500);
+            const resumeContext = compactContext(interviewContext.resume, 6500);
+            const recentMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+            let historyBudget = 18000;
+            for (const pair of [...allQAPairs].reverse()) {
+                const pairSize = pair.question.length + pair.answer.length;
+                if (pairSize > historyBudget) break;
+                recentMessages.unshift(
+                    { role: "user", content: pair.question },
+                    { role: "assistant", content: pair.answer },
+                );
+                historyBudget -= pairSize;
+            }
             // Construct the prompt (Unified for all providers)
             const systemPrompt = `
         SYSTEM INSTRUCTION:
@@ -224,45 +323,98 @@ export default function InterviewPage() {
 
         CONTEXT:
         - Meeting Type: ${interviewContext.type}
-        - Meeting Notes/Agenda: ${interviewContext.jd || "Not provided"}
-        - User Context File: ${interviewContext.resume || "Not provided"}
+        - Meeting Notes/Agenda: ${jobContext || "Not provided"}
+        - User Context File: ${resumeContext || "Not provided"}
         `;
 
-            // Call Server-Side API (Groq powered - no API key needed)
-            const response = await fetch("/api/generate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: selectedModel,
-                    systemPrompt: systemPrompt,
-                    messages: [
-                        { role: "user", content: currentTranscript }
-                    ]
-                })
+            const requestBody = JSON.stringify({
+                model: interviewContext.model,
+                systemPrompt,
+                messages: [...recentMessages, { role: "user", content: currentTranscript }]
             });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error?.message || `API Error: ${response.status}`);
+            let response: Response | null = null;
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    response = await fetch("/api/generate-stream", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        signal: controller.signal,
+                        body: requestBody,
+                    });
+                    break;
+                } catch (fetchError) {
+                    if (attempt === 1 || controller.signal.aborted) throw fetchError;
+                    await new Promise(resolve => setTimeout(resolve, 350));
+                }
             }
+            if (!response) throw new Error("The AI service could not be reached.");
+            if (!response.ok) {
+                let message = `AI request failed (${response.status}).`;
+                try {
+                    const data = await response.json();
+                    message = data.error?.message || data.error || message;
+                } catch { /* Keep HTTP fallback. */ }
+                throw new Error(message);
+            }
+            if (!response.body) throw new Error("The AI response stream was empty.");
 
-            const text = data.content;
-            if (!text) throw new Error("Empty response from AI.");
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let text = "";
+            let lastOverlayUpdate = 0;
+            const prefix = continuation ? `${aiResponse}\n\n` : "";
+            while (true) {
+                const { value, done } = await reader.read();
+                buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+                const events = buffer.split("\n\n");
+                buffer = events.pop() || "";
+                for (const event of events) {
+                    for (const line of event.split("\n")) {
+                        if (!line.startsWith("data: ")) continue;
+                        const payload = line.slice(6);
+                        if (payload === "[DONE]") continue;
+                        try { text += JSON.parse(payload).content || ""; } catch { /* Ignore malformed event. */ }
+                    }
+                    if (text) {
+                        const liveAnswer = `${prefix}${text}`;
+                        setAiResponse(liveAnswer);
+                        const now = Date.now();
+                        if (now - lastOverlayUpdate > 80) {
+                            window.electronAPI?.sendAnswer?.(liveAnswer);
+                            lastOverlayUpdate = now;
+                        }
+                    }
+                }
+                if (done) break;
+            }
+            if (!text.trim()) throw new Error("Empty response from AI.");
+            if (sessionEndingRef.current) return;
 
-            setAiResponse(text);
+            const completeAnswer = `${prefix}${text}`;
+            setAiResponse(completeAnswer);
+            setAnswerModel(interviewContext.model);
+            setAnswerTruncated(false);
             // Broadcast to Electron Overlay
             if (window.electronAPI?.sendAnswer) {
-                window.electronAPI.sendAnswer(text);
+                window.electronAPI.sendAnswer(completeAnswer);
             }
             // Track Q&A pairs for saving to history - save question and answer together
-            setAllQAPairs(prev => [...prev, { question: currentTranscript.trim(), answer: text }]);
+            setAllQAPairs(prev => {
+                if (!continuation || prev.length === 0) return [...prev, { question: currentTranscript.trim(), answer: text }];
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                updated[updated.length - 1] = { ...last, answer: `${last.answer}\n\n${text}` };
+                return updated;
+            });
+            if (!continuation) pendingQuestionRef.current = "";
             // Text-to-speech disabled - text only mode
             isAiSpeakingRef.current = false;
 
             // Restart speech recognition after AI finishes
-            if (isRecording && recognitionRef.current) {
-                setTimeout(() => {
+            if (isRecordingRef.current && recognitionRef.current) {
+                const timer = setTimeout(() => {
+                    if (!isRecordingRef.current || sessionEndingRef.current) return;
                     try {
                         recognitionRef.current?.start();
                         console.log("[Speech] Restarted after AI response");
@@ -270,33 +422,56 @@ export default function InterviewPage() {
                         console.log("[Speech] Could not restart:", e);
                     }
                 }, 300);
+                recognitionTimersRef.current.push(timer);
             }
 
         } catch (error: unknown) {
             const err = error as Error;
+            if (err.name === "AbortError" || sessionEndingRef.current) return;
             console.error("Error generating AI response:", err);
             let errorMessage = "Could not generate response.";
             if (err.message.includes("429")) {
                 errorMessage = "AI is busy (Rate Limit). Please try again.";
             } else if (err.message.includes("configuration missing")) {
                 errorMessage = "Server AI configuration error. Please contact support.";
+            } else if (err.message === "Failed to fetch" || err instanceof TypeError) {
+                errorMessage = "Network connection lost while contacting the AI service. Check your connection and retry.";
             } else {
                 errorMessage = err.message;
             }
-            setAiResponse(`**Error:** ${errorMessage}`);
+            if (!continuation) {
+                setAiResponse(`**Error:** ${errorMessage}`);
+                setAnswerTruncated(false);
+            }
             setError(errorMessage);
-            setTranscript(currentTranscript); // Restore transcript to allow retry
+            if (consumesLiveTranscript && !continuation) {
+                setTranscript(liveText => {
+                    const newSpeech = liveText.trim();
+                    return newSpeech ? `${currentTranscript} ${newSpeech}`.slice(-MAX_TRANSCRIPT_LENGTH) : currentTranscript;
+                });
+            }
             isAiSpeakingRef.current = false;
-            if (isRecording) recognitionRef.current?.start();
+            if (isRecordingRef.current) recognitionRef.current?.start();
         } finally {
+            answerAbortRef.current = null;
+            answerInFlightRef.current = false;
             setIsLoading(false);
         }
-    }, [interviewContext, transcript, isAutoMode, isRecording, recognitionRef]);
+    }, [aiResponse, allQAPairs, interviewContext, transcript, isAutoMode, isRecording, recognitionRef]);
 
     const handleManualSubmit = () => {
+        if (!contextReady) {
+            setError("Interview setup is not ready. Return to setup and start again.");
+            return;
+        }
         if (!manualQuestion.trim()) return;
         getAiAnswer(manualQuestion);
     };
+
+    useEffect(() => window.electronAPI?.onOverlayManualQuestion?.((question: string) => {
+        setManualQuestion(question);
+        void getAiAnswer(question);
+    }), [getAiAnswer]);
 
     // Silence Detection for Auto-Answer
     useEffect(() => {
@@ -307,18 +482,16 @@ export default function InterviewPage() {
         silenceTimerRef.current = setTimeout(() => {
             console.log("Auto-answering due to silence...");
             getAiAnswer();
-        }, 800);
+        }, isElectron ? 350 : 900);
 
         return () => {
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
-    }, [transcript, isAutoMode, isLoading, isRecording, getAiAnswer]);
-
-    // Detect if running in Electron (Desktop App)
-    const isElectron = hasMounted && typeof window !== 'undefined' && (window as unknown as { electronAPI?: { isElectron: boolean } }).electronAPI?.isElectron;
+    }, [transcript, isAutoMode, isLoading, isRecording, getAiAnswer, isElectron]);
 
     // --- SCREEN AUDIO CAPTURE (ELECTRON ONLY) ---
     const stopScreenAudio = useCallback(() => {
+        captureEpochRef.current++;
         if (screenStreamRef.current) {
             screenStreamRef.current.getTracks().forEach(t => t.stop());
             screenStreamRef.current = null;
@@ -330,6 +503,8 @@ export default function InterviewPage() {
         setIsScreenAudioActive(false);
         console.log("[Screen Audio] Stopped");
     }, []);
+
+    useEffect(() => window.electronAPI?.onStopAudioSource?.(() => stopScreenAudio()), [stopScreenAudio]);
 
     const toggleScreenAudio = async () => {
         if (!isElectron) return;
@@ -353,6 +528,7 @@ export default function InterviewPage() {
 
         const cleanup = window.electronAPI?.onAudioSourceReady(async (sourceId: string) => {
             console.log("[Screen Audio] Source ID received:", sourceId);
+            const epoch = captureEpochRef.current;
             try {
                 if (!navigator.mediaDevices?.getUserMedia) {
                     throw new Error("System audio capture not supported.");
@@ -373,6 +549,10 @@ export default function InterviewPage() {
                         }
                     }
                 });
+                if (epoch !== captureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
+                    stream.getTracks().forEach(track => track.stop());
+                    return;
+                }
 
                 screenStreamRef.current = stream;
                 setIsScreenAudioActive(true);
@@ -390,9 +570,11 @@ export default function InterviewPage() {
                 }
 
                 // Monitor for capture stop (user clicks "Stop Sharing" in OS)
-                stream.getVideoTracks()[0].onended = () => {
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) videoTrack.onended = () => {
                     console.log("[Screen Audio] Capture stopped by OS");
                     stopScreenAudio();
+                    if (!sessionEndingRef.current) setError("System audio capture stopped. Press the System Audio button to reconnect it.");
                 };
 
             } catch (err: unknown) {
@@ -412,15 +594,8 @@ export default function InterviewPage() {
     const activeStreamsRef = useRef<MediaStream[]>([]);
     const lastGroqTranscriptRef = useRef<string>("");
 
-    // BANNED_PHRASES - Only filter CLEAR hallucinations (YouTube artifacts, never real speech)
-    const BANNED_PHRASES = [
-        "please subscribe", "like and subscribe", "subscribe to",
-        "thanks for watching", "thank you for watching", "thanks for watching",
-        "thank you very much", "i hope you enjoyed", "bye bye",
-        "thank you", "thanks", "thank you.",
-        "copyright", "subtitles by", "captioned by",
-        "[music]", "[applause]", "(music)", "(applause)"
-    ];
+    // Ignore only exact non-speech captions. Real phrases must remain available to the AI.
+    const NON_SPEECH_CAPTIONS = new Set(["[music]", "[applause]", "(music)", "(applause)"]);
 
     const processGroqAudio = async (audioBlob: Blob) => {
         try {
@@ -434,7 +609,8 @@ export default function InterviewPage() {
             formData.append('model', 'whisper-large-v3-turbo');
 
             // Get selected language
-            const langCode = interviewContext.lang.split('-')[0];
+            const selectedLanguage = interviewContext.lang.split('-')[0];
+            const langCode = selectedLanguage === 'fil' ? 'tl' : selectedLanguage;
             formData.append('language', langCode);
 
             // Add prompt to help Whisper understand the expected language
@@ -447,14 +623,21 @@ export default function InterviewPage() {
             console.log(`[Desktop STT] Sending audio with language: ${langCode}`);
 
             let response;
-            let retries = 2; // Try up to 2 extra times
+            let retries = 0;
             let delay = 1000;
 
             while (retries >= 0) {
-                response = await fetch('/api/transcribe', {
-                    method: 'POST',
-                    body: formData,
-                });
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 25000);
+                try {
+                    response = await fetch('/api/transcribe', {
+                        method: 'POST',
+                        body: formData,
+                        signal: controller.signal,
+                    });
+                } finally {
+                    clearTimeout(timeout);
+                }
 
                 if (response.ok) break;
 
@@ -470,6 +653,13 @@ export default function InterviewPage() {
 
             if (!response || !response.ok) {
                 console.error(`[Desktop STT] API Error: ${response?.status}`);
+                let message = "Transcription stopped because the audio service could not be reached.";
+                try {
+                    const body = await response?.json();
+                    if (typeof body?.error === "string") message = body.error;
+                    else if (typeof body?.error?.message === "string") message = body.error.message;
+                } catch { /* Keep the safe fallback message. */ }
+                setError(`${message} Stop and restart the microphone to retry.`);
                 return;
             }
 
@@ -486,15 +676,8 @@ export default function InterviewPage() {
                     return;
                 }
 
-                // Filter: banned phrases (Case-insensitive)
-                if (BANNED_PHRASES.some(b => clean.includes(b))) {
-                    console.log(`[Desktop STT] Filtered: banned phrase: "${newText}"`);
-                    return;
-                }
-
-                // Extra safety: Filter single word "Thank you" even if slightly different
-                if (clean === "thank you" || clean === "thanks") {
-                    console.log(`[Desktop STT] Filtered: single word hallucination`);
+                if (NON_SPEECH_CAPTIONS.has(newText.toLowerCase().trim())) {
+                    console.log(`[Desktop STT] Filtered non-speech caption: "${newText}"`);
                     return;
                 }
 
@@ -504,15 +687,10 @@ export default function InterviewPage() {
                     return;
                 }
 
-                // Filter: unexpected languages
-                const unexpectedCharsRegex = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/;
-                if (unexpectedCharsRegex.test(newText)) {
-                    console.log(`[Desktop STT] Filtered: unexpected language: "${newText}"`);
-                    return;
-                }
-
                 lastGroqTranscriptRef.current = clean;
                 console.log(`[Desktop STT] ✅ Heard (${langCode}): "${newText}"`);
+
+                appendFullTranscript(newText);
 
                 setTranscript(prev => {
                     const prevTrimmed = prev.trim();
@@ -537,18 +715,48 @@ export default function InterviewPage() {
             }
         } catch (error) {
             console.error("[Desktop STT] Error:", error);
+            setError("Transcription failed. Check your connection, then stop and restart the microphone.");
         }
     };
 
     const startDesktopSTT = async () => {
+        const epoch = captureEpochRef.current;
         try {
+            if (window.electronAPI?.isPresentationSafeMode()) return false;
             console.log("[Desktop STT] Starting Smart VAD...");
 
             // 1. Get Microphone stream
             const micStream = await navigator.mediaDevices.getUserMedia({
                 audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
             });
+            if (epoch !== captureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
+                micStream.getTracks().forEach(track => track.stop());
+                return false;
+            }
             activeStreamsRef.current = [micStream];
+            const microphoneTrack = micStream.getAudioTracks()[0];
+            if (microphoneTrack) {
+                microphoneTrack.onended = () => {
+                    if (epoch !== captureEpochRef.current || sessionEndingRef.current || !isRecordingRef.current) return;
+                    setError("The microphone disconnected. Reconnecting…");
+                    setIsRecording(false);
+                    setIsAutoMode(false);
+                    stopDesktopSTT();
+                    if (deviceRecoveryTimerRef.current) clearTimeout(deviceRecoveryTimerRef.current);
+                    deviceRecoveryTimerRef.current = setTimeout(async () => {
+                        deviceRecoveryTimerRef.current = null;
+                        if (sessionEndingRef.current) return;
+                        const recovered = await startDesktopSTT();
+                        if (recovered) {
+                            setIsRecording(true);
+                            setIsAutoMode(autoAnswerPreferenceRef.current);
+                            setError(null);
+                        } else {
+                            setError("Microphone reconnection failed. Select an available microphone and press Start.");
+                        }
+                    }, 1000);
+                };
+            }
 
             // 2. Initialize Audio Context & Analyser (Saved to Refs for mixing)
             const audioContext = new AudioContext();
@@ -591,6 +799,7 @@ export default function InterviewPage() {
             let lastLogTime = 0;
 
             const checkAudioLevel = () => {
+                if (epoch !== captureEpochRef.current) return;
                 if (!activeStreamsRef.current.length && !screenStreamRef.current) return;
 
                 analyser.getByteFrequencyData(dataArray);
@@ -613,17 +822,46 @@ export default function InterviewPage() {
 
                         // Create a mixed stream for the MediaRecorder
                         const dest = audioContext.createMediaStreamDestination();
+                        const screenSourceAtStart = screenSourceRef.current;
                         micSource.connect(dest);
-                        if (screenSourceRef.current) {
-                            screenSourceRef.current.connect(dest);
+                        if (screenSourceAtStart) {
+                            screenSourceAtStart.connect(dest);
                         }
 
                         // Use standard webm to avoid header issues with Whisper
                         const mimeType = 'audio/webm';
                         mediaRecorder = new MediaRecorder(dest.stream, { mimeType });
+                        mediaRecorderRef.current = mediaRecorder;
                         mediaRecorder.ondataavailable = (e) => {
                             if (e.data.size > 0) audioChunks.push(e.data);
                         };
+
+                        let resolveStopped: () => void = () => {};
+                        const stopped = new Promise<void>(resolve => { resolveStopped = resolve; });
+                        const ownedRecorder = mediaRecorder;
+                        const flushOwned = async () => {
+                            if (ownedRecorder.state === 'recording') ownedRecorder.stop();
+                            await stopped;
+                        };
+                        mediaRecorder.onstop = async () => {
+                            try {
+                                if (epoch !== captureEpochRef.current) return;
+                                const duration = Date.now() - speechStart;
+                                if (duration < MIN_SPEECH_DURATION || audioChunks.length === 0) return;
+                                const fullAudio = new Blob(audioChunks, { type: 'audio/webm' });
+                                console.log(`[VAD] Sending ${(fullAudio.size / 1024).toFixed(1)}KB...`);
+                                await processGroqAudio(fullAudio);
+                            } finally {
+                                try { micSource.disconnect(dest); } catch { /* already disconnected */ }
+                                try { screenSourceAtStart?.disconnect(dest); } catch { /* already disconnected */ }
+                                dest.stream.getTracks().forEach(track => track.stop());
+                                audioChunks = [];
+                                if (mediaRecorderRef.current === ownedRecorder) mediaRecorderRef.current = null;
+                                if (flushRecorderRef.current === flushOwned) flushRecorderRef.current = null;
+                                resolveStopped();
+                            }
+                        };
+                        flushRecorderRef.current = flushOwned;
 
                         // IMPORTANT: Start without timeslice to get a single valid blob at onstop
                         // This produces a much more stable WebM file for Groq
@@ -655,36 +893,35 @@ export default function InterviewPage() {
 
                 if (mediaRecorder && mediaRecorder.state === 'recording') {
                     mediaRecorder.stop();
-                    mediaRecorder.onstop = async () => {
-                        const duration = Date.now() - speechStart;
-                        if (duration < MIN_SPEECH_DURATION) {
-                            console.log(`[VAD] Skipping: Too short (${duration}ms)`);
-                            audioChunks = [];
-                            return;
-                        }
-
-                        if (audioChunks.length > 0) {
-                            const fullAudio = new Blob(audioChunks, { type: 'audio/webm' });
-                            console.log(`[VAD] Sending ${(fullAudio.size / 1024).toFixed(1)}KB...`);
-                            await processGroqAudio(fullAudio);
-                        }
-                        audioChunks = [];
-                    };
                 }
             };
 
             checkAudioLevel();
             setIsRecording(true);
             console.log("[Desktop STT] VAD Engine Started");
+            return true;
 
         } catch (err: unknown) {
             const error = err as Error;
             console.error("Desktop STT Error:", error);
+            captureEpochRef.current++;
+            activeStreamsRef.current.forEach(stream => stream.getTracks().forEach(track => track.stop()));
+            activeStreamsRef.current = [];
+            void audioContextRef.current?.close();
+            audioContextRef.current = null;
             setError(error.message || "Recording failed.");
+            return false;
         }
     };
 
     const stopDesktopSTT = useCallback(() => {
+        captureEpochRef.current++;
+        if (mediaRecorderRef.current?.state === 'recording') {
+            mediaRecorderRef.current.onstop = null;
+            mediaRecorderRef.current.stop();
+        }
+        mediaRecorderRef.current = null;
+        flushRecorderRef.current = null;
         if (screenSourceRef.current) {
             screenSourceRef.current.disconnect();
             screenSourceRef.current = null;
@@ -708,10 +945,53 @@ export default function InterviewPage() {
         console.log("[Desktop STT] Stopped");
     }, []);
 
+    const flushAndStopDesktopSTT = useCallback(async () => {
+        const flush = flushRecorderRef.current;
+        if (flush) await flush();
+        stopDesktopSTT();
+    }, [stopDesktopSTT]);
+
+    useEffect(() => () => {
+        if (deviceRecoveryTimerRef.current) clearTimeout(deviceRecoveryTimerRef.current);
+        stopDesktopSTT();
+        stopScreenAudio();
+    }, [stopDesktopSTT, stopScreenAudio]);
+
+    useEffect(() => {
+        if (!isElectron || !window.electronAPI) return;
+
+        const stopForPresentation = (active: boolean) => {
+            if (!active) return;
+            setIsRecording(false);
+            setIsAutoMode(false);
+            setIsCameraOn(false);
+            setIsCameraVisible(false);
+            stopDesktopSTT();
+            stopScreenAudio();
+            window.electronAPI?.stopSystemAudioCapture();
+            try { recognitionRef.current?.abort(); } catch { }
+            isRecognitionActiveRef.current = false;
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        };
+
+        stopForPresentation(window.electronAPI.isPresentationSafeMode());
+        return window.electronAPI.onPresentationSafeModeChange(stopForPresentation);
+    }, [isElectron, stopDesktopSTT, stopScreenAudio]);
+
     // --- TOGGLE RECORDING (UNIFIED) ---
     const toggleRecording = async () => {
+        if (isFinalizingCapture) return;
+        if (!contextReady) {
+            setError("Interview setup is not ready. Return to setup and start again.");
+            return;
+        }
+        if (recordingStartRef.current) {
+            captureEpochRef.current++;
+            return;
+        }
         if (isRecording) {
             // STOP
+            setIsFinalizingCapture(true);
             setIsRecording(false);
             setIsAutoMode(false);
 
@@ -721,8 +1001,10 @@ export default function InterviewPage() {
             }
 
             // 2. Stop Desktop VAD (if running)
-            if (isElectron) {
-                stopDesktopSTT();
+            try {
+                if (isElectron) await flushAndStopDesktopSTT();
+            } finally {
+                setIsFinalizingCapture(false);
             }
 
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -731,14 +1013,16 @@ export default function InterviewPage() {
         }
 
         // START
+        if (window.electronAPI?.isPresentationSafeMode()) return;
+        recordingStartRef.current = true;
+        isAiSpeakingRef.current = false;
         setError(null);
         setTranscript("");
         setInterimTranscript("");
 
         try {
-            // STEP 1: Always start Fast Live Transcript (Web Speech API)
-            // This provides the immediate visual feedback the user wants
-            if (recognitionRef.current) {
+            // Browser speech recognition is web-only. Electron uses Groq Whisper below.
+            if (!isElectron && recognitionRef.current) {
                 try {
                     if (!isRecognitionActiveRef.current) {
                         recognitionRef.current.start();
@@ -756,7 +1040,7 @@ export default function InterviewPage() {
                         }
                     }
                 }
-            } else {
+            } else if (!isElectron) {
                 console.warn("[Speech] Web Speech API not initialized.");
                 if (!isElectron) {
                     setError("Your browser does not support Live Speech. Use Chrome or Edge.");
@@ -765,23 +1049,30 @@ export default function InterviewPage() {
 
             // STEP 2: Desktop Only - Start High-Quality mixed audio STT
             if (isElectron) {
-                await startDesktopSTT();
+                const started = await startDesktopSTT();
+                if (!started) return;
             }
 
             setIsRecording(true);
-            setIsAutoMode(true);
+            setIsAutoMode(autoAnswerPreferenceRef.current);
             console.log("[Interview] Recording started (Dual-Engine Mode)");
         } catch (err: unknown) {
             const error = err as Error;
             console.error("Failed to start recording:", error);
             setError("Could not access microphone.");
+        } finally {
+            recordingStartRef.current = false;
         }
     };
 
-    // Initialize Speech Recognition (WEBSITE ONLY - not in Electron)
+    // Initialize Speech Recognition (website only)
     useEffect(() => {
-        // Skip Web Speech API in Electron - it doesn't work there and causes network errors
-        // The new toggleRecording handles Web Speech API for both desktop and web.
+        if (window.electronAPI) return;
+
+        const schedule = (callback: () => void, delay: number) => {
+            const timer = setTimeout(callback, delay);
+            recognitionTimersRef.current.push(timer);
+        };
 
         const win = typeof window !== 'undefined' ? window as unknown as {
             webkitSpeechRecognition?: new () => SpeechRecognition;
@@ -819,13 +1110,13 @@ export default function InterviewPage() {
         if (recognitionRef.current) {
             recognitionRef.current.onend = () => {
                 isRecognitionActiveRef.current = false;
-                console.log("[Speech] Recognition ended, isRecording:", isRecording, "isAiSpeaking:", isAiSpeakingRef.current);
+                console.log("[Speech] Recognition ended, isRecording:", isRecordingRef.current, "isAiSpeaking:", isAiSpeakingRef.current);
                 // Auto-restart ONLY if we are supposed to be recording AND AI is NOT speaking
-                if (isRecording && !isAiSpeakingRef.current) {
+                if (isRecordingRef.current && !isAiSpeakingRef.current) {
                     console.log("[Speech] Auto-restarting...");
                     // Use a small delay to prevent rapid restart loops
-                    setTimeout(() => {
-                        if (recognitionRef.current && isRecording && !isAiSpeakingRef.current && !isRecognitionActiveRef.current) {
+                    schedule(() => {
+                        if (recognitionRef.current && isRecordingRef.current && !isAiSpeakingRef.current && !isRecognitionActiveRef.current) {
                             try {
                                 recognitionRef.current.start();
                                 isRecognitionActiveRef.current = true;
@@ -864,6 +1155,7 @@ export default function InterviewPage() {
                 if (finalText) {
                     const cleanedFinal = finalText.trim();
                     if (cleanedFinal) {
+                        appendFullTranscript(cleanedFinal);
                         setTranscript(prev => {
                             // Enhanced deduplication: check if the new text overlaps with the end of existing transcript
                             const prevTrimmed = prev.trim();
@@ -930,11 +1222,18 @@ export default function InterviewPage() {
                 if (event.error === 'aborted' || event.error === 'audio-capture') {
                     isRecognitionActiveRef.current = false;
                 }
+                if (event.error === 'audio-capture') {
+                    setIsRecording(false);
+                    setIsAutoMode(false);
+                    setError("The active microphone became unavailable. Check the device and press Start to reconnect.");
+                    setSystemStatus(prev => ({ ...prev, mic: false }));
+                    return;
+                }
 
                 // Still try to restart after minor errors if recording is active
-                if ((event.error === 'no-speech' || event.error === 'aborted') && isRecording && !isAiSpeakingRef.current) {
-                    setTimeout(() => {
-                        if (recognitionRef.current && isRecording && !isRecognitionActiveRef.current) {
+                if ((event.error === 'no-speech' || event.error === 'aborted') && isRecordingRef.current && !isAiSpeakingRef.current) {
+                    schedule(() => {
+                        if (recognitionRef.current && isRecordingRef.current && !isRecognitionActiveRef.current) {
                             try {
                                 recognitionRef.current.start();
                                 isRecognitionActiveRef.current = true;
@@ -946,8 +1245,8 @@ export default function InterviewPage() {
                 // Handle network errors with auto-retry
                 if (event.error === 'network') {
                     console.log("[Speech] Network error, will retry...");
-                    setTimeout(() => {
-                        if (recognitionRef.current && isRecording) {
+                    schedule(() => {
+                        if (recognitionRef.current && isRecordingRef.current) {
                             try {
                                 recognitionRef.current.start();
                             } catch { /* ignore */ }
@@ -969,7 +1268,22 @@ export default function InterviewPage() {
                 }
             };
         }
-    }, [interviewContext.lang, isRecording]);
+
+        return () => {
+            recognitionTimersRef.current.forEach(clearTimeout);
+            recognitionTimersRef.current = [];
+            const recognition = recognitionRef.current;
+            recognitionRef.current = null;
+            if (recognition) {
+                recognition.onstart = null;
+                recognition.onend = null;
+                recognition.onresult = null;
+                recognition.onerror = null;
+                try { recognition.abort(); } catch { /* already stopped */ }
+            }
+            isRecognitionActiveRef.current = false;
+        };
+    }, [appendFullTranscript, interviewContext.lang]);
 
 
     useEffect(() => {
@@ -977,80 +1291,31 @@ export default function InterviewPage() {
 
         const cleanup = window.electronAPI.onProcessOcr(async (data) => {
             console.log("[Scanner] Received OCR request:", data);
-
+            let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: {
-                        // @ts-expect-error: mandatory is a non-standard Chrome property for desktop capture
-                        mandatory: {
-                            chromeMediaSource: 'desktop',
-                            chromeMediaSourceId: data.sourceId
-                        }
-                    }
+                if (!data.imageData?.startsWith('data:image/')) throw new Error('The captured image was invalid.');
+                worker = await createWorker('eng', 1, {
+                    logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
                 });
-
-                const video = document.createElement('video');
-                video.srcObject = stream;
-
-                // Wait for video to be ready
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        video.play().then(resolve);
-                    };
-                });
-
-                const canvas = document.createElement('canvas');
-                const scale = data.scaleFactor || 1;
-
-                // Set capture resolution higher for better OCR accuracy
-                canvas.width = data.bounds.width * scale;
-                canvas.height = data.bounds.height * scale;
-
-                const ctx = canvas.getContext('2d');
-
-                if (ctx) {
-                    // CRITICAL: Millimeter precision filters
-                    ctx.filter = 'grayscale(100%) contrast(150%) brightness(110%)';
-                    ctx.imageSmoothingEnabled = false;
-
-                    ctx.drawImage(video,
-                        data.bounds.x * scale, data.bounds.y * scale, data.bounds.width * scale, data.bounds.height * scale,
-                        0, 0, canvas.width, canvas.height
-                    );
-
-                    const imageData = canvas.toDataURL('image/png', 1.0);
-
-                    // Stop the stream
-                    stream.getTracks().forEach(track => track.stop());
-                    video.srcObject = null;
-
-                    // Process with Tesseract optimized for tech/code
-                    const worker = await createWorker('eng', 1, {
-                        logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
-                    });
-
-                    // Fine-tune parameters for technical/code text extraction
-                    await worker.setParameters({
-                        tessedit_pageseg_mode: '3', // PSM_AUTO
-                        preserve_interword_spaces: '1',
-                    } as unknown as Record<string, string>);
-
-                    const ret = await worker.recognize(imageData);
-                    const text = ret.data.text.trim();
-                    await worker.terminate();
-
-                    if (text) {
-                        console.log("[Scanner] Extracted text:", text);
-                        setManualQuestion(text);
-                        showToast("Text captured from screen!", "success");
-                    } else {
-                        showToast("No text detected in the area.", "info");
-                    }
+                await worker.setParameters({
+                    tessedit_pageseg_mode: '3',
+                    preserve_interword_spaces: '1',
+                } as unknown as Record<string, string>);
+                const ret = await worker.recognize(data.imageData);
+                const text = ret.data.text.trim();
+                if (text) {
+                    console.log("[Scanner] Extracted text:", text);
+                    setManualQuestion(text);
+                    window.electronAPI?.sendCapturedText?.(text);
+                    showToast("Text captured. Review it, then press Ask.", "success");
+                } else {
+                    showToast("No readable text was detected. Enlarge the code and try again.", "info");
                 }
             } catch (err) {
                 console.error("[Scanner] OCR processing failed:", err);
-                showToast("Failed to process screen capture.", "error");
+                showToast(err instanceof Error ? err.message : "Failed to process screen capture.", "error");
+            } finally {
+                if (worker) await worker.terminate().catch(console.error);
             }
         });
 
@@ -1059,13 +1324,49 @@ export default function InterviewPage() {
 
     // Handle End Interview - Save to history and navigate
     const handleEndInterview = async () => {
+        if (isSavingRef.current) return;
+        isSavingRef.current = true;
+        sessionEndingRef.current = true;
+        answerAbortRef.current?.abort();
+        setIsSaving(true);
+        setError(null);
+
+        // Stop capture before saving, including when there is no session to save.
+        isAiSpeakingRef.current = true;
+        setIsRecording(false);
+        setIsAutoMode(false);
+        setIsCameraOn(false);
+        setIsCameraVisible(false);
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
+        isRecognitionActiveRef.current = false;
+        setIsFinalizingCapture(true);
+        try {
+            await flushAndStopDesktopSTT();
+        } finally {
+            setIsFinalizingCapture(false);
+        }
+        stopScreenAudio();
+        if (window.electronAPI) {
+            void window.electronAPI.stopSystemAudioCapture().catch(console.error);
+            if (isScannerActive) void window.electronAPI.toggleScannerFrame().catch(console.error);
+        }
+
+        const pendingQuestion = pendingQuestionRef.current.trim();
+        const completeSpeech = fullTranscriptRef.current.trim();
+        const remainingTranscript = [
+            completeSpeech,
+            pendingQuestion && !completeSpeech.includes(pendingQuestion) ? pendingQuestion : "",
+            interimTranscript.trim(),
+        ].filter(Boolean).join(" ");
         // Only save if there's meaningful content
-        if (transcript.length < 10 && allQAPairs.length === 0) {
+        if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
+            isSavingRef.current = false;
+            setIsSaving(false);
             router.push("/dashboard");
             return;
         }
 
-        setIsSaving(true);
         try {
             const title = interviewContext.type
                 ? `${interviewContext.type} Meeting`
@@ -1075,9 +1376,10 @@ export default function InterviewPage() {
             const durationMinutes = Math.round((new Date().getTime() - interviewStartTime.getTime()) / 60000);
 
             // Format transcript with Q&A pairs for better history display
-            const formattedTranscript = allQAPairs.length > 0
-                ? allQAPairs.map((qa, idx) => `Q${idx + 1}: ${qa.question}\n\nA${idx + 1}: ${qa.answer}`).join('\n\n---\n\n')
-                : transcript;
+            const formattedTranscript = [
+                allQAPairs.map((qa, idx) => `Q${idx + 1}: ${qa.question}\n\nA${idx + 1}: ${qa.answer}`).join('\n\n---\n\n'),
+                remainingTranscript ? `Transcript:\n${remainingTranscript}` : '',
+            ].filter(Boolean).join('\n\n---\n\n');
 
             await interviewService.saveInterview(
                 title,
@@ -1088,16 +1390,20 @@ export default function InterviewPage() {
                     language: interviewContext.lang,
                     ai_responses: allQAPairs.map(qa => qa.answer),
                     duration_minutes: durationMinutes,
-                    questions: allQAPairs.map(qa => qa.question)
-                }
+                    questions: allQAPairs.map(qa => qa.question),
+                    model_used: answerModel || interviewContext.model
+                },
+                sessionIdRef.current || undefined
             );
             showToast("Meeting saved to history", "success");
+            localStorage.removeItem('interview_draft');
+            router.push("/dashboard");
         } catch (error) {
             console.error("Failed to save interview:", error);
-            // Still navigate even if save fails
+            setError("Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.");
         } finally {
             setIsSaving(false);
-            router.push("/dashboard");
+            isSavingRef.current = false;
         }
     };
 
@@ -1146,15 +1452,16 @@ export default function InterviewPage() {
                             {/* Microphone Button */}
                             <button
                                 onClick={toggleRecording}
+                                disabled={isFinalizingCapture}
                                 className={cn(
                                     "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-sm",
                                     isRecording
                                         ? "bg-[#00D95A] text-white scale-110 shadow-green-500/40"
                                         : "bg-black/40 text-white hover:bg-black/60 border border-white/10"
                                 )}
-                                title={isRecording ? "Stop Recording" : "Start Recording"}
+                                title={isFinalizingCapture ? "Finalizing transcription" : isRecording ? "Stop Recording" : "Start Recording"}
                             >
-                                <Mic size={26} strokeWidth={isRecording ? 2.5 : 2} />
+                                {isFinalizingCapture ? <Loader2 size={26} className="animate-spin" /> : <Mic size={26} strokeWidth={isRecording ? 2.5 : 2} />}
                             </button>
 
                             {/* Camera Toggle Button (Web Only) */}
@@ -1208,15 +1515,16 @@ export default function InterviewPage() {
                         {/* Microphone Icon Button */}
                         <button
                             onClick={toggleRecording}
+                            disabled={isFinalizingCapture}
                             className={cn(
                                 "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-md",
                                 isRecording
                                     ? "bg-[#00D95A] text-white scale-110 shadow-green-500/30 ring-4 ring-green-100 dark:ring-green-900/30"
                                     : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                             )}
-                            title={isRecording ? "Stop Recording" : "Start Recording"}
+                            title={isFinalizingCapture ? "Finalizing transcription" : isRecording ? "Stop Recording" : "Start Recording"}
                         >
-                            <Mic size={26} strokeWidth={isRecording ? 2.5 : 2} />
+                            {isFinalizingCapture ? <Loader2 size={26} className="animate-spin" /> : <Mic size={26} strokeWidth={isRecording ? 2.5 : 2} />}
                         </button>
 
                         {/* Camera Icon Button (Web Only) */}
@@ -1270,9 +1578,21 @@ export default function InterviewPage() {
                             <span className={cn("w-2 h-2 rounded-full", isRecording ? "bg-red-500 animate-pulse" : "bg-gray-300")}></span>
                             Live Transcript
                         </h3>
-                        <Button variant="ghost" size="sm" onClick={() => setTranscript("")} className="text-gray-400 hover:text-red-500">
-                            <Trash2 size={16} />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            {!isAutoMode && (
+                                <Button
+                                    size="sm"
+                                    onClick={() => getAiAnswer()}
+                                    disabled={isLoading || !transcript.trim()}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                >
+                                    <Sparkles size={14} className="mr-1" /> Get Answer
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => setTranscript("")} className="text-gray-400 hover:text-red-500">
+                                <Trash2 size={16} />
+                            </Button>
+                        </div>
                     </div>
                     <div className="flex-1 rounded-xl p-4 overflow-y-auto text-base font-sans leading-loose bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors">
                         {transcript}
@@ -1295,11 +1615,20 @@ export default function InterviewPage() {
                             <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
                             AI Copilot
                         </h3>
+                        {answerModel && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                Answered by {answerModel}{answerModel !== interviewContext.model ? " (fallback)" : ""}
+                            </span>
+                        )}
                         <div className="flex flex-wrap gap-2">
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setIsAutoMode(!isAutoMode)}
+                                onClick={() => {
+                                    const next = !isAutoMode;
+                                    autoAnswerPreferenceRef.current = next;
+                                    setIsAutoMode(next);
+                                }}
                                 className={cn(
                                     "gap-2 text-xs sm:text-sm transition-all duration-300",
                                     isAutoMode
@@ -1368,7 +1697,7 @@ export default function InterviewPage() {
                             <Button
                                 size="icon"
                                 onClick={handleManualSubmit}
-                                disabled={isLoading || !manualQuestion.trim()}
+                                disabled={isLoading || !contextReady || !manualQuestion.trim()}
                                 className="absolute bottom-3 right-3 h-9 w-9 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md disabled:opacity-50 transition-all hover:scale-105"
                                 title="Get Answer"
                             >
@@ -1377,7 +1706,7 @@ export default function InterviewPage() {
                         </div>
                     </div>
 
-                    <div className="flex-1 rounded-xl p-6 overflow-y-auto prose prose-lg max-w-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors relative">
+                    {!isElectron ? <div className="flex-1 min-h-[320px] max-h-[65vh] rounded-xl p-6 overflow-y-auto overscroll-contain prose prose-lg max-w-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors relative">
                         <div className="absolute top-2 right-2 flex gap-1">
                             {/* Retry Button - always shows when lastTranscript exists */}
                             {lastTranscript && (
@@ -1409,11 +1738,30 @@ export default function InterviewPage() {
                         <div className="leading-loose text-lg">
                             <ReactMarkdown>{aiResponse}</ReactMarkdown>
                         </div>
-                    </div>
+                    </div> : <div className="flex min-h-[140px] items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center">
+                        <div>
+                            <p className="font-semibold text-gray-800 dark:text-gray-100">Answers are displayed in the desktop overlay.</p>
+                            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Press Command+Shift+O to interact with the overlay while keeping this window as session controls.</p>
+                            {isLoading && <p className="mt-3 text-sm text-emerald-500 animate-pulse">Generating and streaming the answer…</p>}
+                        </div>
+                    </div>}
+                    {!isElectron && answerTruncated && (
+                        <div role="status" className="mt-2 flex flex-wrap items-center gap-3 text-sm text-amber-600 dark:text-amber-400">
+                            <span>The model reached its output limit.</span>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isLoading}
+                                onClick={() => getAiAnswer("Continue exactly from the last sentence without repeating the previous answer.", true)}
+                            >
+                                Continue answer
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Debug Info */}
                     <div className="mt-4 text-xs text-center text-gray-400">
-                        {isAutoMode ? "AI will answer automatically after you stop speaking." : "Press Space to generate answer"}
+                        {isAutoMode ? "AI will answer automatically after you stop speaking." : "Use Get Answer when the complete question is ready."}
                     </div>
                     {/* Debug Info */}
                     <div className="mt-2 text-[10px] text-gray-300 text-center">

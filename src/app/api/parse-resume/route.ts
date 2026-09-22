@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "unpdf";
+import { authorizeApi } from "@/lib/api-access";
 
 // Force Node.js runtime
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-    console.log("Resume Parse Request Received (unpdf)");
     try {
+        const access = await authorizeApi(req);
+        if (access.error) return access.error;
+        if (Number(req.headers.get("content-length")) > 5_500_000) return NextResponse.json({ error: "File is too large" }, { status: 413 });
         const formData = await req.formData();
-        const file = formData.get("file") as File;
+        const file = formData.get("file");
 
-        if (!file) {
+        if (!(file instanceof File)) {
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
         }
 
@@ -44,12 +47,11 @@ export async function POST(req: NextRequest) {
                 text = Array.isArray(result.text) ? result.text.join("\n") : (result.text || "");
                 console.log("PDF Parsed successfully with unpdf, length:", text?.length);
             } catch (pdfError: unknown) {
-                const err = pdfError as Error;
-                console.error("PDF Parse Error:", err);
+                console.error("PDF Parse Error:", pdfError);
                 return NextResponse.json({
-                    error: "Could not parse PDF: " + (err.message || "Unknown error"),
+                    error: "This PDF could not be read. It may be encrypted, damaged, or use an unsupported format.",
                     suggestion: "Please try copying your resume text and pasting it directly."
-                }, { status: 500 });
+                }, { status: 422 });
             }
         }
         // Handle Text
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({
                 error: "Could not extract readable text from the PDF.",
                 suggestion: "The PDF might be image-based. Please copy and paste text directly."
-            }, { status: 500 });
+            }, { status: 422 });
         }
 
         return NextResponse.json({

@@ -71,6 +71,13 @@ function parseTranscriptToQA(transcript: string | null, aiResponses: string[] | 
     return pairs;
 }
 
+function trailingTranscript(transcript: string | null): string {
+    if (!transcript) return "";
+    const marker = "Transcript:\n";
+    const index = transcript.lastIndexOf(marker);
+    return index >= 0 ? transcript.slice(index + marker.length).trim() : "";
+}
+
 export default function InterviewHistoryPage() {
     const router = useRouter();
     const { confirm, showToast } = useConfirmDialog();
@@ -188,7 +195,8 @@ export default function InterviewHistoryPage() {
             {error && (
                 <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-600 dark:text-red-400">
                     <AlertCircle size={20} />
-                    {error}
+                    <span className="flex-1">{error}</span>
+                    <Button size="sm" variant="outline" onClick={loadInterviews} disabled={isLoading}>Retry</Button>
                 </div>
             )}
 
@@ -239,6 +247,7 @@ export default function InterviewHistoryPage() {
                             interview.analysis?.ai_responses,
                             interview.analysis?.questions
                         );
+                        const unansweredTranscript = trailingTranscript(interview.transcript);
 
                         return (
                             <div
@@ -330,6 +339,19 @@ export default function InterviewHistoryPage() {
                                                     </div>
                                                 </div>
                                             )
+                                        )}
+
+                                        {qaPairs.length > 0 && unansweredTranscript && (
+                                            <div className="pt-4 border-t border-gray-100 dark:border-zinc-700">
+                                                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                                    Unanswered transcript
+                                                </h4>
+                                                <div className="p-3 bg-gray-50 dark:bg-zinc-900 rounded-lg max-h-48 overflow-y-auto">
+                                                    <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                                                        {unansweredTranscript}
+                                                    </p>
+                                                </div>
+                                            </div>
                                         )}
 
                                         {/* Job Description (if available) */}

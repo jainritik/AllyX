@@ -10,19 +10,53 @@ contextBridge.exposeInMainWorld('electronAPI', {
     canGoBack: () => ipcRenderer.sendSync('can-go-back'),
     copyToClipboard: (text) => ipcRenderer.send('copy-to-clipboard', text),
     isDesktopMode: () => ipcRenderer.sendSync('get-desktop-mode'),
+    isPresentationSafeMode: () => ipcRenderer.sendSync('get-presentation-safe-mode'),
+    setPresentationSafeMode: (active) => ipcRenderer.invoke('set-presentation-safe-mode', active),
+    togglePresentationSafeMode: () => ipcRenderer.invoke('toggle-presentation-safe-mode'),
+    onPresentationSafeModeChange: (callback) => {
+        const wrapper = (event, active) => callback(active);
+        ipcRenderer.on('presentation-safe-mode-changed', wrapper);
+        return () => ipcRenderer.removeListener('presentation-safe-mode-changed', wrapper);
+    },
 
     // Audio capture
     getSystemAudioSource: () => ipcRenderer.invoke('get-system-audio-source'),
     startSystemAudioCapture: () => ipcRenderer.invoke('start-system-audio-capture'),
     stopSystemAudioCapture: () => ipcRenderer.invoke('stop-system-audio-capture'),
+    onStopAudioSource: (callback) => {
+        const wrapper = () => callback();
+        ipcRenderer.on('stop-audio-source', wrapper);
+        return () => ipcRenderer.removeListener('stop-audio-source', wrapper);
+    },
 
     // Broadcast updates to Overlay
     sendTranscript: (text) => ipcRenderer.send('transcript-update', text),
     sendAnswer: (text) => ipcRenderer.send('answer-update', text),
+    sendCapturedText: (text) => ipcRenderer.send('overlay-captured-text', text),
 
     // Overlay Controls
     resizeOverlay: (width, height) => ipcRenderer.send('resize-overlay', { width, height }),
     setIgnoreMouseEvents: (ignore, options) => ipcRenderer.send('set-ignore-mouse-events', ignore, options),
+    getOverlayState: () => ipcRenderer.sendSync('get-overlay-state'),
+    onOverlayInteractionChange: (callback) => {
+        const wrapper = (event, interactive) => callback(interactive);
+        ipcRenderer.on('overlay-interaction-changed', wrapper);
+        return () => ipcRenderer.removeListener('overlay-interaction-changed', wrapper);
+    },
+    submitOverlayQuestion: (question) => ipcRenderer.invoke('submit-overlay-question', question),
+    onOverlayManualQuestion: (callback) => {
+        const wrapper = (event, question) => callback(question);
+        ipcRenderer.on('overlay-manual-question', wrapper);
+        return () => ipcRenderer.removeListener('overlay-manual-question', wrapper);
+    },
+
+    // Compatibility shims for the currently deployed renderer. The owner-
+    // controlled updater was removed from this desktop fork, but older web
+    // releases still subscribe to these callbacks during startup.
+    downloadUpdate: () => undefined,
+    installUpdate: () => undefined,
+    onUpdateAvailable: () => () => {},
+    onUpdateReady: () => () => {},
 
     // Callbacks
     onTranscript: (callback) => {
@@ -35,6 +69,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const wrapper = (event, answer) => callback(answer);
         ipcRenderer.on('answer', wrapper);
         return () => ipcRenderer.removeListener('answer', wrapper);
+    },
+    onOverlayCapturedText: (callback) => {
+        const wrapper = (event, text) => callback(text);
+        ipcRenderer.on('overlay-captured-text', wrapper);
+        return () => ipcRenderer.removeListener('overlay-captured-text', wrapper);
     },
 
     onAudioSourceReady: (callback) => {
@@ -49,6 +88,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     retryConnection: () => ipcRenderer.send('retry-connection'),
     quitApp: () => ipcRenderer.send('quit-app'),
     hideIcon: () => ipcRenderer.send('hide-icon'),
+    hideOverlay: () => ipcRenderer.send('hide-overlay'),
     onLoadError: (callback) => {
         const wrapper = (event, errorDescription) => callback(errorDescription);
         ipcRenderer.on('load-error', wrapper);
@@ -70,20 +110,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const wrapper = (event, active) => callback(active);
         ipcRenderer.on('scanner-state-changed', wrapper);
         return () => ipcRenderer.removeListener('scanner-state-changed', wrapper);
-    },
-
-    // Updater API
-    downloadUpdate: () => ipcRenderer.send('download-update'),
-    installUpdate: () => ipcRenderer.send('install-update'),
-    onUpdateAvailable: (callback) => {
-        const wrapper = (event, version) => callback(version);
-        ipcRenderer.on('update-available', wrapper);
-        return () => ipcRenderer.removeListener('update-available', wrapper);
-    },
-    onUpdateReady: (callback) => {
-        const wrapper = () => callback();
-        ipcRenderer.on('update-ready', wrapper);
-        return () => ipcRenderer.removeListener('update-ready', wrapper);
     },
 
     isElectron: true

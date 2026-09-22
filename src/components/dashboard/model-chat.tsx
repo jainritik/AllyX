@@ -24,6 +24,7 @@ export function ModelChat({ modelId, modelName, modelLogo }: ModelChatProps) {
     ]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [actualModel, setActualModel] = useState(modelId);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -39,6 +40,7 @@ export function ModelChat({ modelId, modelName, modelLogo }: ModelChatProps) {
         setMessages([
             { role: "assistant", content: `Hello! I'm ${modelName}. Ask me anything to test my capabilities before your interview.` }
         ]);
+        setActualModel(modelId);
     }, [modelId, modelName]);
 
     const handleSend = async () => {
@@ -50,23 +52,19 @@ export function ModelChat({ modelId, modelName, modelLogo }: ModelChatProps) {
         setIsLoading(true);
 
         try {
-            // Simulate API latency for "realism" (since we don't have a dedicated test endpoint yet)
-            // In a real implementation, this would hit /api/chat-test or similar
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            let responseContent = `I am running on **${modelName}**. I can help you practice for your interview!`;
-
-            if (input.toLowerCase().includes("job")) {
-                responseContent = "I can analyze job descriptions to find key requirements.";
-            } else if (input.toLowerCase().includes("code")) {
-                responseContent = "I can help you optimize your code and explain complex algorithms.";
-            }
-
-            const aiMessage = { role: "assistant" as const, content: responseContent };
-            setMessages(prev => [...prev, aiMessage]);
+            const history = [...messages.filter(message => message.role !== "assistant" || !message.content.startsWith("Hello!")), userMessage].slice(-20);
+            const response = await fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: modelId, messages: history }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error?.message || result.error || 'Model test failed');
+            setActualModel(typeof result.modelUsed === 'string' ? result.modelUsed : modelId);
+            setMessages(prev => [...prev, { role: 'assistant', content: result.content }]);
         } catch (error) {
             console.error(error);
-            setMessages(prev => [...prev, { role: "assistant", content: "Sorry, I encountered a connection error. Please try again." }]);
+            setMessages(prev => [...prev, { role: "assistant", content: error instanceof Error ? error.message : "Could not connect to the model. Please try again." }]);
         } finally {
             setIsLoading(false);
         }
@@ -94,6 +92,7 @@ export function ModelChat({ modelId, modelName, modelLogo }: ModelChatProps) {
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                             </span>
                         </h3>
+                        {actualModel !== modelId && <p className="text-[10px] text-amber-600 dark:text-amber-400">Using fallback: {actualModel}</p>}
                     </div>
                 </div>
                 <Button

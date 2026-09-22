@@ -1,17 +1,27 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authorizeApi } from "@/lib/api-access";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
     try {
+        const access = await authorizeApi(request);
+        if (access.error) return access.error;
+        if (Number(request.headers.get("content-length")) > 15_000_000) return NextResponse.json({ error: "Audio is too large" }, { status: 413 });
         const formData = await request.formData();
-        const file = formData.get("file") as File;
+        const file = formData.get("file");
 
-        if (!file) {
-            return NextResponse.json({ error: "Missing file" }, { status: 400 });
+        if (!(file instanceof File) || file.size === 0 || file.size > 15_000_000 || !file.type.startsWith("audio/")) {
+            return NextResponse.json({ error: "A valid audio file under 15 MB is required" }, { status: 400 });
         }
+        const model = formData.get("model")?.toString() || "whisper-large-v3-turbo";
+        if (!["whisper-large-v3-turbo", "whisper-large-v3"].includes(model)) return NextResponse.json({ error: "Unsupported transcription model" }, { status: 400 });
+        const language = formData.get("language")?.toString();
+        if (language && !/^[a-z]{2}$/.test(language)) return NextResponse.json({ error: "Invalid language" }, { status: 400 });
+        const userPrompt = formData.get("prompt")?.toString();
+        if (userPrompt && userPrompt.length > 2000) return NextResponse.json({ error: "Prompt too long" }, { status: 400 });
 
         // Define API keys FIRST
         const API_KEYS = [
-            process.env.GROQ_STT_KEY_1,
+            process.env.GROQ_STT_KEY_1 || process.env.GROQ_API_KEY,
             process.env.GROQ_STT_KEY_2,
             process.env.GROQ_STT_KEY_3,
             process.env.GROQ_STT_KEY_4,
@@ -26,40 +36,52 @@ export async function POST(request: Request) {
             console.error("[Transcribe API] No keys found! Check .env.local");
             return NextResponse.json({ error: "Server configuration error: No keys available" }, { status: 500 });
         }
+        const quota = await authorizeApi(request, "transcribe");
+        if (quota.error) return quota.error;
 
         // Shuffle keys once to start randomly but consistently
         const shuffledKeys = [...API_KEYS].sort(() => Math.random() - 0.5);
 
         let lastError = null;
+        const providerDeadline = Date.now() + 25000;
 
         // TRY MULTIPLE KEYS AUTOMATICALLY (Robustness)
         for (const apiKey of shuffledKeys) {
             try {
+                const remainingMs = providerDeadline - Date.now();
+                if (remainingMs <= 0) break;
                 const maskedKey = apiKey.substring(0, 8) + '...';
                 console.log(`[Transcribe API] Attempting with Key: ${maskedKey}`);
 
                 const groqFormData = new FormData();
                 // Use the file directly. Filename is important for Groq to detect format.
                 groqFormData.append("file", audioFile, "audio.webm");
-                groqFormData.append("model", formData.get("model")?.toString() || "whisper-large-v3-turbo");
+                groqFormData.append("model", model);
                 groqFormData.append("temperature", "0");
 
-                if (formData.get("language")) {
-                    groqFormData.append("language", formData.get("language") as string);
+                if (language) {
+                    groqFormData.append("language", language);
                 }
 
-                const userPrompt = formData.get("prompt")?.toString();
                 if (userPrompt) {
                     groqFormData.append("prompt", userPrompt);
                 }
 
-                const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${apiKey}`,
-                    },
-                    body: groqFormData,
-                });
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), Math.min(20000, remainingMs));
+                let response: Response;
+                try {
+                    response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${apiKey}`,
+                        },
+                        body: groqFormData,
+                        signal: controller.signal,
+                    });
+                } finally {
+                    clearTimeout(timeout);
+                }
 
                 if (response.ok) {
                     const data = await response.json();
@@ -88,7 +110,7 @@ export async function POST(request: Request) {
         // If we reach here, ALL keys failed
         return NextResponse.json({
             error: "All Groq keys failed or rate limited.",
-            details: lastError
+            details: process.env.NODE_ENV === "development" ? lastError : undefined
         }, { status: 503 });
 
     } catch (error: unknown) {

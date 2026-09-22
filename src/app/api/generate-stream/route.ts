@@ -1,14 +1,19 @@
 import { NextRequest } from "next/server";
+import { authorizeApi, parseGenerationBody } from "@/lib/api-access";
 
 // Streaming AI Generation using Groq
 // This endpoint returns Server-Sent Events (SSE) for real-time word-by-word responses
 
-export const runtime = "edge"; // Use Edge Runtime for faster streaming
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
     try {
-        const body = await request.json();
-        const { model, messages, systemPrompt } = body;
+        const access = await authorizeApi(request);
+        if (access.error) return access.error;
+        if (Number(request.headers.get("content-length")) > 50000) return Response.json({ error: "Request too large" }, { status: 413 });
+        const parsed = parseGenerationBody(await request.json());
+        if (!parsed) return Response.json({ error: "Invalid prompt, messages, or model" }, { status: 400 });
+        const { model, messages, systemPrompt } = parsed;
 
         const groqApiKey = process.env.GROQ_API_KEY;
 
@@ -18,6 +23,8 @@ export async function POST(request: NextRequest) {
                 { status: 500, headers: { "Content-Type": "application/json" } }
             );
         }
+        const quota = await authorizeApi(request, "generate");
+        if (quota.error) return quota.error;
 
         // Build messages array with system prompt
         const finalMessages = systemPrompt
@@ -34,7 +41,7 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify({
                 model: model || "llama-3.1-8b-instant",
                 messages: finalMessages,
-                max_tokens: 1024,
+                max_tokens: 4096,
                 temperature: 0.7,
                 stream: true // Enable streaming
             })
@@ -53,11 +60,8 @@ export async function POST(request: NextRequest) {
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
 
-        const transformStream = new TransformStream({
-            async transform(chunk, controller) {
-                const text = decoder.decode(chunk);
-                const lines = text.split("\n").filter(line => line.trim() !== "");
-
+        let carry = "";
+        const processLines = (lines: string[], controller: TransformStreamDefaultController<Uint8Array>) => {
                 for (const line of lines) {
                     if (line.startsWith("data: ")) {
                         const data = line.slice(6);
@@ -74,10 +78,21 @@ export async function POST(request: NextRequest) {
                                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
                             }
                         } catch {
-                            // Ignore parse errors for incomplete chunks
+                            // Ignore malformed provider events, never partial chunks.
                         }
                     }
                 }
+        };
+        const transformStream = new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+                carry += decoder.decode(chunk, { stream: true });
+                const lines = carry.split("\n");
+                carry = lines.pop() || "";
+                processLines(lines, controller);
+            },
+            flush(controller) {
+                carry += decoder.decode();
+                if (carry.trim()) processLines([carry], controller);
             }
         });
 
@@ -95,7 +110,7 @@ export async function POST(request: NextRequest) {
     } catch (error: unknown) {
         console.error("[Stream API] Error:", error);
         return new Response(
-            JSON.stringify({ error: (error as Error).message || "Stream failed" }),
+            JSON.stringify({ error: "Stream failed" }),
             { status: 500, headers: { "Content-Type": "application/json" } }
         );
     }

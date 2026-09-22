@@ -5,9 +5,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff, Sparkles, RefreshCw, Zap, Shield, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import { authCallbackUrl, safeReturnPath } from "@/lib/auth-navigation";
 import { generateStrongPassword } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
+import { authErrorMessage } from "@/lib/auth-errors";
 
 export default function LoginPage() {
     // const router = useRouter();
@@ -20,6 +24,9 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [isDesktop, setIsDesktop] = useState(false);
+    const otpEnabled = process.env.NEXT_PUBLIC_EMAIL_OTP_ENABLED === "true";
+    useEffect(() => { setIsDesktop(Boolean(window.electronAPI)); }, []);
 
     // Form Data
     const [formData, setFormData] = useState({
@@ -48,10 +55,18 @@ export default function LoginPage() {
 
     const passwordStrength = getPasswordStrength(formData.password);
 
-    // Auto-clear success/error on mode switch
+    const [resendSeconds, setResendSeconds] = useState(0);
+    const returnToApp = () => window.location.assign(safeReturnPath(new URLSearchParams(window.location.search).get("from")));
+
+    useEffect(() => {
+        if (!resendSeconds) return;
+        const timer = setTimeout(() => setResendSeconds(value => value - 1), 1000);
+        return () => clearTimeout(timer);
+    }, [resendSeconds]);
+
+    // Auto-clear error on mode switch
     useEffect(() => {
         setError(null);
-        setSuccess(null);
     }, [mode]);
 
     // Check if user is already authenticated (for OAuth redirect)
@@ -59,14 +74,9 @@ export default function LoginPage() {
         const checkAuth = async () => {
             try {
                 setIsCheckingSession(true);
-                const { supabase } = await import("@/lib/supabase");
-                const { data } = await supabase.auth.getSession();
-                if (data.session) {
-                    // User is already logged in, set cookie and redirect
-                    const sessionId = data.session.access_token.slice(0, 32);
-                    const isSecure = window.location.protocol === 'https:';
-                    document.cookie = `auth_token=${sessionId}; path=/; max-age=86400; SameSite=Lax${isSecure ? '; Secure' : ''}`;
-                    window.location.href = "/dashboard";
+                const { data, error } = await supabase.auth.getUser();
+                if (!error && data.user) {
+                    window.location.replace(safeReturnPath(new URLSearchParams(window.location.search).get("from")));
                 } else {
                     setIsCheckingSession(false);
                 }
@@ -86,12 +96,13 @@ export default function LoginPage() {
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isLoading) return;
         setIsLoading(true);
         setError(null);
         setSuccess(null);
 
         // Email validation
-        if (mode !== "verify" && !validateEmail(formData.email)) {
+        if (mode !== "verify" && !validateEmail(formData.email.trim())) {
             setError("Please enter a valid email address");
             setIsLoading(false);
             return;
@@ -100,26 +111,28 @@ export default function LoginPage() {
         try {
             if (mode === "signup") {
                 try {
-                    await signUp(formData.email, formData.password, formData.name);
-                    setSuccess("Verification code sent! Check your email.");
+                    const result = await signUp(formData.email, formData.password, formData.name);
+                    if (result.session) { returnToApp(); return; }
+                    setSuccess("Signup request accepted. If this address needs confirmation, check your email. If you already have an account, sign in instead; signup may not send another email.");
+                    setResendSeconds(60);
                     setMode("verify");
                 } catch (err: unknown) {
                     const error = err as Error;
-                    setError(error.message || "Signup failed");
+                    setError(authErrorMessage(error));
                 }
             } else if (mode === "verify") {
                 // Should not reach here typically due to separate handler
             } else {
                 try {
-                    const result = await signIn(formData.email, formData.password) as { session?: { access_token: string } };
-                    // Generate unique session token using Supabase session ID + timestamp
-                    const sessionId = result?.session?.access_token?.slice(0, 32) || crypto.randomUUID();
-                    const isSecure = window.location.protocol === 'https:';
-                    document.cookie = `auth_token=${sessionId}; path=/; max-age=86400; SameSite=Lax${isSecure ? '; Secure' : ''}`;
-                    window.location.href = "/dashboard";
+                    await signIn(formData.email, formData.password);
+                    returnToApp();
                 } catch (err: unknown) {
-                    const error = err as Error;
-                    setError(error.message || "Invalid credentials");
+                    const error = err as Error & { code?: string };
+                    if (error.code === 'email_not_confirmed') {
+                        setMode("verify");
+                        setError(null);
+                        setSuccess("Confirm your email before signing in. You can request a new confirmation email below.");
+                    } else { setError(authErrorMessage(error)); }
                 }
             }
         } catch (err: unknown) {
@@ -132,14 +145,22 @@ export default function LoginPage() {
     };
 
     const handleResendCode = async () => {
+        if (isLoading || resendSeconds > 0) return;
         setIsLoading(true);
         setError(null);
+        setSuccess(null);
         try {
-            await signUp(formData.email, formData.password, formData.name);
-            setSuccess("Verification code resent! Check your email.");
+            const { error } = await supabase.auth.resend({
+                type: "signup", email: formData.email.trim(),
+                options: { emailRedirectTo: authCallbackUrl() },
+            });
+            if (error) throw error;
+            setResendSeconds(60);
+            setSuccess("Confirmation requested. An email is sent only for an eligible, unconfirmed account. Already confirmed? Sign in instead.");
         } catch (err: unknown) {
             const error = err as Error;
-            setError(error.message || "Failed to resend code");
+            setResendSeconds(60);
+            setError(authErrorMessage(error));
         } finally {
             setIsLoading(false);
         }
@@ -147,18 +168,15 @@ export default function LoginPage() {
 
     const handleVerifySubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isLoading || !otpEnabled) return;
         setIsLoading(true);
         setError(null);
         try {
-            const result = await verifyOtp(formData.email, formData.otp, 'signup') as { session?: { access_token: string } };
-            // Generate unique session token from Supabase response
-            const sessionId = result?.session?.access_token?.slice(0, 32) || crypto.randomUUID();
-            const isSecure = window.location.protocol === 'https:';
-            document.cookie = `auth_token=${sessionId}; path=/; max-age=86400; SameSite=Lax${isSecure ? '; Secure' : ''}`;
-            window.location.href = "/dashboard";
+            await verifyOtp(formData.email, formData.otp);
+            returnToApp();
         } catch (err: unknown) {
             const error = err as Error;
-            setError(error.message || "Invalid code");
+            setError(authErrorMessage(error));
         } finally {
             setIsLoading(false);
         }
@@ -215,7 +233,7 @@ export default function LoginPage() {
 
                 <div className="relative z-10 max-w-xl">
                     <h2 className="text-5xl font-extrabold mb-8 leading-[1.1] tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-emerald-200">
-                        Master Your Next Interview with <br /> Absolute Confidence.
+                        Prepare and practice with <br /> real-time AI notes.
                     </h2>
                     <div className="space-y-6">
                         <div className="flex items-start gap-4">
@@ -223,8 +241,8 @@ export default function LoginPage() {
                                 <Zap className="text-emerald-400" size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-white">Real-Time Intelligence</h3>
-                                <p className="text-gray-400 leading-relaxed">Get instant, AI-driven feedback on your tone, pace, and content while you speak.</p>
+                                <h3 className="font-bold text-lg text-white">Live transcription</h3>
+                                <p className="text-gray-400 leading-relaxed">Capture speech when you enable the microphone or desktop audio controls.</p>
                             </div>
                         </div>
                         <div className="flex items-start gap-4">
@@ -232,8 +250,8 @@ export default function LoginPage() {
                                 <Trophy className="text-emerald-400" size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-white">Unfair Advantage</h3>
-                                <p className="text-gray-400 leading-relaxed">Access a curated database of top-tier answers tailored specifically to your resume.</p>
+                                <h3 className="font-bold text-lg text-white">Practice with context</h3>
+                                <p className="text-gray-400 leading-relaxed">Ask the AI for explanations using the role and resume context you provide.</p>
                             </div>
                         </div>
                         <div className="flex items-start gap-4">
@@ -241,19 +259,19 @@ export default function LoginPage() {
                                 <Shield className="text-emerald-400" size={24} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-white">Private & Secure</h3>
-                                <p className="text-gray-400 leading-relaxed">Your data is encrypted and your preparation is completely discreet.</p>
+                                <h3 className="font-bold text-lg text-white">Your session history</h3>
+                                <p className="text-gray-400 leading-relaxed">Review saved transcripts and responses from your account.</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="relative z-10 flex items-center gap-6 text-sm text-gray-500 font-medium">
-                    <span>© 2026 ZEDX AI Inc.</span>
+                    <span>© 2026 ZEDX AI</span>
                     <span className="w-1 h-1 rounded-full bg-gray-700"></span>
-                    <span>Privacy Policy</span>
+                    <Link href="/privacy">Privacy Policy</Link>
                     <span className="w-1 h-1 rounded-full bg-gray-700"></span>
-                    <span>Terms of Service</span>
+                    <Link href="/terms">Terms of Service</Link>
                 </div>
             </div>
 
@@ -283,7 +301,7 @@ export default function LoginPage() {
                                 ? "Enter your email to sign in to your accounts"
                                 : mode === "signup"
                                     ? "Create your account in seconds. No credit card required."
-                                    : `We've sent a verification code to ${formData.email}`}
+                                    : `Check ${formData.email} for the confirmation email`}
                         </p>
                     </div>
 
@@ -311,15 +329,18 @@ export default function LoginPage() {
                     </AnimatePresence>
 
                     <form onSubmit={mode === 'verify' ? handleVerifySubmit : handleAuth} className="space-y-5">
+                        <fieldset disabled={isLoading} className="space-y-5">
 
                         {mode === 'signup' && (
                             <div className="space-y-2">
-                                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                <label htmlFor="signup-name" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                                     Full Name
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="Mohamed Salah"
+                                    id="signup-name"
+                                    autoComplete="name"
+                                    placeholder="Your full name"
                                     className="flex h-11 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -330,12 +351,14 @@ export default function LoginPage() {
 
                         {mode !== 'verify' && (
                             <div className="space-y-2">
-                                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                <label htmlFor="login-email" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                                     Email
                                 </label>
                                 <input
                                     type="email"
-                                    placeholder="mohamed@example.com"
+                                    id="login-email"
+                                    autoComplete="email"
+                                    placeholder="you@example.com"
                                     className="flex h-11 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
                                     value={formData.email}
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -347,7 +370,7 @@ export default function LoginPage() {
                         {mode !== 'verify' && (
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                    <label htmlFor="login-password" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                                         Password
                                     </label>
                                     {mode === 'signup' && (
@@ -363,15 +386,18 @@ export default function LoginPage() {
                                 <div className="relative">
                                     <input
                                         type={showPassword ? "text" : "password"}
+                                        id="login-password"
+                                        autoComplete={mode === "signup" ? "new-password" : "current-password"}
                                         placeholder="••••••••"
                                         className="flex h-11 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-10 font-mono transition-all"
                                         value={formData.password}
                                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                                         required
-                                        minLength={6}
+                                        minLength={mode === 'signup' ? 8 : undefined}
                                     />
                                     <button
                                         type="button"
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
                                         onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 transition-colors"
                                     >
@@ -401,12 +427,14 @@ export default function LoginPage() {
 
                         {mode === 'verify' && (
                             <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                        Verification Code
+                                {otpEnabled && <div className="space-y-2">
+                                    <label htmlFor="verify-code" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                        Code (if included in your email)
                                     </label>
                                     <input
                                         type="text"
+                                        id="verify-code"
+                                        autoComplete="one-time-code"
                                         placeholder="12345678"
                                         maxLength={8}
                                         inputMode="numeric"
@@ -416,34 +444,36 @@ export default function LoginPage() {
                                         onChange={(e) => setFormData({ ...formData, otp: e.target.value.replace(/\D/g, '').slice(0, 8) })}
                                         required
                                     />
-                                </div>
+                                </div>}
                                 <p className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                    We sent a code to <span className="font-medium text-gray-900 dark:text-white">{formData.email}</span>. <br />Check your spam folder if it doesn&apos;t appear.
+                                    Open the confirmation link sent to <span className="font-medium text-gray-900 dark:text-white">{formData.email}</span>. <br />Then return here and sign in. Check your spam folder if it hasn&apos;t arrived.
                                 </p>
                                 <button
                                     type="button"
                                     onClick={handleResendCode}
-                                    disabled={isLoading}
+                                    disabled={isLoading || resendSeconds > 0}
                                     className="w-full text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center justify-center gap-2 py-2 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                                 >
                                     <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-                                    Resend Verification Code
+                                    {resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend confirmation email"}
                                 </button>
                             </div>
                         )}
 
                         <Button
+                            type={mode === 'verify' && !otpEnabled ? 'button' : 'submit'}
+                            onClick={mode === 'verify' && !otpEnabled ? () => { setMode('signin'); setSuccess("After confirming your email, sign in with your password."); } : undefined}
                             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11 font-semibold rounded-xl shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all text-base"
                             disabled={isLoading}
                         >
                             {isLoading ? (
                                 <RefreshCw className="animate-spin mr-2 h-4 w-4" />
                             ) : (
-                                mode === 'signin' ? "Sign In" : mode === 'signup' ? "Create Account" : "Verify Email"
+                                mode === 'signin' ? "Sign In" : mode === 'signup' ? "Create Account" : otpEnabled ? "Verify Code" : "I confirmed my email — sign in"
                             )}
                         </Button>
 
-                        {mode !== 'verify' && (
+                        {mode !== 'verify' && process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === 'true' && !isDesktop && (
                             <>
                                 <div className="relative my-4">
                                     <div className="absolute inset-0 flex items-center">
@@ -478,27 +508,34 @@ export default function LoginPage() {
                                 </Button>
                             </>
                         )}
+                        </fieldset>
                     </form>
 
                     <div className="text-center text-sm text-gray-500">
+                        {mode === 'signin' && <Link href="/auth/forgot-password" className="block mb-4 text-emerald-600 underline">Forgot password?</Link>}
                         {mode === 'signin' ? (
                             <>
                                 Don&apos;t have an account?{" "}
-                                <button onClick={() => setMode('signup')} className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-all">
+                                <button disabled={isLoading} onClick={() => { setMode('signup'); setSuccess(null); }} className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-all">
                                     Sign up
                                 </button>
                             </>
                         ) : mode === 'signup' ? (
                             <>
                                 Already have an account?{" "}
-                                <button onClick={() => setMode('signin')} className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-all">
+                                <button disabled={isLoading} onClick={() => { setMode('signin'); setSuccess(null); }} className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-all">
                                     Sign in
                                 </button>
                             </>
                         ) : (
-                            <button onClick={() => setMode('signup')} className="text-gray-500 hover:text-gray-900 underline transition-all">
-                                Change email address
-                            </button>
+                            <div className="space-y-3">
+                                {otpEnabled && <button disabled={isLoading} onClick={() => { setMode('signin'); setSuccess("After confirming your email, sign in with your password."); }} className="block w-full text-emerald-600 underline">
+                                    I confirmed my email — sign in
+                                </button>}
+                                <button disabled={isLoading} onClick={() => { setMode('signup'); setSuccess(null); }} className="text-gray-500 underline">
+                                    Change email address
+                                </button>
+                            </div>
                         )}
                     </div>
 

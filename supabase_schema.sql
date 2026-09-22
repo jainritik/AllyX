@@ -38,14 +38,14 @@ alter table public.interviews enable row level security;
 -- Policies: Users can only see/edit their OWN data
 
 -- Profiles Policies
-create policy "Public profiles are viewable by everyone." on public.profiles
-  for select using (true);
-
-create policy "Users can insert their own profile." on public.profiles
-  for insert with check (auth.uid() = id);
+create policy "Users can view own profile." on public.profiles
+  for select using (auth.uid() = id);
 
 create policy "Users can update own profile." on public.profiles
   for update using (auth.uid() = id);
+
+revoke insert, update on public.profiles from anon, authenticated;
+grant update (full_name) on public.profiles to authenticated;
 
 -- Resumes Policies
 create policy "Users can view own resumes." on public.resumes
