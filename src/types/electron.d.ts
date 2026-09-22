@@ -19,6 +19,7 @@ export interface ElectronAPI {
     sendTranscript: (transcript: string) => void;
     sendAnswer: (answer: string) => void;
     sendCapturedText: (text: string) => void;
+    sendOverlayStatus: (message: string, tone: "progress" | "success" | "error") => void;
     // Audio
     startSystemAudioCapture: () => Promise<{ success: boolean; sourceId?: string; error?: string }>;
     stopSystemAudioCapture: () => Promise<{ success: boolean }>;
@@ -28,6 +29,7 @@ export interface ElectronAPI {
     onTranscript: (callback: (text: string) => void) => () => void;
     onAnswer: (callback: (answer: string) => void) => () => void;
     onOverlayCapturedText: (callback: (text: string) => void) => () => void;
+    onOverlayStatus: (callback: (status: { message: string; tone: "progress" | "success" | "error" }) => void) => () => void;
     // Overlay Controls
     resizeOverlay: (width: number, height: number) => void;
     setIgnoreMouseEvents: (ignore: boolean, options?: { forward?: boolean }) => void;

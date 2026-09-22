@@ -275,6 +275,7 @@ export default function InterviewPage() {
 
         setIsLoading(true);
         setError(null);
+        window.electronAPI?.sendOverlayStatus?.("Generating answer…", "progress");
 
         // Stop listening while thinking/speaking to prevent picking up self
         if (isRecording) {
@@ -444,6 +445,7 @@ export default function InterviewPage() {
                 setAnswerTruncated(false);
             }
             setError(errorMessage);
+            window.electronAPI?.sendOverlayStatus?.(errorMessage, "error");
             if (consumesLiveTranscript && !continuation) {
                 setTranscript(liveText => {
                     const newSpeech = liveText.trim();
@@ -470,8 +472,12 @@ export default function InterviewPage() {
 
     useEffect(() => window.electronAPI?.onOverlayManualQuestion?.((question: string) => {
         setManualQuestion(question);
+        if (!contextReady) {
+            window.electronAPI?.sendOverlayStatus?.("Finish interview setup before asking a question.", "error");
+            return;
+        }
         void getAiAnswer(question);
-    }), [getAiAnswer]);
+    }), [contextReady, getAiAnswer]);
 
     // Silence Detection for Auto-Answer
     useEffect(() => {
@@ -1294,26 +1300,35 @@ export default function InterviewPage() {
             let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
             try {
                 if (!data.imageData?.startsWith('data:image/')) throw new Error('The captured image was invalid.');
-                worker = await createWorker('eng', 1, {
+                window.electronAPI?.sendOverlayStatus?.("Reading captured code…", "progress");
+                const deadline = <T,>(promise: Promise<T>, ms: number, message: string) => Promise.race<T>([
+                    promise,
+                    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+                ]);
+                worker = await deadline(createWorker('eng', 1, {
+                    langPath: '/tessdata',
                     logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
-                });
+                }), 30000, "OCR engine initialization timed out. Check your connection and retry.");
                 await worker.setParameters({
                     tessedit_pageseg_mode: '3',
                     preserve_interword_spaces: '1',
                 } as unknown as Record<string, string>);
-                const ret = await worker.recognize(data.imageData);
+                const ret = await deadline(worker.recognize(data.imageData), 30000, "OCR took too long. Capture a smaller area and retry.");
                 const text = ret.data.text.trim();
                 if (text) {
                     console.log("[Scanner] Extracted text:", text);
                     setManualQuestion(text);
                     window.electronAPI?.sendCapturedText?.(text);
+                    window.electronAPI?.sendOverlayStatus?.("Code captured. Review it, then press Ask.", "success");
                     showToast("Text captured. Review it, then press Ask.", "success");
                 } else {
                     showToast("No readable text was detected. Enlarge the code and try again.", "info");
                 }
             } catch (err) {
                 console.error("[Scanner] OCR processing failed:", err);
-                showToast(err instanceof Error ? err.message : "Failed to process screen capture.", "error");
+                const message = err instanceof Error ? err.message : "Failed to process screen capture.";
+                showToast(message, "error");
+                window.electronAPI?.sendOverlayStatus?.(message, "error");
             } finally {
                 if (worker) await worker.terminate().catch(console.error);
             }

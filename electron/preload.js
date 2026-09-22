@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sendTranscript: (text) => ipcRenderer.send('transcript-update', text),
     sendAnswer: (text) => ipcRenderer.send('answer-update', text),
     sendCapturedText: (text) => ipcRenderer.send('overlay-captured-text', text),
+    sendOverlayStatus: (message, tone) => ipcRenderer.send('overlay-status', { message, tone }),
 
     // Overlay Controls
     resizeOverlay: (width, height) => ipcRenderer.send('resize-overlay', { width, height }),
@@ -74,6 +75,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const wrapper = (event, text) => callback(text);
         ipcRenderer.on('overlay-captured-text', wrapper);
         return () => ipcRenderer.removeListener('overlay-captured-text', wrapper);
+    },
+    onOverlayStatus: (callback) => {
+        const wrapper = (event, status) => callback(status);
+        ipcRenderer.on('overlay-status', wrapper);
+        return () => ipcRenderer.removeListener('overlay-status', wrapper);
     },
 
     onAudioSourceReady: (callback) => {

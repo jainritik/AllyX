@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, clipboard, session, desktopCapturer, globalShortcut, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, clipboard, session, desktopCapturer, globalShortcut, dialog, shell, systemPreferences } = require('electron');
 const path = require('path');
 const os = require('os');
 const { createCapturePrivacy } = require('./capture-privacy');
 const { allowAppNavigation } = require('./navigation-policy');
 const { shouldPreventWindowClose } = require('./window-lifecycle');
+const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
+const { calculateCaptureCrop } = require('./capture-crop');
 const capturePrivacy = createCapturePrivacy({
     platform: process.platform,
     release: os.release(),
@@ -67,12 +69,12 @@ function isTrustedPage(event, channel) {
         return frame === sender.mainFrame && frame.origin === APP_ORIGIN;
     }
     if (sender === scannerFrameWindow?.webContents) {
-        try { return frame === sender.mainFrame && frame.origin === APP_ORIGIN && new URL(frameUrl).pathname === '/scanner-frame' && ['update-scanner-bounds', 'capture-scanner-area'].includes(channel); } catch { return false; }
+        try { return frame === sender.mainFrame && frame.origin === APP_ORIGIN && new URL(frameUrl).pathname === '/scanner-frame' && isAllowedAuxiliaryChannel('scanner', channel); } catch { return false; }
     }
     if (sender === floatingIconWindow?.webContents) {
         return frame === sender.mainFrame
             && frameUrl.startsWith('file:')
-            && ['show-app', 'hide-overlay', 'resize-overlay', 'set-ignore-mouse-events', 'get-overlay-state', 'submit-overlay-question', 'toggle-scanner-frame'].includes(channel);
+            && isAllowedAuxiliaryChannel('overlay', channel);
     }
     return false;
 }
@@ -384,9 +386,14 @@ function setupIpcHandlers() {
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
+            if (process.platform === 'darwin') {
+                const permission = systemPreferences.getMediaAccessStatus('screen');
+                if (permission === 'denied' || permission === 'restricted') {
+                    return { success: false, error: 'Allow ZEDX AI in System Settings → Privacy & Security → Screen & System Audio Recording, then restart ZEDX.' };
+                }
+            }
             const display = screen.getDisplayMatching(bounds);
-            const relative = { x: bounds.x - display.bounds.x, y: bounds.y - display.bounds.y, width: bounds.width, height: bounds.height };
-            if (relative.x < 0 || relative.y < 0 || relative.x + relative.width > display.bounds.width || relative.y + relative.height > display.bounds.height) return { success: false, error: 'Select an area within one display.' };
+            calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
 
             // Hide the selection chrome for the native snapshot, then restore it.
             scannerFrameWindow?.hide();
@@ -403,19 +410,12 @@ function setupIpcHandlers() {
             const source = sources.find(item => item.display_id === String(display.id)) || (sources.length === 1 ? sources[0] : null);
             if (!source) return { success: false, error: 'Could not identify the selected display.' };
             const size = source.thumbnail.getSize();
-            if (!size.width || !size.height) return { success: false, error: 'Screen capture permission is required.' };
-            const scaleX = size.width / display.bounds.width;
-            const scaleY = size.height / display.bounds.height;
-            const crop = {
-                x: Math.max(0, Math.round(relative.x * scaleX)),
-                y: Math.max(0, Math.round(relative.y * scaleY)),
-                width: Math.max(1, Math.min(size.width, Math.round(relative.width * scaleX))),
-                height: Math.max(1, Math.min(size.height, Math.round(relative.height * scaleY))),
-            };
-            if (crop.x + crop.width > size.width) crop.width = size.width - crop.x;
-            if (crop.y + crop.height > size.height) crop.height = size.height - crop.y;
+            if (source.thumbnail.isEmpty() || !size.width || !size.height) return { success: false, error: 'Screen capture returned no image. Allow Screen & System Audio Recording for ZEDX, then restart the app.' };
+            const crop = calculateCaptureCrop(display.bounds, size, bounds);
             const imageData = source.thumbnail.crop(crop).toDataURL();
             mainAppWindow.webContents.send('process-ocr-request', { imageData });
+            floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured code…', tone: 'progress' });
+            closeScannerFrame();
             return { success: true };
         } catch (err) {
             return { success: false, error: err instanceof Error ? err.message : 'Screen capture failed.' };
@@ -497,6 +497,13 @@ function setupIpcHandlers() {
     onTrusted('overlay-captured-text', (event, text) => {
         if (typeof text === 'string' && text.trim()) floatingIconWindow?.webContents.send('overlay-captured-text', text.slice(0, 12000));
     });
+    onTrusted('overlay-status', (event, status) => {
+        if (!status || typeof status.message !== 'string') return;
+        floatingIconWindow?.webContents.send('overlay-status', {
+            message: status.message.slice(0, 500),
+            tone: ['progress', 'success', 'error'].includes(status.tone) ? status.tone : 'progress',
+        });
+    });
     onTrusted('resize-overlay', (event, { width, height }) => {
         if (!Number.isFinite(width) || !Number.isFinite(height)) return;
         floatingIconWindow?.setSize(
@@ -511,6 +518,11 @@ function setupIpcHandlers() {
     handleTrusted('submit-overlay-question', async (event, value) => {
         const question = typeof value === 'string' ? value.trim().slice(0, 12000) : '';
         if (!question || !mainAppWindow || mainAppWindow.isDestroyed()) return { success: false, error: 'Enter a question first.' };
+        try {
+            if (new URL(mainAppWindow.webContents.getURL()).pathname !== '/interview') {
+                return { success: false, error: 'Start an interview session in the main window first.' };
+            }
+        } catch { return { success: false, error: 'The interview session is not ready.' }; }
         mainAppWindow.webContents.send('overlay-manual-question', question);
         return { success: true };
     });
