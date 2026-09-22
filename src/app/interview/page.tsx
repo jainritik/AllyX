@@ -259,7 +259,10 @@ export default function InterviewPage() {
             if (!isAutoMode) setError("No transcript to analyze. Please speak first.");
             return;
         }
-        if (answerInFlightRef.current) return;
+        if (answerInFlightRef.current) {
+            window.electronAPI?.sendOverlayStatus?.("An answer is already being generated. Wait for it to finish, then retry.", "error");
+            return;
+        }
         answerInFlightRef.current = true;
 
         // Limit transcript length
@@ -283,9 +286,11 @@ export default function InterviewPage() {
             isAiSpeakingRef.current = true;
         }
 
+        let requestTimeout: ReturnType<typeof setTimeout> | null = null;
         try {
             const controller = new AbortController();
             answerAbortRef.current = controller;
+            requestTimeout = setTimeout(() => controller.abort(), 60000);
             const jobContext = compactContext(interviewContext.jd, 3500);
             const resumeContext = compactContext(interviewContext.resume, 6500);
             const recentMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
@@ -428,10 +433,12 @@ export default function InterviewPage() {
 
         } catch (error: unknown) {
             const err = error as Error;
-            if (err.name === "AbortError" || sessionEndingRef.current) return;
+            if (sessionEndingRef.current) return;
             console.error("Error generating AI response:", err);
             let errorMessage = "Could not generate response.";
-            if (err.message.includes("429")) {
+            if (err.name === "AbortError") {
+                errorMessage = "The AI response timed out. Check your connection and retry.";
+            } else if (err.message.includes("429")) {
                 errorMessage = "AI is busy (Rate Limit). Please try again.";
             } else if (err.message.includes("configuration missing")) {
                 errorMessage = "Server AI configuration error. Please contact support.";
@@ -455,6 +462,7 @@ export default function InterviewPage() {
             isAiSpeakingRef.current = false;
             if (isRecordingRef.current) recognitionRef.current?.start();
         } finally {
+            if (requestTimeout) clearTimeout(requestTimeout);
             answerAbortRef.current = null;
             answerInFlightRef.current = false;
             setIsLoading(false);
@@ -1319,10 +1327,13 @@ export default function InterviewPage() {
                     console.log("[Scanner] Extracted text:", text);
                     setManualQuestion(text);
                     window.electronAPI?.sendCapturedText?.(text);
-                    window.electronAPI?.sendOverlayStatus?.("Code captured. Review it, then press Ask.", "success");
-                    showToast("Text captured. Review it, then press Ask.", "success");
+                    window.electronAPI?.sendOverlayStatus?.("Code captured. Generating answer…", "progress");
+                    showToast("Text captured. Generating the answer.", "success");
+                    void getAiAnswer(text);
                 } else {
-                    showToast("No readable text was detected. Enlarge the code and try again.", "info");
+                    const message = "No readable text was detected. Enlarge the code and try again.";
+                    showToast(message, "info");
+                    window.electronAPI?.sendOverlayStatus?.(message, "error");
                 }
             } catch (err) {
                 console.error("[Scanner] OCR processing failed:", err);
@@ -1335,7 +1346,7 @@ export default function InterviewPage() {
         });
 
         return cleanup;
-    }, [showToast]);
+    }, [getAiAnswer, showToast]);
 
     // Handle End Interview - Save to history and navigate
     const handleEndInterview = async () => {
