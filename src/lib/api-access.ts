@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 const limits = { generate: 300, transcribe: 1200 } as const;
 export type UsageKind = keyof typeof limits;
 
-function apiClient(request: NextRequest) {
+export function apiClient(request: NextRequest) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) return null;
@@ -25,6 +25,21 @@ export async function authorizeApi(request: NextRequest, kind?: UsageKind) {
         return { error: NextResponse.json({ error: "Please sign in again" }, { status: 401 }) };
     }
     if (kind) {
+        const sessionId = request.headers.get("x-zedx-session-id");
+        if (!sessionId) {
+            return { error: NextResponse.json({ error: "Start an interview session before using AI features." }, { status: 403 }) };
+        }
+        const { data: access, error: accessError } = await client.rpc("check_interview_access", {
+            requested_session_id: sessionId,
+        });
+        if (accessError) {
+            console.error("[Interview access] Unable to verify entitlement:", accessError.code);
+            return { error: NextResponse.json({ error: "Interview access verification is unavailable" }, { status: 503 }) };
+        }
+        const entitlement = access as { allowed?: boolean; reason?: string } | null;
+        if (!entitlement?.allowed) {
+            return { error: NextResponse.json({ error: entitlement?.reason || "Your free trial has ended. Choose an interview pack to continue." }, { status: 402 }) };
+        }
         const { data: reservationId, error: quotaError } = await client.rpc("reserve_api_quota", {
             requested_kind: kind,
             daily_limit: limits[kind],

@@ -13,6 +13,7 @@ import { useConfirmDialog } from "@/components/confirm-dialog";
 import { interviewService } from "@/lib/interview-service";
 import { useAuth } from "@/lib/auth";
 import { readInterviewContext } from "@/lib/interview-context";
+import { interviewAccess } from "@/lib/interview-access";
 
 // --- Types for Web Speech API ---
 interface SpeechRecognitionEvent extends Event {
@@ -116,6 +117,8 @@ export default function InterviewPage() {
     const [isScannerActive, setIsScannerActive] = useState(false);
     const [hasMounted, setHasMounted] = useState(false);
     const [contextReady, setContextReady] = useState(false);
+    const [accessReady, setAccessReady] = useState(false);
+    const [accessRemaining, setAccessRemaining] = useState<number | null>(null);
 
     // Constants
     const MAX_TRANSCRIPT_LENGTH = 4000;
@@ -138,10 +141,13 @@ export default function InterviewPage() {
         if (!accountId || draftHydratedRef.current) return;
         draftHydratedRef.current = true;
         try {
+            const accessSessionId = sessionStorage.getItem("zedx_access_session");
+            if (accessSessionId) sessionIdRef.current = accessSessionId;
             const draft = JSON.parse(localStorage.getItem('interview_draft') || 'null');
             const setup = readInterviewContext(accountId);
-            if (draft?.accountId === accountId && draft?.contextSavedAt === setup?.savedAt) {
-                sessionIdRef.current = typeof draft.sessionId === 'string' ? draft.sessionId : crypto.randomUUID();
+            if (draft?.accountId === accountId && draft?.contextSavedAt === setup?.savedAt
+                && (!sessionIdRef.current || draft.sessionId === sessionIdRef.current)) {
+                if (!sessionIdRef.current) sessionIdRef.current = typeof draft.sessionId === 'string' ? draft.sessionId : crypto.randomUUID();
                 if (typeof draft.transcript === 'string') setTranscript(draft.transcript);
                 if (typeof draft.fullTranscript === 'string') {
                     fullTranscriptRef.current = draft.fullTranscript;
@@ -159,6 +165,53 @@ export default function InterviewPage() {
         } catch { /* Ignore corrupt local draft. */ }
         if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
     }, [accountId]);
+
+    useEffect(() => {
+        if (!accountId || !sessionIdRef.current) return;
+        let cancelled = false;
+        const verify = async () => {
+            try {
+                const access = await interviewAccess.start(sessionIdRef.current);
+                if (cancelled) return;
+                if (!access.allowed) {
+                    setError(access.reason || "Your interview access has ended.");
+                    setAccessReady(false);
+                    setAccessRemaining(0);
+                    return;
+                }
+                setAccessReady(true);
+                setAccessRemaining(access.source === "trial" ? access.remainingSeconds : null);
+            } catch (accessError) {
+                if (!cancelled) {
+                    setAccessReady(false);
+                    setError(accessError instanceof Error ? accessError.message : "Could not verify interview access.");
+                }
+            }
+        };
+        void verify();
+        const heartbeat = window.setInterval(verify, 15000);
+        return () => { cancelled = true; window.clearInterval(heartbeat); };
+    }, [accountId]);
+
+    useEffect(() => {
+        if (accessRemaining === null || accessRemaining <= 0) return;
+        const timer = window.setInterval(() => setAccessRemaining(value => value === null ? null : Math.max(0, value - 1)), 1000);
+        return () => window.clearInterval(timer);
+    }, [accessRemaining]);
+
+    useEffect(() => {
+        if (accessRemaining !== 0 || !accessReady) return;
+        setAccessReady(false);
+        setIsAutoMode(false);
+        setError("Your 10-minute free trial has ended. End the interview to save your session.");
+        answerAbortRef.current?.abort();
+        if (isRecordingRef.current) {
+            setIsRecording(false);
+            stopDesktopSTT();
+        }
+    // stopDesktopSTT is declared later but stable before this effect executes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [accessRemaining, accessReady]);
 
     useEffect(() => {
         if (!accountId || !draftHydratedRef.current) return;
@@ -279,6 +332,10 @@ export default function InterviewPage() {
     const isElectron = hasMounted && typeof window !== 'undefined' && (window as unknown as { electronAPI?: { isElectron: boolean } }).electronAPI?.isElectron;
 
     const getAiAnswer = useCallback(async (explicitQuestion?: string, continuation = false) => {
+        if (!accessReady) {
+            setError("Interview access is not active. Start a new session or choose an interview pack.");
+            return;
+        }
         const consumesLiveTranscript = explicitQuestion === undefined;
         const transcriptToUse = explicitQuestion || transcript;
 
@@ -379,7 +436,7 @@ export default function InterviewPage() {
                 try {
                     response = await fetch("/api/generate-stream", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { "Content-Type": "application/json", "X-ZEDX-Session-ID": sessionIdRef.current },
                         signal: controller.signal,
                         body: requestBody,
                     });
@@ -517,7 +574,7 @@ export default function InterviewPage() {
             answerInFlightRef.current = false;
             setIsLoading(false);
         }
-    }, [aiResponse, allQAPairs, interviewContext, transcript, isAutoMode, isRecording, recognitionRef]);
+    }, [accessReady, aiResponse, allQAPairs, interviewContext, transcript, isAutoMode, isRecording, recognitionRef]);
 
     const handleManualSubmit = () => {
         if (!contextReady) {
@@ -713,6 +770,7 @@ export default function InterviewPage() {
                 try {
                     response = await fetch('/api/transcribe', {
                         method: 'POST',
+                        headers: { "X-ZEDX-Session-ID": sessionIdRef.current },
                         body: formData,
                         signal: controller.signal,
                     });
@@ -1462,6 +1520,8 @@ export default function InterviewPage() {
         ].filter(Boolean).join(" ");
         // Only save if there's meaningful content
         if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
+            await interviewAccess.finish(sessionIdRef.current).catch(console.error);
+            sessionStorage.removeItem("zedx_access_session");
             isSavingRef.current = false;
             setIsSaving(false);
             router.push("/dashboard");
@@ -1497,6 +1557,8 @@ export default function InterviewPage() {
                 sessionIdRef.current || undefined
             );
             showToast("Meeting saved to history", "success");
+            await interviewAccess.finish(sessionIdRef.current).catch(console.error);
+            sessionStorage.removeItem("zedx_access_session");
             localStorage.removeItem('interview_draft');
             router.push("/dashboard");
         } catch (error) {
@@ -1511,6 +1573,11 @@ export default function InterviewPage() {
 
     return (
         <div className="min-h-screen flex flex-col lg:flex-row gap-4 p-2 sm:p-4 pt-20 transition-colors duration-300 bg-gray-50 dark:bg-zinc-950 overflow-auto">
+            {accessRemaining !== null && (
+                <div className="fixed top-20 right-4 z-50 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 shadow dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+                    Free trial {Math.floor(accessRemaining / 60)}:{String(accessRemaining % 60).padStart(2, "0")}
+                </div>
+            )}
             {/* Error Banner */}
             {error && (
                 <div className="fixed top-24 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50 flex items-center gap-2 shadow-lg">

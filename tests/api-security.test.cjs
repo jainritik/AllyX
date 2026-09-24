@@ -13,7 +13,7 @@ function load(file, mocks = {}, fetchMock = global.fetch) {
 }
 
 const paths = { generate: 'src/app/api/generate/route.ts', stream: 'src/app/api/generate-stream/route.ts' };
-const request = (model = 'llama-3.1-8b-instant') => new NextRequest('https://zedx.invalid/api/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hello' }] }) });
+const request = (model = 'llama-3.1-8b-instant') => new NextRequest('https://zedx.invalid/api/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'x-zedx-session-id': '11111111-1111-4111-8111-111111111111' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hello' }] }) });
 
 test('anonymous callers never reach paid generation provider', async () => {
     let providerCalls = 0;
@@ -45,10 +45,31 @@ test('quota exhaustion and usage-ledger failures fail closed', async () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-key';
     try {
         for (const [rpcResult, expectedStatus] of [[{ data: false, error: null }, 429], [{ data: null, error: { code: 'PGRST202' } }, 503]]) {
-            const api = load('src/lib/api-access.ts', { '@supabase/ssr': { createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'test' } }, error: null }) }, rpc: async () => rpcResult }) } });
+            const api = load('src/lib/api-access.ts', { '@supabase/ssr': { createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'test' } }, error: null }) }, rpc: async name => name === 'check_interview_access' ? { data: { allowed: true }, error: null } : rpcResult }) } });
             const result = await api.authorizeApi(request(), 'generate');
             assert.equal(result.error.status, expectedStatus);
         }
+    } finally {
+        if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
+        if (oldKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = oldKey;
+    }
+});
+
+test('AI requests require an active server-verified interview session', async () => {
+    const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://zedx.invalid';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-key';
+    try {
+        const api = load('src/lib/api-access.ts', { '@supabase/ssr': { createServerClient: () => ({
+            auth: { getUser: async () => ({ data: { user: { id: 'test' } }, error: null }) },
+            rpc: async name => name === 'check_interview_access'
+                ? { data: { allowed: false, reason: 'Your 10-minute free trial has ended.' }, error: null }
+                : { data: 'should-not-reserve', error: null },
+        }) } });
+        const result = await api.authorizeApi(request(), 'generate');
+        assert.equal(result.error.status, 402);
+        assert.match(await result.error.text(), /trial has ended/);
     } finally {
         if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
         if (oldKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = oldKey;

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { readInterviewContext } from "@/lib/interview-context";
 import { useAuth } from "@/lib/auth";
+import { interviewAccess } from "@/lib/interview-access";
 
 export default function HowToUsePage() {
     const router = useRouter();
@@ -25,6 +26,7 @@ export default function HowToUsePage() {
     const [isElectron, setIsElectron] = useState(false);
     const [setupReady, setSetupReady] = useState(false);
     const [setupError, setSetupError] = useState("");
+    const [isStarting, setIsStarting] = useState(false);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -95,7 +97,7 @@ export default function HowToUsePage() {
         }
     ];
 
-    const handleStart = () => {
+    const handleStart = async () => {
         try {
             if (!accountId || !readInterviewContext(accountId)) {
                 setSetupReady(false);
@@ -106,7 +108,22 @@ export default function HowToUsePage() {
             setSetupError("Interview setup could not be read on this device. Return to setup and try again.");
             return;
         }
-        router.push("/interview");
+        setIsStarting(true);
+        setSetupError("");
+        try {
+            const sessionId = crypto.randomUUID();
+            const access = await interviewAccess.start(sessionId);
+            if (!access.allowed) {
+                setSetupError(access.reason || "Your free trial has ended. Choose an interview pack to continue.");
+                return;
+            }
+            sessionStorage.setItem("zedx_access_session", sessionId);
+            router.push("/interview");
+        } catch (error) {
+            setSetupError(error instanceof Error ? error.message : "Could not start the interview. Try again.");
+        } finally {
+            setIsStarting(false);
+        }
     };
 
     return (
@@ -168,10 +185,10 @@ export default function HowToUsePage() {
                     {setupError && <p role="alert" className="max-w-xl text-center text-red-600 dark:text-red-400">{setupError}</p>}
                     <Button
                         onClick={handleStart}
-                        disabled={!setupReady}
+                        disabled={!setupReady || isStarting}
                         className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
                     >
-                        Got it, Start Interview!
+                        {isStarting ? "Starting securely…" : "Got it, Start Interview!"}
                         <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
                     </Button>
 
