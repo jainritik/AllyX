@@ -2,9 +2,7 @@
 
 ZEDX AI is a Next.js and Electron practice assistant. It authenticates users with Supabase, transcribes microphone or supported desktop audio through Groq, generates context-aware answers, stores completed practice sessions, and presents answers in a compact desktop overlay.
 
-This repository contains the private beta source. Payment and subscription checkout are intentionally outside the current beta scope.
-
-## Current beta capabilities
+## Current capabilities
 
 - Email signup, confirmation, login, logout, resend confirmation, forgot password, and password reset.
 - Resume/context upload and interview setup.
@@ -16,6 +14,8 @@ This repository contains the private beta source. Payment and subscription check
 - Adjustable overlay opacity and text size.
 - Click-through mode so users can type in the application underneath.
 - Electron capture-exclusion request for application windows.
+- One account-level 10-minute trial enforced by the database.
+- Razorpay interview-pack checkout with verified, idempotent credit allocation.
 
 ## Architecture
 
@@ -54,6 +54,10 @@ NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
 GROQ_API_KEY=YOUR_SERVER_SIDE_GROQ_KEY
 OPENAI_API_KEY=YOUR_SERVER_SIDE_OPENAI_KEY
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_SIDE_SERVICE_ROLE_KEY
+RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET=YOUR_SEPARATE_WEBHOOK_SECRET
 ```
 
 Optional deployment/build variables:
@@ -65,7 +69,7 @@ NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL=https://example.com/ZEDX-AI-Setup.exe
 ZEDX_APP_URL=https://your-hosted-renderer.example.com
 ```
 
-Never place Groq or OpenAI secrets in a `NEXT_PUBLIC_` variable. Rotate any credentials shared through chat or committed to source before a public beta.
+Never place Groq, OpenAI, Razorpay, webhook, or Supabase service-role secrets in a `NEXT_PUBLIC_` variable.
 
 ## Database setup
 
@@ -73,8 +77,12 @@ Apply the SQL in this order through the Supabase SQL editor:
 
 1. `supabase_schema.sql`
 2. `supabase_beta_migration.sql`
+3. `supabase_trial_migration.sql`
+4. `supabase_billing_migration.sql`
 
-The beta migration contains the server-side usage reservation ledger, account-bound profile rules, recoverable session updates, and atomic resume-limit enforcement used by the current application. Apply it before deploying these API routes; missing quota functions intentionally stop AI requests rather than allowing uncounted use.
+These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, and interview credits. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
+
+For Razorpay, enable automatic capture and add the public HTTPS webhook `/api/billing/webhook` with the `payment.captured` event. Use a separate webhook secret and store it as `RAZORPAY_WEBHOOK_SECRET`. Begin with Razorpay Test Mode keys and replace them with Live Mode keys only after end-to-end payment testing.
 
 Configure the production site URL and allowed redirect URLs in Supabase Authentication. Configure a transactional SMTP provider for reliable confirmation and password-reset email delivery.
 
@@ -156,9 +164,9 @@ supabase_schema.sql          Base database schema
 supabase_beta_migration.sql  Beta security, quota and consistency migration
 ```
 
-## Beta release boundaries
+## Release boundaries
 
-- Payment, checkout, recurring billing, and subscription entitlements are not implemented.
+- Billing code requires Razorpay credentials, applied database migrations, and Test Mode validation before activation.
 - Capture exclusion requires receiver-side verification for each supported OS and meeting application.
 - The unsigned test DMG is suitable for private testing, not public distribution.
 - Changes to the hosted renderer are not present in production until separately deployed.

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { interviewService, Interview } from "@/lib/interview-service";
 import { useRouter } from "next/navigation";
 import { useConfirmDialog } from "@/components/confirm-dialog";
+import { interviewAccess } from "@/lib/interview-access";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -17,12 +18,15 @@ export default function DashboardPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthChecking, setIsAuthChecking] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
 
     const loadData = useCallback(async () => {
             try {
                 setIsLoading(true);
                 setError(null);
                 const interviews = await interviewService.getUserInterviews();
+                const access = await interviewAccess.status().catch(() => null);
+                setCreditsRemaining(access?.creditsRemaining ?? null);
                 setIsAuthChecking(false); // Auth passed
                 setRecentSessions(interviews.slice(0, 3)); // Get top 3
 
@@ -143,6 +147,19 @@ export default function DashboardPage() {
                             <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.totalInterviews}</h3>
                         </div>
                     </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="p-2 sm:p-3 bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 rounded-xl">
+                            <Calendar size={20} className="sm:size-[24px]" />
+                        </div>
+                        <div>
+                            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-medium">Interview Credits</p>
+                            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{creditsRemaining ?? "—"}</h3>
+                        </div>
+                    </div>
+                    <Link href="/#pricing" className="text-xs font-semibold text-violet-600 dark:text-violet-400">Buy interview pack</Link>
                 </div>
 
             </div>
