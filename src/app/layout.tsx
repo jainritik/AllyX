@@ -65,7 +65,6 @@ export const metadata: Metadata = {
     title: "ZEDX Copilot - Real-Time AI Interview Assistant",
     description: "A desktop interview assistant for live transcription, contextual suggestions, and technical questions.",
     images: ["/zedx-cyberpunk-banner.png"],
-    creator: "@zedx_ai",
   },
   alternates: {
     canonical: "https://zedx-private-demo.vercel.app",

@@ -319,7 +319,7 @@ async function loadAppContent() {
             if (!response.ok) throw new Error(`Compatibility check failed (${response.status})`);
             const compatibility = await response.json();
             if (!isVersionAtLeast(app.getVersion(), compatibility.minimumDesktopVersion)) {
-                dialog.showErrorBox('ZEDX update required', `This web release needs desktop version ${compatibility.minimumDesktopVersion} or newer. Please install the current beta build.`);
+                dialog.showErrorBox('ZEDX update required', `This web release needs desktop version ${compatibility.minimumDesktopVersion} or newer. Please install the current desktop build.`);
                 return;
             }
         } catch (error) {
