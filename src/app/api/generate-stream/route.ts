@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { authorizeApi, isOpenAiModel, parseGenerationBody } from "@/lib/api-access";
+import { authorizeApi, commitApiQuota, isOpenAiModel, parseGenerationBody, refundApiQuota } from "@/lib/api-access";
 
 export const runtime = "nodejs";
 
@@ -12,6 +12,12 @@ export async function POST(request: NextRequest) {
         if (!parsedBody) return Response.json({ error: "Invalid prompt, messages, or model" }, { status: 400 });
         const { model, messages, systemPrompt } = parsedBody;
         const finalMessages = systemPrompt ? [{ role: "system", content: systemPrompt }, ...messages] : messages;
+
+        const quota = await authorizeApi(request, "generate");
+        if (quota.error) return quota.error;
+        const reservationId = quota.reservationId;
+        if (!reservationId) return Response.json({ error: "Usage reservation failed" }, { status: 503 });
+        let shouldRefund = true;
 
         const callProvider = async (targetModel: string, openAi: boolean) => {
             const providerApiKey = openAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
@@ -40,27 +46,45 @@ export async function POST(request: NextRequest) {
 
         const requestedOpenAi = isOpenAiModel(model);
         let effectiveModel = model;
-        let response = await callProvider(model, requestedOpenAi);
+        let response: Response | null = null;
+        try {
+            response = await callProvider(model, requestedOpenAi);
+        } catch (error) {
+            if (!requestedOpenAi) {
+                await refundApiQuota(request, reservationId);
+                shouldRefund = false;
+                throw error;
+            }
+            console.warn("[Stream API] OpenAI request failed; falling back to Groq.");
+        }
         if (requestedOpenAi && (!response || !response.ok)) {
             if (response) console.warn(`[Stream API] OpenAI ${response.status}; falling back to Groq.`);
             effectiveModel = "openai/gpt-oss-120b";
-            response = await callProvider(effectiveModel, false);
+            try {
+                response = await callProvider(effectiveModel, false);
+            } catch (error) {
+                await refundApiQuota(request, reservationId);
+                shouldRefund = false;
+                throw error;
+            }
         }
-        if (!response) return Response.json({ error: "AI server configuration missing" }, { status: 500 });
+        if (!response) {
+            await refundApiQuota(request, reservationId);
+            shouldRefund = false;
+            return Response.json({ error: "AI server configuration missing" }, { status: 500 });
+        }
         if (!response.ok) {
             console.error("[Stream API] Provider Error:", await response.text());
+            await refundApiQuota(request, reservationId);
+            shouldRefund = false;
             return Response.json({ error: "AI temporarily unavailable" }, { status: response.status });
-        }
-
-        const quota = await authorizeApi(request, "generate");
-        if (quota.error) {
-            await response.body?.cancel();
-            return quota.error;
         }
 
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
         let carry = "";
+        let providerCompleted = false;
+        let commitPromise: Promise<void> | null = null;
         const processLines = (lines: string[], controller: TransformStreamDefaultController<Uint8Array>) => {
             for (const line of lines) {
                 if (!line.startsWith("data: ")) continue;
@@ -74,7 +98,12 @@ export async function POST(request: NextRequest) {
                     const content = providerEvent.choices?.[0]?.delta?.content;
                     if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
                     const finishReason = providerEvent.choices?.[0]?.finish_reason;
-                    if (finishReason) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ finishReason, model: effectiveModel })}\n\n`));
+                    if (finishReason) {
+                        providerCompleted = true;
+                        shouldRefund = false;
+                        commitPromise ||= commitApiQuota(request, reservationId);
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ finishReason, model: effectiveModel })}\n\n`));
+                    }
                 } catch { /* Never forward partial or malformed provider events. */ }
             }
         };
@@ -85,9 +114,14 @@ export async function POST(request: NextRequest) {
                 carry = lines.pop() || "";
                 processLines(lines, controller);
             },
-            flush(controller) {
+            async flush(controller) {
                 carry += decoder.decode();
                 if (carry.trim()) processLines([carry], controller);
+                if (commitPromise) await commitPromise;
+                if (!providerCompleted && shouldRefund) {
+                    shouldRefund = false;
+                    await refundApiQuota(request, reservationId);
+                }
             },
         });
 

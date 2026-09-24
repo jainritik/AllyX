@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GROQ_MODELS, authorizeApi, isOpenAiModel, parseGenerationBody } from "@/lib/api-access";
+import { GROQ_MODELS, authorizeApi, commitApiQuota, isOpenAiModel, parseGenerationBody, refundApiQuota } from "@/lib/api-access";
 
 // Groq Models Fallback Chain
 const GROQ_FALLBACK_MODELS = [...GROQ_MODELS];
@@ -10,6 +10,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+    let quotaReserved = false;
+    let reservationId = "";
     try {
         const access = await authorizeApi(request);
         if (access.error) return access.error;
@@ -21,6 +23,11 @@ export async function POST(request: NextRequest) {
         const isDev = process.env.NODE_ENV === 'development';
 
         const usesOpenAi = isOpenAiModel(model);
+        const quota = await authorizeApi(request, "generate");
+        if (quota.error) return quota.error;
+        reservationId = quota.reservationId || "";
+        if (!reservationId) return NextResponse.json({ error: { message: "Usage reservation failed" } }, { status: 503 });
+        quotaReserved = true;
         if (isDev) console.log(`[API Generate] Using Groq with model: ${model || 'auto'}`);
 
         // A paid OpenAI selection falls back to the free Groq default if the
@@ -89,10 +96,9 @@ export async function POST(request: NextRequest) {
                 const content = data.choices?.[0]?.message?.content;
                 if (!content) throw new Error("Empty response from AI");
                 const finishReason = data.choices?.[0]?.finish_reason || null;
-                const quota = await authorizeApi(request, "generate");
-                if (quota.error) return quota.error;
-
                 if (isDev) console.log(`[API Generate] ${providerName} Success: ${targetModel}`);
+                await commitApiQuota(request, reservationId);
+                quotaReserved = false;
                 return NextResponse.json({
                     content,
                     modelUsed: targetModel,
@@ -115,6 +121,8 @@ export async function POST(request: NextRequest) {
         }
 
         // All models failed
+        await refundApiQuota(request, reservationId);
+        quotaReserved = false;
         return NextResponse.json({
             error: {
                 message: isDev
@@ -124,6 +132,7 @@ export async function POST(request: NextRequest) {
         }, { status: 503 });
 
     } catch (error: unknown) {
+        if (quotaReserved) await refundApiQuota(request, reservationId);
         const err = error as Error;
         console.error("[API Generate] Internal Error:", err);
         const isDevEnv = process.env.NODE_ENV === 'development';

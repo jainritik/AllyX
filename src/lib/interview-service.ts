@@ -118,13 +118,15 @@ export const interviewService = {
             }
 
             if (error?.code === '23505' && sessionId) {
-                const { data: existing, error: readError } = await supabase
+                const { data: updated, error: updateError } = await supabase
                     .from('interviews')
-                    .select('*')
+                    .update({ title, transcript, analysis })
                     .eq('id', sessionId)
                     .eq('user_id', user.id)
+                    .select()
                     .single();
-                if (!readError && existing) return existing as Interview;
+                if (!updateError && updated) return updated as Interview;
+                throw new InterviewServiceError("Failed to update the recovered meeting session", updateError);
             }
 
             if (error) {

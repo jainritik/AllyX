@@ -176,12 +176,12 @@ export default function DashboardPage() {
                 ) : recentSessions.length === 0 ? (
                     <div className="text-center py-8">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No interviews yet</h3>
-                        <p className="text-gray-500 dark:text-gray-400">Start your first mock interview to see your history and analytics here.</p>
+                        <p className="text-gray-500 dark:text-gray-400">Start your first session to see its transcript and answers here.</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
                         {recentSessions.map((session) => (
-                            <Link href="/dashboard/history" key={session.id}>
+                            <Link href={`/dashboard/history?session=${encodeURIComponent(session.id)}`} key={session.id}>
                                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">

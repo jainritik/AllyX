@@ -56,9 +56,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 "interview_context_resume",
                 "interview_context_type",
                 "interview_context_lang",
-                "selected_ai_model"
+                "selected_ai_model",
+                "zedx_interview_context",
+                "zedx_resume_handoff",
+                "interview_draft"
             ];
             keysToRemove.forEach(key => localStorage.removeItem(key));
+            sessionStorage.removeItem("zedx_resume_handoff");
             showToast("App data cleared. Page will reload.", "success");
             setTimeout(() => window.location.reload(), 1000);
         }
@@ -113,7 +117,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             Reset App Data
                         </Button>
                         <p className="text-[10px] text-center mt-2 text-gray-400">
-                            Clears local data (Resume, Settings)
+                            Clears local interview context, draft, and settings
                         </p>
                     </div>
                 </div>

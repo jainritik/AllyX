@@ -11,7 +11,7 @@ test('scanner can capture, move, and close but cannot access unrelated controls'
 });
 
 test('overlay has only its required window, question, and scanner controls', () => {
-    for (const channel of ['show-app', 'hide-overlay', 'resize-overlay', 'set-ignore-mouse-events', 'get-overlay-state', 'submit-overlay-question', 'toggle-scanner-frame']) {
+    for (const channel of ['show-app', 'hide-overlay', 'resize-overlay', 'set-ignore-mouse-events', 'get-overlay-state', 'submit-overlay-question', 'continue-overlay-answer', 'toggle-scanner-frame']) {
         assert.equal(isAllowedAuxiliaryChannel('overlay', channel), true);
     }
     assert.equal(isAllowedAuxiliaryChannel('overlay', 'capture-scanner-area'), false);

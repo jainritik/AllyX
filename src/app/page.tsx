@@ -246,7 +246,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  ZEDX Copilot provides real-time verification and instantly generates the benchmark answer so you can check yours.
+                  ZEDX Copilot generates a relevant suggested answer from the question and the context you provide.
                 </p>
               </div>
 

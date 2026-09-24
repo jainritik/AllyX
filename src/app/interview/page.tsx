@@ -48,9 +48,11 @@ interface SpeechRecognition extends EventTarget {
 
 function compactContext(value: string, limit: number): string {
     if (value.length <= limit) return value;
-    const startLength = Math.floor(limit * 0.7);
-    const endLength = limit - startLength;
-    return `${value.slice(0, startLength)}\n\n[Earlier context shortened]\n\n${value.slice(-endLength)}`;
+    const marker = "\n\n[Earlier context shortened]\n\n";
+    const contentLimit = Math.max(0, limit - marker.length);
+    const startLength = Math.floor(contentLimit * 0.7);
+    const endLength = contentLimit - startLength;
+    return `${value.slice(0, startLength)}${marker}${value.slice(-endLength)}`;
 }
 
 export default function InterviewPage() {
@@ -72,6 +74,8 @@ export default function InterviewPage() {
     const pendingQuestionRef = useRef("");
     const sessionEndingRef = useRef(false);
     const captureEpochRef = useRef(0);
+    const screenCaptureEpochRef = useRef(0);
+    const speechActiveRef = useRef(false);
     const recordingStartRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
@@ -101,7 +105,7 @@ export default function InterviewPage() {
     const [lastTranscript, setLastTranscript] = useState<string>(""); // For retry functionality
     const [allQAPairs, setAllQAPairs] = useState<{ question: string, answer: string }[]>([]); // Track Q&A pairs
     const [isSaving, setIsSaving] = useState(false);
-    const [interviewStartTime] = useState<Date>(new Date()); // Track when interview started
+    const [interviewStartTime, setInterviewStartTime] = useState<Date>(new Date());
     const [manualQuestion, setManualQuestion] = useState(""); // Manual input for coding questions
     const [isScreenAudioActive, setIsScreenAudioActive] = useState(false);
     const screenStreamRef = useRef<MediaStream | null>(null);
@@ -114,7 +118,8 @@ export default function InterviewPage() {
     const [contextReady, setContextReady] = useState(false);
 
     // Constants
-    const MAX_TRANSCRIPT_LENGTH = 4000; // Limit transcript to prevent API issues
+    const MAX_TRANSCRIPT_LENGTH = 4000;
+    const MAX_QUESTION_LENGTH = 12000;
 
     const appendFullTranscript = useCallback((text: string) => {
         const clean = text.trim();
@@ -134,7 +139,8 @@ export default function InterviewPage() {
         draftHydratedRef.current = true;
         try {
             const draft = JSON.parse(localStorage.getItem('interview_draft') || 'null');
-            if (draft?.accountId === accountId) {
+            const setup = readInterviewContext(accountId);
+            if (draft?.accountId === accountId && draft?.contextSavedAt === setup?.savedAt) {
                 sessionIdRef.current = typeof draft.sessionId === 'string' ? draft.sessionId : crypto.randomUUID();
                 if (typeof draft.transcript === 'string') setTranscript(draft.transcript);
                 if (typeof draft.fullTranscript === 'string') {
@@ -144,6 +150,10 @@ export default function InterviewPage() {
                 if (typeof draft.interimTranscript === 'string') setInterimTranscript(draft.interimTranscript);
                 if (Array.isArray(draft.qaPairs)) setAllQAPairs(draft.qaPairs.filter((qa: { question?: unknown; answer?: unknown }) => typeof qa.question === 'string' && typeof qa.answer === 'string'));
                 if (typeof draft.manualQuestion === 'string') setManualQuestion(draft.manualQuestion);
+                if (typeof draft.aiResponse === 'string') setAiResponse(draft.aiResponse);
+                if (typeof draft.answerModel === 'string') setAnswerModel(draft.answerModel);
+                if (typeof draft.answerTruncated === 'boolean') setAnswerTruncated(draft.answerTruncated);
+                if (typeof draft.startedAt === 'number' && Number.isFinite(draft.startedAt)) setInterviewStartTime(new Date(draft.startedAt));
             }
             if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
         } catch { /* Ignore corrupt local draft. */ }
@@ -152,10 +162,28 @@ export default function InterviewPage() {
 
     useEffect(() => {
         if (!accountId || !draftHydratedRef.current) return;
-        try {
-            localStorage.setItem('interview_draft', JSON.stringify({ sessionId: sessionIdRef.current, accountId, transcript, fullTranscript, interimTranscript, qaPairs: allQAPairs, manualQuestion, savedAt: Date.now() }));
-        } catch { /* Saving can still be retried on this screen. */ }
-    }, [accountId, transcript, fullTranscript, interimTranscript, allQAPairs, manualQuestion]);
+        const saveTimer = window.setTimeout(() => {
+            try {
+                const contextSavedAt = readInterviewContext(accountId)?.savedAt;
+                localStorage.setItem('interview_draft', JSON.stringify({
+                    sessionId: sessionIdRef.current,
+                    accountId,
+                    contextSavedAt,
+                    transcript,
+                    fullTranscript,
+                    interimTranscript,
+                    qaPairs: allQAPairs,
+                    manualQuestion,
+                    aiResponse,
+                    answerModel,
+                    answerTruncated,
+                    startedAt: interviewStartTime.getTime(),
+                    savedAt: Date.now(),
+                }));
+            } catch { /* Saving can still be retried on this screen. */ }
+        }, 500);
+        return () => window.clearTimeout(saveTimer);
+    }, [accountId, transcript, fullTranscript, interimTranscript, allQAPairs, manualQuestion, aiResponse, answerModel, answerTruncated, interviewStartTime]);
 
     // --- DESK_TOP STT ---
 
@@ -265,8 +293,9 @@ export default function InterviewPage() {
         }
         answerInFlightRef.current = true;
 
-        // Limit transcript length
-        const currentTranscript = transcriptToUse.slice(0, MAX_TRANSCRIPT_LENGTH);
+        // Preserve both the prompt and constraints when a pasted question or
+        // code sample is larger than the live transcript window.
+        const currentTranscript = compactContext(transcriptToUse, MAX_QUESTION_LENGTH);
         if (!continuation) {
             pendingQuestionRef.current = currentTranscript;
             setLastTranscript(currentTranscript);
@@ -294,31 +323,38 @@ export default function InterviewPage() {
             const jobContext = compactContext(interviewContext.jd, 3500);
             const resumeContext = compactContext(interviewContext.resume, 6500);
             const recentMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
-            let historyBudget = 18000;
+            let historyBudget = 14000;
+            let includedPairs = 0;
             for (const pair of [...allQAPairs].reverse()) {
-                const pairSize = pair.question.length + pair.answer.length;
-                if (pairSize > historyBudget) break;
+                if (includedPairs >= 10) break;
+                const question = compactContext(pair.question, 3000);
+                const answer = compactContext(pair.answer, 6000);
+                const pairSize = question.length + answer.length;
+                if (pairSize > historyBudget) continue;
                 recentMessages.unshift(
-                    { role: "user", content: pair.question },
-                    { role: "assistant", content: pair.answer },
+                    { role: "user", content: question },
+                    { role: "assistant", content: answer },
                 );
                 historyBudget -= pairSize;
+                includedPairs++;
             }
             // Construct the prompt (Unified for all providers)
             const systemPrompt = `
         SYSTEM INSTRUCTION:
-        You are a top-tier professional candidate participating in a high-stakes job interview. Your goal is to provide the most logical, intelligent, and impressive answers that an interviewer expects to hear.
+        You are assisting a candidate during a professional interview. Provide a clear, accurate answer the candidate can adapt and speak naturally.
 
         CRITICAL RULES:
         1. **IDENTITY**: You are the candidate. Answer directly as "I". Never say "A good answer would be...".
         2. **CONTEXT AWARENESS**: 
-           - Use the provided context (Resume/JD) for personal questions.
-           - For technical or general questions, provide industry-leading, expert-level insights.
+           - Use the provided resume and AI context for personal questions.
+           - Follow answer-format, tone, length, and language preferences written in AI Context when they apply.
+           - Never invent employment history, achievements, metrics, or skills that are not supported by the supplied context.
+           - For technical or general questions, provide accurate, practical explanations.
         3. **DYNAMIC LENGTH (CRITICAL)**:
            - Adjust your length based on the question. 
            - If the question is simple or introductory, be brief and punchy.
            - If the question is technical, architectural, or complex, provide a detailed, logical, and well-structured explanation that demonstrates deep expertise.
-        4. **INTERVIEW STRATEGY**: Provide the "Benchmark Answer". Focus on what makes a candidate stand out: problem-solving, impact, and clarity.
+        4. **INTERVIEW STRATEGY**: Focus on problem-solving, impact, and clarity. State uncertainty instead of fabricating facts.
         5. **LANGUAGE**: Strictly use ${interviewContext.lang}.
            - If 'ar-EG', use professional Egyptian Arabic (Ammiya) but keep technical terms in English where appropriate. Avoid overly formal Fusha.
            - If 'en-US', use professional corporate English.
@@ -329,8 +365,8 @@ export default function InterviewPage() {
 
         CONTEXT:
         - Meeting Type: ${interviewContext.type}
-        - Meeting Notes/Agenda: ${jobContext || "Not provided"}
-        - User Context File: ${resumeContext || "Not provided"}
+        - AI Context & Answer Style: ${jobContext || "Not provided"}
+        - Resume: ${resumeContext || "Not provided"}
         `;
 
             const requestBody = JSON.stringify({
@@ -404,11 +440,16 @@ export default function InterviewPage() {
 
             const completeAnswer = `${prefix}${text}`;
             setAiResponse(completeAnswer);
-            setAnswerModel(response.headers.get("X-ZEDX-Model") || interviewContext.model);
+            const effectiveModel = response.headers.get("X-ZEDX-Model") || interviewContext.model;
+            setAnswerModel(effectiveModel);
             setAnswerTruncated(finishReason === "length");
+            const fallbackMessage = effectiveModel !== interviewContext.model
+                ? `Paid model unavailable. Answered by ${effectiveModel} fallback.`
+                : "";
             window.electronAPI?.sendOverlayStatus?.(
-                finishReason === "length" ? "The answer reached its limit. Press Continue to finish it." : "",
+                finishReason === "length" ? "The answer reached its limit. Press Continue to finish it." : fallbackMessage,
                 finishReason === "length" ? "progress" : "success",
+                finishReason === "length" ? "continue" : undefined,
             );
             // Broadcast to Electron Overlay
             if (window.electronAPI?.sendAnswer) {
@@ -501,16 +542,28 @@ export default function InterviewPage() {
         void getAiAnswer("Continue exactly from the last sentence without repeating the previous answer.", true);
     }), [answerTruncated, contextReady, getAiAnswer]);
 
+    useEffect(() => {
+        window.electronAPI?.setInterviewReady?.(contextReady);
+        return () => window.electronAPI?.setInterviewReady?.(false);
+    }, [contextReady]);
+
     // Silence Detection for Auto-Answer
     useEffect(() => {
         if (!isAutoMode || !isRecording || isLoading || !transcript.trim()) return;
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        silenceTimerRef.current = setTimeout(() => {
-            console.log("Auto-answering due to silence...");
-            getAiAnswer();
-        }, isElectron ? 1600 : 1800);
+        const waitForCompleteQuestion = () => {
+            silenceTimerRef.current = setTimeout(() => {
+                if (speechActiveRef.current) {
+                    waitForCompleteQuestion();
+                    return;
+                }
+                console.log("Auto-answering after confirmed silence...");
+                getAiAnswer();
+            }, isElectron ? 1600 : 1800);
+        };
+        waitForCompleteQuestion();
 
         return () => {
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -519,7 +572,7 @@ export default function InterviewPage() {
 
     // --- SCREEN AUDIO CAPTURE (ELECTRON ONLY) ---
     const stopScreenAudio = useCallback(() => {
-        captureEpochRef.current++;
+        screenCaptureEpochRef.current++;
         if (screenStreamRef.current) {
             screenStreamRef.current.getTracks().forEach(t => t.stop());
             screenStreamRef.current = null;
@@ -556,7 +609,7 @@ export default function InterviewPage() {
 
         const cleanup = window.electronAPI?.onAudioSourceReady(async (sourceId: string) => {
             console.log("[Screen Audio] Source ID received:", sourceId);
-            const epoch = captureEpochRef.current;
+            const epoch = screenCaptureEpochRef.current;
             try {
                 if (!navigator.mediaDevices?.getUserMedia) {
                     throw new Error("System audio capture not supported.");
@@ -577,7 +630,7 @@ export default function InterviewPage() {
                         }
                     }
                 });
-                if (epoch !== captureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
+                if (epoch !== screenCaptureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
                     stream.getTracks().forEach(track => track.stop());
                     return;
                 }
@@ -820,7 +873,6 @@ export default function InterviewPage() {
             const MAX_RECORDING_TIME = 15000;   // Force send after 15s
 
             let mediaRecorder: MediaRecorder | null = null;
-            let audioChunks: Blob[] = [];
             let isSpeaking = false;
             let silenceStart = 0;
             let speechStart = 0;
@@ -840,12 +892,13 @@ export default function InterviewPage() {
                 }
 
                 if (average > SPEECH_THRESHOLD) {
+                    speechActiveRef.current = true;
                     // SPEECH DETECTED
                     silenceStart = 0;
                     if (!isSpeaking) {
                         isSpeaking = true;
                         speechStart = Date.now();
-                        audioChunks = [];
+                        const ownedChunks: Blob[] = [];
                         console.log("[VAD] ⚡ Speech detected!");
 
                         // Create a mixed stream for the MediaRecorder
@@ -861,7 +914,7 @@ export default function InterviewPage() {
                         mediaRecorder = new MediaRecorder(dest.stream, { mimeType });
                         mediaRecorderRef.current = mediaRecorder;
                         mediaRecorder.ondataavailable = (e) => {
-                            if (e.data.size > 0) audioChunks.push(e.data);
+                            if (e.data.size > 0) ownedChunks.push(e.data);
                         };
 
                         let resolveStopped: () => void = () => {};
@@ -875,15 +928,15 @@ export default function InterviewPage() {
                             try {
                                 if (epoch !== captureEpochRef.current) return;
                                 const duration = Date.now() - speechStart;
-                                if (duration < MIN_SPEECH_DURATION || audioChunks.length === 0) return;
-                                const fullAudio = new Blob(audioChunks, { type: 'audio/webm' });
+                                if (duration < MIN_SPEECH_DURATION || ownedChunks.length === 0) return;
+                                const fullAudio = new Blob(ownedChunks, { type: 'audio/webm' });
                                 console.log(`[VAD] Sending ${(fullAudio.size / 1024).toFixed(1)}KB...`);
                                 await processGroqAudio(fullAudio);
                             } finally {
                                 try { micSource.disconnect(dest); } catch { /* already disconnected */ }
                                 try { screenSourceAtStart?.disconnect(dest); } catch { /* already disconnected */ }
                                 dest.stream.getTracks().forEach(track => track.stop());
-                                audioChunks = [];
+                                ownedChunks.length = 0;
                                 if (mediaRecorderRef.current === ownedRecorder) mediaRecorderRef.current = null;
                                 if (flushRecorderRef.current === flushOwned) flushRecorderRef.current = null;
                                 resolveStopped();
@@ -917,6 +970,7 @@ export default function InterviewPage() {
 
             const stopAndProcess = () => {
                 isSpeaking = false;
+                speechActiveRef.current = false;
                 silenceStart = 0;
 
                 if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -944,6 +998,7 @@ export default function InterviewPage() {
 
     const stopDesktopSTT = useCallback(() => {
         captureEpochRef.current++;
+        speechActiveRef.current = false;
         if (mediaRecorderRef.current?.state === 'recording') {
             mediaRecorderRef.current.onstop = null;
             mediaRecorderRef.current.stop();
@@ -1132,6 +1187,12 @@ export default function InterviewPage() {
                 setSystemStatus(prev => ({ ...prev, mic: true }));
                 setError(null);
                 console.log("[Speech] Recognition started");
+            };
+            recognitionRef.current.onspeechstart = () => {
+                speechActiveRef.current = true;
+            };
+            recognitionRef.current.onspeechend = () => {
+                speechActiveRef.current = false;
             };
         }
 

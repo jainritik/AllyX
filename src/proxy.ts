@@ -5,7 +5,7 @@ export default async function proxy(request: NextRequest) {
     const headers = new Headers(request.headers);
     headers.delete('x-is-scanner');
     headers.set('x-url', request.url);
-    if (request.nextUrl.pathname === '/scanner-frame' || request.nextUrl.pathname === '/desktop/overlay') headers.set('x-is-scanner', 'true');
+    if (request.nextUrl.pathname === '/scanner-frame') headers.set('x-is-scanner', 'true');
     let response = NextResponse.next({ request: { headers } });
     // These auxiliary windows use their own Electron session and contain no account data.
     if (headers.get('x-is-scanner') === 'true') return response;
@@ -52,5 +52,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-    matcher: ['/dashboard/:path*', '/interview/:path*', '/desktop/overlay/:path*', '/scanner-frame/:path*'],
+    matcher: ['/dashboard/:path*', '/interview/:path*', '/scanner-frame/:path*'],
 };

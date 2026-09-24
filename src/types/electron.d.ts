@@ -19,7 +19,8 @@ export interface ElectronAPI {
     sendTranscript: (transcript: string) => void;
     sendAnswer: (answer: string) => void;
     sendCapturedText: (text: string) => void;
-    sendOverlayStatus: (message: string, tone: "progress" | "success" | "error") => void;
+    sendOverlayStatus: (message: string, tone: "progress" | "success" | "error", action?: "continue") => void;
+    setInterviewReady: (ready: boolean) => void;
     // Audio
     startSystemAudioCapture: () => Promise<{ success: boolean; sourceId?: string; error?: string }>;
     stopSystemAudioCapture: () => Promise<{ success: boolean }>;

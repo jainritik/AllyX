@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeApi } from "@/lib/api-access";
+import { authorizeApi, commitApiQuota, refundApiQuota } from "@/lib/api-access";
 
 export async function POST(request: NextRequest) {
+    let quotaReserved = false;
+    let reservationId = "";
     try {
         const access = await authorizeApi(request);
         if (access.error) return access.error;
@@ -36,6 +38,11 @@ export async function POST(request: NextRequest) {
             console.error("[Transcribe API] No keys found! Check .env.local");
             return NextResponse.json({ error: "Server configuration error: No keys available" }, { status: 500 });
         }
+        const quota = await authorizeApi(request, "transcribe");
+        if (quota.error) return quota.error;
+        reservationId = quota.reservationId || "";
+        if (!reservationId) return NextResponse.json({ error: "Usage reservation failed" }, { status: 503 });
+        quotaReserved = true;
         // Shuffle keys once to start randomly but consistently
         const shuffledKeys = [...API_KEYS].sort(() => Math.random() - 0.5);
 
@@ -82,8 +89,8 @@ export async function POST(request: NextRequest) {
 
                 if (response.ok) {
                     const data = await response.json();
-                    const quota = await authorizeApi(request, "transcribe");
-                    if (quota.error) return quota.error;
+                    await commitApiQuota(request, reservationId);
+                    quotaReserved = false;
                     return NextResponse.json({ text: data.text });
                 }
 
@@ -107,12 +114,15 @@ export async function POST(request: NextRequest) {
         }
 
         // If we reach here, ALL keys failed
+        await refundApiQuota(request, reservationId);
+        quotaReserved = false;
         return NextResponse.json({
             error: "All Groq keys failed or rate limited.",
             details: process.env.NODE_ENV === "development" ? lastError : undefined
         }, { status: 503 });
 
     } catch (error: unknown) {
+        if (quotaReserved) await refundApiQuota(request, reservationId);
         const err = error as Error;
         console.error("[Transcribe API] Internal Error:", err);
         const isDev = process.env.NODE_ENV === 'development';

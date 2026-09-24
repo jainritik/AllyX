@@ -5,26 +5,28 @@ import { NextRequest, NextResponse } from "next/server";
 const limits = { generate: 300, transcribe: 1200 } as const;
 export type UsageKind = keyof typeof limits;
 
-export async function authorizeApi(request: NextRequest, kind?: UsageKind) {
+function apiClient(request: NextRequest) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) return { error: NextResponse.json({ error: "Authentication is not configured" }, { status: 503 }) };
-
-    const client = createServerClient(url, key, {
+    if (!url || !key) return null;
+    return createServerClient(url, key, {
         cookies: {
             getAll: () => request.cookies.getAll(),
-            // API calls do not refresh browser cookies. Expired sessions must be
-            // refreshed by the normal Supabase browser client before retrying.
             setAll: () => {},
         },
     });
+}
+
+export async function authorizeApi(request: NextRequest, kind?: UsageKind) {
+    const client = apiClient(request);
+    if (!client) return { error: NextResponse.json({ error: "Authentication is not configured" }, { status: 503 }) };
     const { data, error } = await client.auth.getUser();
     if (error || !data.user) {
         return { error: NextResponse.json({ error: "Please sign in again" }, { status: 401 }) };
     }
     if (kind) {
-        const { data: allowed, error: quotaError } = await client.rpc("consume_api_quota", {
-            request_kind: kind,
+        const { data: reservationId, error: quotaError } = await client.rpc("reserve_api_quota", {
+            requested_kind: kind,
             daily_limit: limits[kind],
         });
         // A missing migration must fail closed, never grant unlimited access.
@@ -32,9 +34,24 @@ export async function authorizeApi(request: NextRequest, kind?: UsageKind) {
             console.error("[API quota] Unable to check usage:", quotaError.code);
             return { error: NextResponse.json({ error: "Usage accounting is unavailable" }, { status: 503 }) };
         }
-        if (!allowed) return { error: NextResponse.json({ error: "Daily usage limit reached. Try again tomorrow." }, { status: 429 }) };
+        if (!reservationId) return { error: NextResponse.json({ error: "Daily usage limit reached. Try again tomorrow." }, { status: 429 }) };
+        return { user: data.user, reservationId: String(reservationId) };
     }
     return { user: data.user };
+}
+
+export async function refundApiQuota(request: NextRequest, reservationId: string) {
+    const client = apiClient(request);
+    if (!client) return;
+    const { error } = await client.rpc("refund_api_quota", { reservation_id: reservationId });
+    if (error) console.error("[API quota] Unable to refund failed request:", error.code);
+}
+
+export async function commitApiQuota(request: NextRequest, reservationId: string) {
+    const client = apiClient(request);
+    if (!client) return;
+    const { error } = await client.rpc("commit_api_quota", { reservation_id: reservationId });
+    if (error) console.error("[API quota] Unable to commit request:", error.code);
 }
 
 export const OPENAI_MODELS = ["gpt-5.4-mini"] as const;

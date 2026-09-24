@@ -33,7 +33,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sendTranscript: (text) => ipcRenderer.send('transcript-update', text),
     sendAnswer: (text) => ipcRenderer.send('answer-update', text),
     sendCapturedText: (text) => ipcRenderer.send('overlay-captured-text', text),
-    sendOverlayStatus: (message, tone) => ipcRenderer.send('overlay-status', { message, tone }),
+    sendOverlayStatus: (message, tone, action) => ipcRenderer.send('overlay-status', { message, tone, action }),
+    setInterviewReady: (ready) => ipcRenderer.send('interview-ready', ready),
 
     // Overlay Controls
     resizeOverlay: (width, height) => ipcRenderer.send('resize-overlay', { width, height }),

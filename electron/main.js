@@ -54,6 +54,7 @@ let isAppVisible = false;
 let isScannerFrameOpen = false;
 let isPresentationSafeMode = false;
 let isOverlayInteractive = true;
+let isInterviewRendererReady = false;
 
 const isDev = !app.isPackaged;
 const APP_URL = process.env.ZEDX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://zedx-private-demo.vercel.app');
@@ -290,6 +291,9 @@ function createMainAppWindow() {
         console.error(`[App] Load fail: ${errorDescription} (${errorCode})`);
         mainAppWindow.webContents.send('load-error', errorDescription);
     });
+    mainAppWindow.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) isInterviewRendererReady = false;
+    });
 
     loadAppContent();
     mainAppWindow.once('ready-to-show', () => {
@@ -508,7 +512,11 @@ function setupIpcHandlers() {
         floatingIconWindow?.webContents.send('overlay-status', {
             message: status.message.slice(0, 500),
             tone: ['progress', 'success', 'error'].includes(status.tone) ? status.tone : 'progress',
+            action: status.action === 'continue' ? 'continue' : undefined,
         });
+    });
+    onTrusted('interview-ready', (event, ready) => {
+        isInterviewRendererReady = Boolean(ready) && isInterviewSessionPage();
     });
     onTrusted('resize-overlay', (event, { width, height }) => {
         if (!Number.isFinite(width) || !Number.isFinite(height)) return;
@@ -524,12 +532,12 @@ function setupIpcHandlers() {
     handleTrusted('submit-overlay-question', async (event, value) => {
         const question = typeof value === 'string' ? value.trim().slice(0, 12000) : '';
         if (!question || !mainAppWindow || mainAppWindow.isDestroyed()) return { success: false, error: 'Enter a question first.' };
-        if (!isInterviewSessionPage()) return { success: false, error: 'Start an interview session in the main window first.' };
+        if (!isInterviewSessionPage() || !isInterviewRendererReady) return { success: false, error: 'Wait for the interview session to finish loading.' };
         mainAppWindow.webContents.send('overlay-manual-question', question);
         return { success: true };
     });
     handleTrusted('continue-overlay-answer', async () => {
-        if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewSessionPage()) {
+        if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewSessionPage() || !isInterviewRendererReady) {
             return { success: false, error: 'Start an interview session in the main window first.' };
         }
         mainAppWindow.webContents.send('overlay-continue-answer');

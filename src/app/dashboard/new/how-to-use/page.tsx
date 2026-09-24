@@ -32,7 +32,7 @@ export default function HowToUsePage() {
             try {
                 const ready = Boolean(accountId && readInterviewContext(accountId));
                 setSetupReady(ready);
-                setSetupError(ready ? "" : "Interview context is missing. Return to setup to add a job description and resume.");
+                setSetupError(ready ? "" : "Interview context is missing. Return to setup to add AI context, answer style, and a resume.");
             } catch {
                 setSetupError("Interview setup could not be read on this device. Return to setup and try again.");
             }
@@ -50,18 +50,20 @@ export default function HowToUsePage() {
             border: "border-emerald-500/20"
         },
         {
-            title: isElectron ? "System Audio (Screen Sharing)" : "Interview Context",
+            title: isElectron ? "Meeting Audio" : "Interview Context",
             description: isElectron
-                ? "Capture the interviewer's voice directly from your system. Best for high-quality transcription in noiseless environments."
-                : "The AI uses your JD and Resume to provide the most relevant answers for your specific background.",
+                ? "Listen to sound from your computer so the interviewer's voice can be transcribed clearly."
+                : "The AI uses your role context, answer style, and resume to tailor its suggestions.",
             icon: isElectron ? <Monitor className="w-8 h-8" /> : <Info className="w-8 h-8" />,
             color: "from-teal-500 to-emerald-600",
             bg: "bg-teal-500/10",
             border: "border-teal-500/20"
         },
         {
-            title: "Stealth Scanner",
-            description: "Use the scanner for code snippets or text you can't copy. The AI will analyze the screenshot in real-time.",
+            title: isElectron ? "Capture Text or Code" : "Text and Code Input",
+            description: isElectron
+                ? "Select an area of your screen to extract text or code, then generate an answer from it."
+                : "Paste a question or code directly into the session when speech input is not suitable.",
             icon: <Scan className="w-8 h-8" />,
             color: "from-green-600 to-emerald-700",
             bg: "bg-green-600/10",
@@ -69,7 +71,7 @@ export default function HowToUsePage() {
         },
         {
             title: "AI Auto Answer",
-            description: "Enable Auto-Answer to get suggestions instantly after the question ends. Precision is key.",
+            description: "Auto Answer waits for a pause after the question, then generates a suggestion. Turn it off when you want manual control.",
             icon: <Sparkles className="w-8 h-8" />,
             color: "from-lime-500 to-emerald-500",
             bg: "bg-lime-500/10",
@@ -97,7 +99,7 @@ export default function HowToUsePage() {
         try {
             if (!accountId || !readInterviewContext(accountId)) {
                 setSetupReady(false);
-                setSetupError("Interview context is missing. Return to setup to add a job description and resume.");
+                setSetupError("Interview context is missing. Return to setup to add AI context, answer style, and a resume.");
                 return;
             }
         } catch {
@@ -125,7 +127,7 @@ export default function HowToUsePage() {
                         Mastering the Copilot
                     </h1>
                     <p className="text-gray-500 dark:text-gray-400 text-base sm:text-xl max-w-2xl mx-auto">
-                        Quick guide to ensure a flawless interview session with maximum precision.
+                        A quick guide to the controls used during your session.
                     </p>
                 </motion.div>
 

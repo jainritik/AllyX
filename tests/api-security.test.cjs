@@ -58,13 +58,13 @@ test('quota exhaustion and usage-ledger failures fail closed', async () => {
 test('streaming parser preserves SSE events split across bytes', async () => {
     const api = load('src/lib/api-access.ts');
     const encoder = new TextEncoder();
-    const event = 'data: {"choices":[{"delta":{"content":"héllo"}}]}\n\n';
+    const event = 'data: {"choices":[{"delta":{"content":"héllo"},"finish_reason":"stop"}]}\n\n';
     const bytes = encoder.encode(event);
     const provider = new ReadableStream({ start(controller) {
         for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
         controller.close();
     } });
-    const route = load(paths.stream, { '@/lib/api-access': { authorizeApi: async () => ({ user: { id: 'test' } }), isOpenAiModel: api.isOpenAiModel, parseGenerationBody: api.parseGenerationBody } }, async () => new Response(provider, { status: 200 }));
+    const route = load(paths.stream, { '@/lib/api-access': { authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }), refundApiQuota: async () => {}, commitApiQuota: async () => {}, isOpenAiModel: api.isOpenAiModel, parseGenerationBody: api.parseGenerationBody } }, async () => new Response(provider, { status: 200 }));
     process.env.GROQ_API_KEY = 'mock-only';
     try {
         const response = await route.POST(request());
@@ -77,13 +77,15 @@ test('OpenAI model uses the OpenAI endpoint with direct-answer settings', async 
     const api = load('src/lib/api-access.ts');
     const encoder = new TextEncoder();
     const provider = new ReadableStream({ start(controller) {
-        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"answer"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}\n\n'));
         controller.close();
     } });
     let calledUrl = '';
     let calledBody;
     const route = load(paths.stream, { '@/lib/api-access': {
-        authorizeApi: async () => ({ user: { id: 'test' } }),
+        authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }),
+        refundApiQuota: async () => {},
+        commitApiQuota: async () => {},
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
     } }, async (url, init) => {
@@ -106,7 +108,9 @@ test('paid OpenAI failure falls back to free Groq and reports the effective mode
     const encoder = new TextEncoder();
     const calls = [];
     const route = load(paths.stream, { '@/lib/api-access': {
-        authorizeApi: async () => ({ user: { id: 'test' } }),
+        authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }),
+        refundApiQuota: async () => {},
+        commitApiQuota: async () => {},
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
     } }, async (url, init) => {
@@ -132,14 +136,17 @@ test('paid OpenAI failure falls back to free Groq and reports the effective mode
     }
 });
 
-test('failed provider requests do not consume generation quota', async () => {
+test('failed provider requests reserve then refund generation quota', async () => {
     const api = load('src/lib/api-access.ts');
     const authorizationKinds = [];
+    let refunds = 0;
     const route = load(paths.stream, { '@/lib/api-access': {
         authorizeApi: async (_request, kind) => {
             authorizationKinds.push(kind || 'identity');
-            return { user: { id: 'test' } };
+            return { user: { id: 'test' }, reservationId: kind ? 'r1' : undefined };
         },
+        refundApiQuota: async () => { refunds++; },
+        commitApiQuota: async () => {},
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
     } }, async () => new Response('provider failure', { status: 503 }));
@@ -147,6 +154,7 @@ test('failed provider requests do not consume generation quota', async () => {
     try {
         const response = await route.POST(request());
         assert.equal(response.status, 503);
-        assert.deepEqual(authorizationKinds, ['identity']);
+        assert.deepEqual(authorizationKinds, ['identity', 'generate']);
+        assert.equal(refunds, 1);
     } finally { delete process.env.GROQ_API_KEY; }
 });

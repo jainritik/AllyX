@@ -109,6 +109,11 @@ export default function InterviewHistoryPage() {
         loadInterviews();
     }, [loadInterviews]);
 
+    useEffect(() => {
+        const requestedSession = new URLSearchParams(window.location.search).get("session");
+        if (requestedSession) setExpandedId(requestedSession);
+    }, []);
+
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         const confirmed = await confirm({
@@ -354,11 +359,11 @@ export default function InterviewHistoryPage() {
                                             </div>
                                         )}
 
-                                        {/* Job Description (if available) */}
+                                        {/* AI context and answer style (if available) */}
                                         {interview.analysis?.job_description && (
                                             <div className="pt-4 border-t border-gray-100 dark:border-zinc-700">
                                                 <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                                    Job Description
+                                                    AI Context &amp; Answer Style
                                                 </h4>
                                                 <div className="p-3 bg-gray-50 dark:bg-zinc-900 rounded-lg max-h-32 overflow-y-auto">
                                                     <p className="text-sm text-gray-600 dark:text-gray-400">

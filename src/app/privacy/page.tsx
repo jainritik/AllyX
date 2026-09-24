@@ -138,7 +138,7 @@ export default function PrivacyPolicyPage() {
                         </p>
                         <p className="text-gray-600 dark:text-gray-300 mb-2">We may share your personal information in the following situations:</p>
                         <ul className="list-disc ml-6 space-y-2 text-gray-600 dark:text-gray-300">
-                            <li><strong>With AI Service Providers.</strong> We share your input (resume, job description, interview questions) with AI providers (such as OpenAI, Google, Groq) to generate interview answers. These providers process your data according to their privacy policies.</li>
+                            <li><strong>With AI Service Providers.</strong> We share your input (resume, AI context, answer preferences, and interview questions) with OpenAI or Groq to generate answers. These providers process your data according to their privacy policies.</li>
                             <li><strong>With Service Providers.</strong> We share your data with Supabase for database storage and authentication.</li>
                             <li><strong>Business Transfers.</strong> We may share or transfer your information in connection with any merger, sale of company assets, or acquisition.</li>
                         </ul>
@@ -165,7 +165,7 @@ export default function PrivacyPolicyPage() {
                             As part of our Services, we offer products, features, or tools powered by artificial intelligence, machine learning, or similar technologies (collectively, &quot;AI Products&quot;). These tools are designed to enhance your interview experience and provide you with AI-generated answers.
                         </p>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
-                            <strong>Use of AI Technologies:</strong> We provide AI Products through third-party service providers (&quot;AI Service Providers&quot;), including OpenAI, Google AI, and Groq. Your input, output, and personal information will be shared with and processed by these AI Service Providers to enable your use of our AI Products.
+                            <strong>Use of AI Technologies:</strong> We provide AI Products through third-party service providers (&quot;AI Service Providers&quot;), including OpenAI and Groq. Your input, output, and personal information will be shared with and processed by the selected provider to enable your use of our AI Products.
                         </p>
                         <p className="text-gray-600 dark:text-gray-300">
                             <strong>Our AI Products are designed for:</strong>

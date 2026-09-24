@@ -45,7 +45,7 @@ const AI_MODELS = [
     {
         id: "llama-3.1-8b-instant",
         name: "Llama 3.1 8B",
-        description: "Fast, efficient",
+        description: "Fastest, concise answers",
         logo: "/meta.png",
         gradient: "from-blue-500/20 to-cyan-500/20",
         border: "group-hover:border-blue-500/50",
@@ -54,7 +54,7 @@ const AI_MODELS = [
     {
         id: "llama-3.3-70b-versatile",
         name: "Llama 3.3 70B",
-        description: "Smart reasoning",
+        description: "Detailed general answers",
         logo: "/meta.png",
         gradient: "from-purple-500/20 to-pink-500/20",
         border: "group-hover:border-purple-500/50",
@@ -63,7 +63,7 @@ const AI_MODELS = [
     {
         id: "qwen/qwen3-32b",
         name: "Qwen 32B",
-        description: "Multilingual pro",
+        description: "Strong multilingual support",
         logo: "/qwen.png",
         gradient: "from-indigo-500/20 to-violet-500/20",
         border: "group-hover:border-indigo-500/50",
@@ -72,7 +72,7 @@ const AI_MODELS = [
     {
         id: "openai/gpt-oss-120b",
         name: "GPT-OSS 120B",
-        description: "Max power",
+        description: "Balanced technical reasoning",
         logo: "/openai-logo.png",
         gradient: "from-emerald-500/20 to-green-500/20",
         border: "group-hover:border-emerald-500/50",
@@ -81,7 +81,7 @@ const AI_MODELS = [
     {
         id: "gpt-5.4-mini",
         name: "GPT-5.4 Mini",
-        description: "Direct technical answers",
+        description: "Fast paid technical model",
         logo: "/openai-logo.png",
         gradient: "from-red-500/20 to-orange-500/20",
         border: "group-hover:border-red-500/50",

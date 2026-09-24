@@ -64,6 +64,9 @@ create policy "Users can view own interviews." on public.interviews
 create policy "Users can insert own interviews." on public.interviews
   for insert with check (auth.uid() = user_id);
 
+create policy "Users can update own interviews." on public.interviews
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 create policy "Users can delete own interviews." on public.interviews
   for delete using (auth.uid() = user_id);
 

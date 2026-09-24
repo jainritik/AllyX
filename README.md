@@ -9,7 +9,7 @@ This repository contains the private beta source. Payment and subscription check
 - Email signup, confirmation, login, logout, resend confirmation, forgot password, and password reset.
 - Resume/context upload and interview setup.
 - Manual and automatic question submission.
-- Groq transcription and answer generation with bounded requests and timeouts.
+- Groq transcription plus Groq/OpenAI answer generation with bounded requests, timeouts, and provider fallback.
 - Recoverable session drafts and saved session history.
 - Electron shell for macOS and Windows.
 - Always-on-top translucent answer overlay.
@@ -29,7 +29,7 @@ Electron desktop shell
 Next.js application
   ├── Supabase authentication and database
   ├── Groq transcription endpoint
-  ├── Groq answer-generation endpoint
+  ├── Groq/OpenAI answer-generation endpoint
   └── Vercel-hosted renderer
 ```
 
@@ -41,6 +41,7 @@ The packaged Electron application loads the configured hosted renderer. Desktop 
 - npm
 - A Supabase project
 - A Groq API key
+- An OpenAI API key when the paid OpenAI model is enabled
 - A hosted Next.js renderer for packaged desktop builds
 - macOS on Apple Silicon for the local build command below
 
@@ -52,6 +53,7 @@ Create `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
 GROQ_API_KEY=YOUR_SERVER_SIDE_GROQ_KEY
+OPENAI_API_KEY=YOUR_SERVER_SIDE_OPENAI_KEY
 ```
 
 Optional deployment/build variables:
@@ -63,7 +65,7 @@ NEXT_PUBLIC_WINDOWS_X64_DOWNLOAD_URL=https://example.com/ZEDX-AI-Setup.exe
 ZEDX_APP_URL=https://your-hosted-renderer.example.com
 ```
 
-Never place the Groq secret in a `NEXT_PUBLIC_` variable. Rotate any credentials shared through chat or committed to source before a public beta.
+Never place Groq or OpenAI secrets in a `NEXT_PUBLIC_` variable. Rotate any credentials shared through chat or committed to source before a public beta.
 
 ## Database setup
 
@@ -72,7 +74,7 @@ Apply the SQL in this order through the Supabase SQL editor:
 1. `supabase_schema.sql`
 2. `supabase_beta_migration.sql`
 
-The beta migration contains the server-side usage ledger, account-bound profile rules, and atomic resume-limit enforcement used by the current application.
+The beta migration contains the server-side usage reservation ledger, account-bound profile rules, recoverable session updates, and atomic resume-limit enforcement used by the current application. Apply it before deploying these API routes; missing quota functions intentionally stop AI requests rather than allowing uncounted use.
 
 Configure the production site URL and allowed redirect URLs in Supabase Authentication. Configure a transactional SMTP provider for reliable confirmation and password-reset email delivery.
 
@@ -145,10 +147,9 @@ The current beta build is unsigned. macOS may require Control-clicking the appli
 ## Repository layout
 
 ```text
-electron/                    Electron main process, preload bridge and native tests
+electron/                    Electron main process, static overlay, preload bridge and native tests
 src/app/                     Next.js routes and application screens
-src/app/api/                 Authenticated Groq and document-processing routes
-src/app/desktop/overlay/     Transparent desktop answer overlay
+src/app/api/                 Authenticated AI, transcription and document-processing routes
 src/lib/                     Authentication, context and persistence helpers
 tests/                       Web/auth/service regression tests
 supabase_schema.sql          Base database schema
