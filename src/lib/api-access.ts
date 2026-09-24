@@ -37,12 +37,18 @@ export async function authorizeApi(request: NextRequest, kind?: UsageKind) {
     return { user: data.user };
 }
 
-export const ALLOWED_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-120b"] as const;
+export const OPENAI_MODELS = ["gpt-5.4-mini"] as const;
+export const GROQ_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-120b"] as const;
+export const ALLOWED_MODELS = [...GROQ_MODELS, ...OPENAI_MODELS] as const;
+
+export function isOpenAiModel(model: string) {
+    return (OPENAI_MODELS as readonly string[]).includes(model);
+}
 
 export function parseGenerationBody(body: unknown) {
     if (!body || typeof body !== "object") return null;
     const input = body as Record<string, unknown>;
-    const model = input.model === undefined ? ALLOWED_MODELS[0] : input.model;
+    const model = input.model === undefined ? "openai/gpt-oss-120b" : input.model;
     if (typeof model !== "string" || !ALLOWED_MODELS.includes(model as typeof ALLOWED_MODELS[number])) return null;
     const systemPrompt = input.systemPrompt ?? "";
     if (typeof systemPrompt !== "string" || systemPrompt.length > 12000) return null;

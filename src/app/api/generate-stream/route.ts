@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { authorizeApi, parseGenerationBody } from "@/lib/api-access";
+import { authorizeApi, isOpenAiModel, parseGenerationBody } from "@/lib/api-access";
 
 // Streaming AI Generation using Groq
 // This endpoint returns Server-Sent Events (SSE) for real-time word-by-word responses
@@ -15,11 +15,12 @@ export async function POST(request: NextRequest) {
         if (!parsed) return Response.json({ error: "Invalid prompt, messages, or model" }, { status: 400 });
         const { model, messages, systemPrompt } = parsed;
 
-        const groqApiKey = process.env.GROQ_API_KEY;
+        const usesOpenAi = isOpenAiModel(model);
+        const providerApiKey = usesOpenAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
 
-        if (!groqApiKey) {
+        if (!providerApiKey) {
             return new Response(
-                JSON.stringify({ error: "Server AI configuration missing" }),
+                JSON.stringify({ error: `${usesOpenAi ? "OpenAI" : "Groq"} server configuration missing` }),
                 { status: 500, headers: { "Content-Type": "application/json" } }
             );
         }
@@ -31,25 +32,38 @@ export async function POST(request: NextRequest) {
             ? [{ role: "system", content: systemPrompt }, ...messages]
             : messages;
 
-        // Request streaming response from Groq
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const requestBody = usesOpenAi
+            ? {
+                model,
+                messages: finalMessages,
+                max_completion_tokens: 4096,
+                reasoning_effort: "none",
+                stream: true,
+            }
+            : {
+                model,
+                messages: finalMessages,
+                max_tokens: 4096,
+                temperature: 0.3,
+                ...(model === "openai/gpt-oss-120b" ? { reasoning_effort: "low" } : {}),
+                stream: true,
+            };
+
+        // Both providers expose OpenAI-compatible streaming chat completions.
+        const response = await fetch(usesOpenAi
+            ? "https://api.openai.com/v1/chat/completions"
+            : "https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${groqApiKey}`
+                "Authorization": `Bearer ${providerApiKey}`
             },
-            body: JSON.stringify({
-                model: model || "llama-3.1-8b-instant",
-                messages: finalMessages,
-                max_tokens: 4096,
-                temperature: 0.7,
-                stream: true // Enable streaming
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
             const errorData = await response.text();
-            console.error("[Stream API] Groq Error:", errorData);
+            console.error(`[Stream API] ${usesOpenAi ? "OpenAI" : "Groq"} Error:`, errorData);
             return new Response(
                 JSON.stringify({ error: "AI temporarily unavailable" }),
                 { status: response.status, headers: { "Content-Type": "application/json" } }

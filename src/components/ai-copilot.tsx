@@ -36,9 +36,9 @@ export function AiCopilot() {
 
         try {
             // Use server-side Groq API (no API key needed from client)
-            let selectedModel = "llama-3.1-8b-instant";
+            let selectedModel = "openai/gpt-oss-120b";
             try {
-                selectedModel = localStorage.getItem("selected_ai_model") || "llama-3.1-8b-instant";
+                selectedModel = localStorage.getItem("selected_ai_model") || "openai/gpt-oss-120b";
             } catch {
                 // localStorage may be unavailable in some browsers
             }

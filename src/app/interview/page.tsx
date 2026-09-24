@@ -94,7 +94,7 @@ export default function InterviewPage() {
     const [systemStatus, setSystemStatus] = useState({ browser: true, camera: false, mic: false });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _ignoreStatus = systemStatus;
-    const [interviewContext, setInterviewContext] = useState({ type: "", jd: "", resume: "", lang: "en-US", model: "llama-3.1-8b-instant" });
+    const [interviewContext, setInterviewContext] = useState({ type: "", jd: "", resume: "", lang: "en-US", model: "openai/gpt-oss-120b" });
     const [answerModel, setAnswerModel] = useState<string | null>(null);
     const [answerTruncated, setAnswerTruncated] = useState(false);
     const [isAutoMode, setIsAutoMode] = useState(true); // Auto Answer ON by default
@@ -188,7 +188,7 @@ export default function InterviewPage() {
             setContextReady(true);
         } catch {
             // localStorage unavailable (private mode)
-            setInterviewContext({ type: "General", jd: "", resume: "", lang: "en-US", model: "llama-3.1-8b-instant" });
+            setInterviewContext({ type: "General", jd: "", resume: "", lang: "en-US", model: "openai/gpt-oss-120b" });
         }
 
         // v18.0: Listen for scanner state changes (Atomic Sync)

@@ -48,7 +48,8 @@ const AI_MODELS = [
         description: "Fast, efficient",
         logo: "/meta.png",
         gradient: "from-blue-500/20 to-cyan-500/20",
-        border: "group-hover:border-blue-500/50"
+        border: "group-hover:border-blue-500/50",
+        paid: false,
     },
     {
         id: "llama-3.3-70b-versatile",
@@ -56,7 +57,8 @@ const AI_MODELS = [
         description: "Smart reasoning",
         logo: "/meta.png",
         gradient: "from-purple-500/20 to-pink-500/20",
-        border: "group-hover:border-purple-500/50"
+        border: "group-hover:border-purple-500/50",
+        paid: false,
     },
     {
         id: "qwen/qwen3-32b",
@@ -64,7 +66,8 @@ const AI_MODELS = [
         description: "Multilingual pro",
         logo: "/qwen.png",
         gradient: "from-indigo-500/20 to-violet-500/20",
-        border: "group-hover:border-indigo-500/50"
+        border: "group-hover:border-indigo-500/50",
+        paid: false,
     },
     {
         id: "openai/gpt-oss-120b",
@@ -72,7 +75,17 @@ const AI_MODELS = [
         description: "Max power",
         logo: "/openai-logo.png",
         gradient: "from-emerald-500/20 to-green-500/20",
-        border: "group-hover:border-emerald-500/50"
+        border: "group-hover:border-emerald-500/50",
+        paid: false,
+    },
+    {
+        id: "gpt-5.4-mini",
+        name: "GPT-5.4 Mini",
+        description: "Direct technical answers",
+        logo: "/openai-logo.png",
+        gradient: "from-red-500/20 to-orange-500/20",
+        border: "group-hover:border-red-500/50",
+        paid: true,
     },
 ];
 
@@ -86,7 +99,7 @@ export default function NewInterviewPage() {
     const [resume, setResume] = useState("");
     const [interviewType, setInterviewType] = useState("Technical");
     const [language, setLanguage] = useState("en-US");
-    const [selectedModel, setSelectedModel] = useState("llama-3.1-8b-instant");
+    const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
     const [isLoading, setIsLoading] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -399,6 +412,11 @@ export default function NewInterviewPage() {
                                                 <h4 className={cn("font-bold text-sm sm:text-base", selectedModel === model.id ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400")}>
                                                     {model.name}
                                                 </h4>
+                                                {model.paid && (
+                                                    <span className="ml-2 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[9px] font-black tracking-wider text-red-600 dark:text-red-400">
+                                                        PAID
+                                                    </span>
+                                                )}
                                                 {selectedModel === model.id && (
                                                     <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]"></div>
                                                 )}

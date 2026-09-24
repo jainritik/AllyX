@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ALLOWED_MODELS, authorizeApi, parseGenerationBody } from "@/lib/api-access";
+import { GROQ_MODELS, authorizeApi, isOpenAiModel, parseGenerationBody } from "@/lib/api-access";
 
 // Groq Models Fallback Chain
-const GROQ_MODELS = [...ALLOWED_MODELS];
+const GROQ_FALLBACK_MODELS = [...GROQ_MODELS];
 
 // Debug GET handler to verify endpoint reaches the server
 export async function GET() {
@@ -20,12 +20,12 @@ export async function POST(request: NextRequest) {
 
         const isDev = process.env.NODE_ENV === 'development';
 
-        // Get Groq API Key from server environment
-        const groqApiKey = process.env.GROQ_API_KEY;
+        const usesOpenAi = isOpenAiModel(model);
+        const selectedApiKey = usesOpenAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
 
-        if (!groqApiKey) {
+        if (!selectedApiKey) {
             return NextResponse.json(
-                { error: { message: "Server AI configuration missing. Please contact support." } },
+                { error: { message: `${usesOpenAi ? "OpenAI" : "Groq"} server configuration missing. Please contact support.` } },
                 { status: 500 }
             );
         }
@@ -34,15 +34,22 @@ export async function POST(request: NextRequest) {
 
         if (isDev) console.log(`[API Generate] Using Groq with model: ${model || 'auto'}`);
 
-        // Build model fallback chain - user's selection first, then fallbacks
-        const modelsToTry = model ? [model, ...GROQ_MODELS.filter(m => m !== model)] : GROQ_MODELS;
+        // OpenAI selections stay on OpenAI. Groq selections retain the existing
+        // fallback chain for temporary rate limits or model availability.
+        const modelsToTry = usesOpenAi
+            ? [model]
+            : [model, ...GROQ_FALLBACK_MODELS.filter(m => m !== model)];
         const uniqueModels = [...new Set(modelsToTry)].slice(0, 2);
 
         let lastError: Error | null = null;
 
         for (const targetModel of uniqueModels) {
             try {
-                if (isDev) console.log(`[API Generate] Trying Groq ${targetModel}...`);
+                const targetUsesOpenAi = isOpenAiModel(targetModel);
+                const providerName = targetUsesOpenAi ? "OpenAI" : "Groq";
+                const providerApiKey = targetUsesOpenAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
+                if (!providerApiKey) throw new Error(`${providerName} server configuration missing`);
+                if (isDev) console.log(`[API Generate] Trying ${providerName} ${targetModel}...`);
 
                 // Build messages array
                 const groqMessages = messages;
@@ -57,18 +64,30 @@ export async function POST(request: NextRequest) {
                 const timeoutId = setTimeout(() => controller.abort(), 60000);
 
                 let response: Response;
-                try { response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${groqApiKey}`
-                    },
-                    body: JSON.stringify({
+                const requestBody = targetUsesOpenAi
+                    ? {
+                        model: targetModel,
+                        messages: finalMessages,
+                        max_completion_tokens: 4096,
+                        reasoning_effort: "none",
+                    }
+                    : {
                         model: targetModel,
                         messages: finalMessages,
                         max_tokens: 4096,
-                        temperature: 0.7
-                    }),
+                        temperature: 0.3,
+                        ...(targetModel === "openai/gpt-oss-120b" ? { reasoning_effort: "low" } : {}),
+                    };
+
+                try { response = await fetch(targetUsesOpenAi
+                    ? "https://api.openai.com/v1/chat/completions"
+                    : "https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${providerApiKey}`
+                    },
+                    body: JSON.stringify(requestBody),
                     signal: controller.signal
                 }); } finally { clearTimeout(timeoutId); }
 
@@ -82,18 +101,18 @@ export async function POST(request: NextRequest) {
                 if (!content) throw new Error("Empty response from AI");
                 const finishReason = data.choices?.[0]?.finish_reason || null;
 
-                if (isDev) console.log(`[API Generate] Groq Success: ${targetModel}`);
+                if (isDev) console.log(`[API Generate] ${providerName} Success: ${targetModel}`);
                 return NextResponse.json({
                     content,
                     modelUsed: targetModel,
-                    provider: "groq",
+                    provider: targetUsesOpenAi ? "openai" : "groq",
                     finishReason,
                     truncated: finishReason === "length"
                 });
 
             } catch (error: unknown) {
                 const err = error as Error;
-                console.warn(`[API Generate] Groq ${targetModel} failed:`, err.message);
+                console.warn(`[API Generate] ${isOpenAiModel(targetModel) ? "OpenAI" : "Groq"} ${targetModel} failed:`, err.message);
                 lastError = err;
 
                 // If rate limited or quota exceeded, try next model
