@@ -36,7 +36,9 @@ export interface ElectronAPI {
     getOverlayState: () => { interactive: boolean };
     onOverlayInteractionChange: (callback: (interactive: boolean) => void) => () => void;
     submitOverlayQuestion: (question: string) => Promise<{ success: boolean; error?: string }>;
+    continueOverlayAnswer: () => Promise<{ success: boolean; error?: string }>;
     onOverlayManualQuestion: (callback: (question: string) => void) => () => void;
+    onOverlayContinueAnswer: (callback: () => void) => () => void;
     downloadUpdate: () => void;
     installUpdate: () => void;
     onUpdateAvailable: (callback: (version: string) => void) => () => void;

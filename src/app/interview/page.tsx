@@ -368,6 +368,7 @@ export default function InterviewPage() {
             const decoder = new TextDecoder();
             let buffer = "";
             let text = "";
+            let finishReason = "";
             let lastOverlayUpdate = 0;
             const prefix = continuation ? `${aiResponse}\n\n` : "";
             while (true) {
@@ -380,7 +381,11 @@ export default function InterviewPage() {
                         if (!line.startsWith("data: ")) continue;
                         const payload = line.slice(6);
                         if (payload === "[DONE]") continue;
-                        try { text += JSON.parse(payload).content || ""; } catch { /* Ignore malformed event. */ }
+                        try {
+                            const eventData = JSON.parse(payload);
+                            text += eventData.content || "";
+                            if (eventData.finishReason) finishReason = eventData.finishReason;
+                        } catch { /* Ignore malformed event. */ }
                     }
                     if (text) {
                         const liveAnswer = `${prefix}${text}`;
@@ -399,8 +404,12 @@ export default function InterviewPage() {
 
             const completeAnswer = `${prefix}${text}`;
             setAiResponse(completeAnswer);
-            setAnswerModel(interviewContext.model);
-            setAnswerTruncated(false);
+            setAnswerModel(response.headers.get("X-ZEDX-Model") || interviewContext.model);
+            setAnswerTruncated(finishReason === "length");
+            window.electronAPI?.sendOverlayStatus?.(
+                finishReason === "length" ? "The answer reached its limit. Press Continue to finish it." : "",
+                finishReason === "length" ? "progress" : "success",
+            );
             // Broadcast to Electron Overlay
             if (window.electronAPI?.sendAnswer) {
                 window.electronAPI.sendAnswer(completeAnswer);
@@ -487,6 +496,11 @@ export default function InterviewPage() {
         void getAiAnswer(question);
     }), [contextReady, getAiAnswer]);
 
+    useEffect(() => window.electronAPI?.onOverlayContinueAnswer?.(() => {
+        if (!contextReady || !answerTruncated) return;
+        void getAiAnswer("Continue exactly from the last sentence without repeating the previous answer.", true);
+    }), [answerTruncated, contextReady, getAiAnswer]);
+
     // Silence Detection for Auto-Answer
     useEffect(() => {
         if (!isAutoMode || !isRecording || isLoading || !transcript.trim()) return;
@@ -496,7 +510,7 @@ export default function InterviewPage() {
         silenceTimerRef.current = setTimeout(() => {
             console.log("Auto-answering due to silence...");
             getAiAnswer();
-        }, isElectron ? 350 : 900);
+        }, isElectron ? 1600 : 1800);
 
         return () => {
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -1426,6 +1440,7 @@ export default function InterviewPage() {
             router.push("/dashboard");
         } catch (error) {
             console.error("Failed to save interview:", error);
+            sessionEndingRef.current = false;
             setError("Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.");
         } finally {
             setIsSaving(false);

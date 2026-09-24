@@ -528,6 +528,13 @@ function setupIpcHandlers() {
         mainAppWindow.webContents.send('overlay-manual-question', question);
         return { success: true };
     });
+    handleTrusted('continue-overlay-answer', async () => {
+        if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewSessionPage()) {
+            return { success: false, error: 'Start an interview session in the main window first.' };
+        }
+        mainAppWindow.webContents.send('overlay-continue-answer');
+        return { success: true };
+    });
 
     // Updater IPCs
     // No update feed is configured for this fork. Re-enable only with an

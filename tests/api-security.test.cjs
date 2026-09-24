@@ -100,3 +100,53 @@ test('OpenAI model uses the OpenAI endpoint with direct-answer settings', async 
         assert.equal(calledBody.max_completion_tokens, 4096);
     } finally { delete process.env.OPENAI_API_KEY; }
 });
+
+test('paid OpenAI failure falls back to free Groq and reports the effective model', async () => {
+    const api = load('src/lib/api-access.ts');
+    const encoder = new TextEncoder();
+    const calls = [];
+    const route = load(paths.stream, { '@/lib/api-access': {
+        authorizeApi: async () => ({ user: { id: 'test' } }),
+        isOpenAiModel: api.isOpenAiModel,
+        parseGenerationBody: api.parseGenerationBody,
+    } }, async (url, init) => {
+        calls.push({ url, body: JSON.parse(init.body) });
+        if (url.includes('openai.com')) return new Response('quota exceeded', { status: 429 });
+        return new Response(new ReadableStream({ start(controller) {
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"fallback answer"},"finish_reason":"stop"}]}\n\n'));
+            controller.close();
+        } }), { status: 200 });
+    });
+    process.env.OPENAI_API_KEY = 'mock-paid';
+    process.env.GROQ_API_KEY = 'mock-free';
+    try {
+        const response = await route.POST(request('gpt-5.4-mini'));
+        assert.equal(response.status, 200);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[1].body.model, 'openai/gpt-oss-120b');
+        assert.equal(response.headers.get('X-ZEDX-Model'), 'openai/gpt-oss-120b');
+        assert.match(await response.text(), /fallback answer/);
+    } finally {
+        delete process.env.OPENAI_API_KEY;
+        delete process.env.GROQ_API_KEY;
+    }
+});
+
+test('failed provider requests do not consume generation quota', async () => {
+    const api = load('src/lib/api-access.ts');
+    const authorizationKinds = [];
+    const route = load(paths.stream, { '@/lib/api-access': {
+        authorizeApi: async (_request, kind) => {
+            authorizationKinds.push(kind || 'identity');
+            return { user: { id: 'test' } };
+        },
+        isOpenAiModel: api.isOpenAiModel,
+        parseGenerationBody: api.parseGenerationBody,
+    } }, async () => new Response('provider failure', { status: 503 }));
+    process.env.GROQ_API_KEY = 'mock-free';
+    try {
+        const response = await route.POST(request());
+        assert.equal(response.status, 503);
+        assert.deepEqual(authorizationKinds, ['identity']);
+    } finally { delete process.env.GROQ_API_KEY; }
+});

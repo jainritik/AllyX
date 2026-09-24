@@ -21,23 +21,12 @@ export async function POST(request: NextRequest) {
         const isDev = process.env.NODE_ENV === 'development';
 
         const usesOpenAi = isOpenAiModel(model);
-        const selectedApiKey = usesOpenAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
-
-        if (!selectedApiKey) {
-            return NextResponse.json(
-                { error: { message: `${usesOpenAi ? "OpenAI" : "Groq"} server configuration missing. Please contact support.` } },
-                { status: 500 }
-            );
-        }
-        const quota = await authorizeApi(request, "generate");
-        if (quota.error) return quota.error;
-
         if (isDev) console.log(`[API Generate] Using Groq with model: ${model || 'auto'}`);
 
-        // OpenAI selections stay on OpenAI. Groq selections retain the existing
-        // fallback chain for temporary rate limits or model availability.
+        // A paid OpenAI selection falls back to the free Groq default if the
+        // paid provider is unavailable or has reached its account limit.
         const modelsToTry = usesOpenAi
-            ? [model]
+            ? [model, "openai/gpt-oss-120b"]
             : [model, ...GROQ_FALLBACK_MODELS.filter(m => m !== model)];
         const uniqueModels = [...new Set(modelsToTry)].slice(0, 2);
 
@@ -100,6 +89,8 @@ export async function POST(request: NextRequest) {
                 const content = data.choices?.[0]?.message?.content;
                 if (!content) throw new Error("Empty response from AI");
                 const finishReason = data.choices?.[0]?.finish_reason || null;
+                const quota = await authorizeApi(request, "generate");
+                if (quota.error) return quota.error;
 
                 if (isDev) console.log(`[API Generate] ${providerName} Success: ${targetModel}`);
                 return NextResponse.json({
@@ -116,7 +107,7 @@ export async function POST(request: NextRequest) {
                 lastError = err;
 
                 // If rate limited or quota exceeded, try next model
-                if (err.message.includes("429") || err.message.includes("quota") || err.message.includes("503")) {
+                if (isOpenAiModel(targetModel) || err.message.includes("429") || err.message.includes("quota") || err.message.includes("503")) {
                     continue;
                 }
                 break;

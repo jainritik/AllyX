@@ -11,6 +11,7 @@ const OVERLAY_CHANNELS = new Set([
     'set-ignore-mouse-events',
     'get-overlay-state',
     'submit-overlay-question',
+    'continue-overlay-answer',
     'toggle-scanner-frame',
 ]);
 

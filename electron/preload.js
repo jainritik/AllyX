@@ -45,10 +45,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('overlay-interaction-changed', wrapper);
     },
     submitOverlayQuestion: (question) => ipcRenderer.invoke('submit-overlay-question', question),
+    continueOverlayAnswer: () => ipcRenderer.invoke('continue-overlay-answer'),
     onOverlayManualQuestion: (callback) => {
         const wrapper = (event, question) => callback(question);
         ipcRenderer.on('overlay-manual-question', wrapper);
         return () => ipcRenderer.removeListener('overlay-manual-question', wrapper);
+    },
+    onOverlayContinueAnswer: (callback) => {
+        const wrapper = () => callback();
+        ipcRenderer.on('overlay-continue-answer', wrapper);
+        return () => ipcRenderer.removeListener('overlay-continue-answer', wrapper);
     },
 
     // Compatibility shims for the currently deployed renderer. The owner-

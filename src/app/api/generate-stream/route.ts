@@ -1,9 +1,6 @@
 import { NextRequest } from "next/server";
 import { authorizeApi, isOpenAiModel, parseGenerationBody } from "@/lib/api-access";
 
-// Streaming AI Generation using Groq
-// This endpoint returns Server-Sent Events (SSE) for real-time word-by-word responses
-
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
@@ -11,91 +8,75 @@ export async function POST(request: NextRequest) {
         const access = await authorizeApi(request);
         if (access.error) return access.error;
         if (Number(request.headers.get("content-length")) > 50000) return Response.json({ error: "Request too large" }, { status: 413 });
-        const parsed = parseGenerationBody(await request.json());
-        if (!parsed) return Response.json({ error: "Invalid prompt, messages, or model" }, { status: 400 });
-        const { model, messages, systemPrompt } = parsed;
+        const parsedBody = parseGenerationBody(await request.json());
+        if (!parsedBody) return Response.json({ error: "Invalid prompt, messages, or model" }, { status: 400 });
+        const { model, messages, systemPrompt } = parsedBody;
+        const finalMessages = systemPrompt ? [{ role: "system", content: systemPrompt }, ...messages] : messages;
 
-        const usesOpenAi = isOpenAiModel(model);
-        const providerApiKey = usesOpenAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
-
-        if (!providerApiKey) {
-            return new Response(
-                JSON.stringify({ error: `${usesOpenAi ? "OpenAI" : "Groq"} server configuration missing` }),
-                { status: 500, headers: { "Content-Type": "application/json" } }
-            );
-        }
-        const quota = await authorizeApi(request, "generate");
-        if (quota.error) return quota.error;
-
-        // Build messages array with system prompt
-        const finalMessages = systemPrompt
-            ? [{ role: "system", content: systemPrompt }, ...messages]
-            : messages;
-
-        const requestBody = usesOpenAi
-            ? {
-                model,
-                messages: finalMessages,
-                max_completion_tokens: 4096,
-                reasoning_effort: "none",
-                stream: true,
-            }
-            : {
-                model,
-                messages: finalMessages,
-                max_tokens: 4096,
-                temperature: 0.3,
-                ...(model === "openai/gpt-oss-120b" ? { reasoning_effort: "low" } : {}),
+        const callProvider = async (targetModel: string, openAi: boolean) => {
+            const providerApiKey = openAi ? process.env.OPENAI_API_KEY : process.env.GROQ_API_KEY;
+            if (!providerApiKey) return null;
+            const body = openAi ? {
+                model: targetModel, messages: finalMessages, max_completion_tokens: 4096,
+                reasoning_effort: "none", stream: true,
+            } : {
+                model: targetModel, messages: finalMessages, max_tokens: 4096, temperature: 0.3,
+                ...(targetModel === "openai/gpt-oss-120b" ? { reasoning_effort: "low" } : {}),
                 stream: true,
             };
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 55000);
+            try {
+                return await fetch(openAi ? "https://api.openai.com/v1/chat/completions" : "https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${providerApiKey}` },
+                    body: JSON.stringify(body),
+                    signal: controller.signal,
+                });
+            } finally {
+                clearTimeout(timeout);
+            }
+        };
 
-        // Both providers expose OpenAI-compatible streaming chat completions.
-        const response = await fetch(usesOpenAi
-            ? "https://api.openai.com/v1/chat/completions"
-            : "https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${providerApiKey}`
-            },
-            body: JSON.stringify(requestBody)
-        });
-
+        const requestedOpenAi = isOpenAiModel(model);
+        let effectiveModel = model;
+        let response = await callProvider(model, requestedOpenAi);
+        if (requestedOpenAi && (!response || !response.ok)) {
+            if (response) console.warn(`[Stream API] OpenAI ${response.status}; falling back to Groq.`);
+            effectiveModel = "openai/gpt-oss-120b";
+            response = await callProvider(effectiveModel, false);
+        }
+        if (!response) return Response.json({ error: "AI server configuration missing" }, { status: 500 });
         if (!response.ok) {
-            const errorData = await response.text();
-            console.error(`[Stream API] ${usesOpenAi ? "OpenAI" : "Groq"} Error:`, errorData);
-            return new Response(
-                JSON.stringify({ error: "AI temporarily unavailable" }),
-                { status: response.status, headers: { "Content-Type": "application/json" } }
-            );
+            console.error("[Stream API] Provider Error:", await response.text());
+            return Response.json({ error: "AI temporarily unavailable" }, { status: response.status });
         }
 
-        // Create a TransformStream to process the SSE data
+        const quota = await authorizeApi(request, "generate");
+        if (quota.error) {
+            await response.body?.cancel();
+            return quota.error;
+        }
+
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
-
         let carry = "";
         const processLines = (lines: string[], controller: TransformStreamDefaultController<Uint8Array>) => {
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        const data = line.slice(6);
-                        if (data === "[DONE]") {
-                            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                            return;
-                        }
-
-                        try {
-                            const parsed = JSON.parse(data);
-                            const content = parsed.choices?.[0]?.delta?.content;
-                            if (content) {
-                                // Send each token as SSE
-                                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
-                            }
-                        } catch {
-                            // Ignore malformed provider events, never partial chunks.
-                        }
-                    }
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6);
+                if (data === "[DONE]") {
+                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                    continue;
                 }
+                try {
+                    const providerEvent = JSON.parse(data);
+                    const content = providerEvent.choices?.[0]?.delta?.content;
+                    if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                    const finishReason = providerEvent.choices?.[0]?.finish_reason;
+                    if (finishReason) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ finishReason, model: effectiveModel })}\n\n`));
+                } catch { /* Never forward partial or malformed provider events. */ }
+            }
         };
         const transformStream = new TransformStream<Uint8Array, Uint8Array>({
             transform(chunk, controller) {
@@ -107,25 +88,19 @@ export async function POST(request: NextRequest) {
             flush(controller) {
                 carry += decoder.decode();
                 if (carry.trim()) processLines([carry], controller);
-            }
+            },
         });
 
-        // Pipe the response through our transform
-        const stream = response.body?.pipeThrough(transformStream);
-
-        return new Response(stream, {
+        return new Response(response.body?.pipeThrough(transformStream), {
             headers: {
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
-                "Connection": "keep-alive"
-            }
+                Connection: "keep-alive",
+                "X-ZEDX-Model": effectiveModel,
+            },
         });
-
     } catch (error: unknown) {
         console.error("[Stream API] Error:", error);
-        return new Response(
-            JSON.stringify({ error: "Stream failed" }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+        return Response.json({ error: "Stream failed" }, { status: 500 });
     }
 }

@@ -36,9 +36,6 @@ export async function POST(request: NextRequest) {
             console.error("[Transcribe API] No keys found! Check .env.local");
             return NextResponse.json({ error: "Server configuration error: No keys available" }, { status: 500 });
         }
-        const quota = await authorizeApi(request, "transcribe");
-        if (quota.error) return quota.error;
-
         // Shuffle keys once to start randomly but consistently
         const shuffledKeys = [...API_KEYS].sort(() => Math.random() - 0.5);
 
@@ -85,6 +82,8 @@ export async function POST(request: NextRequest) {
 
                 if (response.ok) {
                     const data = await response.json();
+                    const quota = await authorizeApi(request, "transcribe");
+                    if (quota.error) return quota.error;
                     return NextResponse.json({ text: data.text });
                 }
 
