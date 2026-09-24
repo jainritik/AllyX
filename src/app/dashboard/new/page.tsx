@@ -183,7 +183,7 @@ export default function NewInterviewPage() {
 
     const handleStart = () => {
         if (!isValid) {
-            setError("Please fill in Job Description and Resume to proceed.");
+            setError("Please add role details, answer preferences, and your resume to proceed.");
             return;
         }
 
@@ -243,7 +243,7 @@ export default function NewInterviewPage() {
                     {/* Left Column: Configuration (8 cols) */}
                     <div className="lg:col-span-7 flex flex-col gap-8 h-full">
 
-                        {/* Job Description Card */}
+                        {/* Role and answer preferences card */}
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -258,15 +258,15 @@ export default function NewInterviewPage() {
                                             <BriefcaseIcon />
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-lg sm:text-2xl text-gray-900 dark:text-white mb-0.5 sm:mb-1">Job Description</h3>
-                                            <p className="text-sm sm:text-base text-gray-500 font-medium">Paste the target role details.</p>
+                                            <h3 className="font-bold text-lg sm:text-2xl text-gray-900 dark:text-white mb-0.5 sm:mb-1">Role &amp; Answer Preferences</h3>
+                                            <p className="text-sm sm:text-base text-gray-500 font-medium">Add the role details and describe how you want answers written.</p>
                                         </div>
                                     </div>
                                     <span className="text-[10px] sm:text-sm font-bold font-mono text-emerald-800 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl tracking-wider uppercase">REQUIRED</span>
                                 </div>
                                 <textarea
                                     className="w-full flex-1 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all min-h-[180px] sm:min-h-[220px] leading-relaxed"
-                                    placeholder="e.g. Senior React Developer at Netflix..."
+                                    placeholder={"Example:\nSenior Go Backend Engineer role requiring microservices, PostgreSQL and AWS.\n\nAnswer as the candidate in first person. Keep conceptual answers natural and under 60 seconds. For coding questions, explain the approach, provide Go code, and include complexity."}
                                     value={jobDescription}
                                     onChange={(e) => setJobDescription(e.target.value)}
                                 />
