@@ -42,55 +42,55 @@ export function Navbar() {
                     : "py-4 bg-transparent"
             )}
         >
-            <div className="w-full max-w-full md:max-w-[75vw] mx-auto px-4 sm:px-6 flex items-center justify-between">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
                 {/* Logo */}
                 <Link href="/" className="flex items-center group">
                     <Image
                         src="/zedx-logo.png"
                         alt="ZEDX-AI Logo"
-                        width={110}
-                        height={110}
-                        className="object-contain w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 lg:w-[110px] lg:h-[110px] transition-transform group-hover:scale-105"
+                        width={56}
+                        height={56}
+                        className="object-contain w-11 h-11 transition-transform group-hover:scale-105"
                         style={{ height: 'auto' }}
                         priority
                     />
+                    <span className="-ml-1 text-base font-black tracking-[-0.04em] text-slate-950 dark:text-white">ZEDX</span>
                 </Link>
 
                 {/* Desktop Navigation */}
-                <div className="hidden md:flex items-center space-x-5">
+                <div className="hidden md:flex items-center gap-2">
                     <Link
-                        href="/#features"
-                        className="flex items-center gap-1.5 text-lg font-bold text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                        href="/#how-it-works"
+                        className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:text-sky-600 dark:hover:text-cyan-300 transition-colors"
                         onClick={(e) => {
                             if (window.location.pathname === '/') {
                                 e.preventDefault();
-                                document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+                                document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
                             }
                         }}
                     >
-                        <span className="px-6 py-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-750 transition-all shadow-sm">
+                        <span className="px-4 py-2 rounded-full hover:bg-white/70 dark:hover:bg-white/10 transition-all">
                             How it Works
                         </span>
                     </Link>
                     <Link
-                        href="/download"
-                        className="flex items-center gap-1.5 text-lg font-bold text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors group relative"
+                        href="/#pricing"
+                        className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:text-sky-600 dark:hover:text-cyan-300 transition-colors"
                     >
-                        <span className="px-6 py-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-750 transition-all shadow-sm flex items-center gap-2">
-                            Desktop App
-                            <span className="bg-emerald-500 text-white text-xs font-extra-bold px-2.5 py-1 rounded-full animate-pulse shadow-md shadow-emerald-500/20">NEW</span>
+                        <span className="px-4 py-2 rounded-full hover:bg-white/70 dark:hover:bg-white/10 transition-all">
+                            Pricing
                         </span>
                     </Link>
                     <Link
-                        href="/about"
-                        className="text-lg font-bold transition-colors"
+                        href="/download"
+                        className="text-sm font-semibold transition-colors"
                     >
-                        <span className="px-6 py-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-750 transition-all shadow-sm text-gray-700 dark:text-gray-200">
-                            About ZEDX Copilot
+                        <span className="px-4 py-2 rounded-full hover:bg-white/70 dark:hover:bg-white/10 transition-all text-gray-700 dark:text-gray-200">
+                            Download
                         </span>
                     </Link>
 
-                    <div className="pl-4 border-l border-gray-200 dark:border-gray-700">
+                    <div className="ml-2 pl-4 border-l border-gray-200 dark:border-gray-700">
                         <AuthButtons />
                     </div>
                 </div>
@@ -138,6 +138,11 @@ export function Navbar() {
                                     <Link href="/#features" onClick={() => setIsSheetOpen(false)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
                                             How it Works
+                                        </Button>
+                                    </Link>
+                                    <Link href="/#pricing" onClick={() => setIsSheetOpen(false)}>
+                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                            Pricing
                                         </Button>
                                     </Link>
                                     <Link href="/download" onClick={() => setIsSheetOpen(false)}>

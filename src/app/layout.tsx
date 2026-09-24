@@ -6,7 +6,7 @@ import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { DesktopNavBar } from "@/components/desktop-nav";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://zedx-ai-assistant-1.vercel.app"),
+  metadataBase: new URL("https://zedx-private-demo.vercel.app"),
   applicationName: "ZEDX Copilot",
   appleWebApp: {
     title: "ZEDX Copilot",
@@ -14,17 +14,17 @@ export const metadata: Metadata = {
     capable: true,
   },
   title: {
-    default: "ZEDX Copilot - Interview Simulation & Training Assistant",
+    default: "ZEDX Copilot - Real-Time AI Interview Assistant",
     template: "%s | ZEDX Copilot"
   },
-  description: "ZEDX Copilot is a real-time AI interview simulation assistant providing live transcriptions, benchmark answers, and saved session history.",
+  description: "ZEDX is a desktop AI interview assistant for macOS and Windows with live transcription, contextual answer suggestions, text and code capture, and saved session history.",
   keywords: [
     "ZEDX", "ZEDX AI", "ZEDX Copilot", "Mock Interview Assistant", "Live Transcription",
     "Interview Simulation", "Mock Interview Copilot", "AI Interview Notes", "Real-time AI Assistant",
     "Training Assistant", "Interview Practice", "Job Seeker Assistant", "AI Coach",
     "محاكاة مقابلات", "تفريغ صوتي مباشر", "تدريب انترفيو", "ذكاء اصطناعي", "مساعد شخصي"
   ],
-  authors: [{ name: "ZEDX AI Team", url: "https://zedx-ai-assistant-1.vercel.app" }],
+  authors: [{ name: "ZEDX AI Team", url: "https://zedx-private-demo.vercel.app" }],
   creator: "ZEDX AI",
   publisher: "ZEDX AI",
   robots: {
@@ -41,10 +41,10 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://zedx-ai-assistant-1.vercel.app",
+    url: "https://zedx-private-demo.vercel.app",
     siteName: "ZEDX Copilot",
-    title: "ZEDX Copilot - Interview Simulation Assistant",
-    description: "Your live interview simulation and training assistant.",
+    title: "ZEDX Copilot - Real-Time AI Interview Assistant",
+    description: "Live transcription and contextual answer suggestions in a focused desktop app for Mac and Windows.",
     images: [
       {
         url: "/zedx-cyberpunk-banner.png",
@@ -62,13 +62,13 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ZEDX Copilot - Interview Simulation Assistant",
-    description: "Real-time AI interview simulation and verification insights.",
+    title: "ZEDX Copilot - Real-Time AI Interview Assistant",
+    description: "A desktop interview assistant for live transcription, contextual suggestions, and technical questions.",
     images: ["/zedx-cyberpunk-banner.png"],
     creator: "@zedx_ai",
   },
   alternates: {
-    canonical: "https://zedx-ai-assistant-1.vercel.app",
+    canonical: "https://zedx-private-demo.vercel.app",
   },
   verification: {
     google: "googleac3039da11f6677e",
@@ -113,7 +113,6 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning className={isScanner ? "bg-transparent" : ""}>
       <head>
         <meta name="name" content="ZEDX Copilot" />
-        <meta name="author" content="Ziad Emad" />
         <meta property="og:site_name" content="ZEDX Copilot" />
         <meta name="apple-mobile-web-app-title" content="ZEDX Copilot" />
         <meta name="msvalidate.01" content="410978477B68DFFC4D1109011EAF121F" />
@@ -144,14 +143,9 @@ export default async function RootLayout({
               "@type": "WebSite",
               "name": "ZEDX Copilot",
               "alternateName": ["ZEDX", "ZEDX Copilot", "ZedX AI Assistant"],
-              "url": "https://zedx-ai-assistant-1.vercel.app",
-              "logo": "https://zedx-ai-assistant-1.vercel.app/zedx-logo.png",
-              "image": "https://zedx-ai-assistant-1.vercel.app/zedx-logo.png",
-              "potentialAction": {
-                "@type": "SearchAction",
-                "target": "https://zedx-ai-assistant-1.vercel.app/dashboard?q={search_term_string}",
-                "query-input": "required name=search_term_string"
-              }
+              "url": "https://zedx-private-demo.vercel.app",
+              "logo": "https://zedx-private-demo.vercel.app/zedx-logo.png",
+              "image": "https://zedx-private-demo.vercel.app/zedx-logo.png",
             })
           }}
         />
@@ -164,73 +158,12 @@ export default async function RootLayout({
               "@context": "https://schema.org",
               "@type": "Organization",
               "name": "ZEDX Copilot",
-              "url": "https://zedx-ai-assistant-1.vercel.app",
-              "logo": "https://zedx-ai-assistant-1.vercel.app/zedx-logo.png",
-              "sameAs": [
-                "https://github.com/ziademad02153/ZEDX-AI-Assistant"
-              ]
+              "url": "https://zedx-private-demo.vercel.app",
+              "logo": "https://zedx-private-demo.vercel.app/zedx-logo.png"
             })
           }}
         />
-        <script
-          key="schema-webapp"
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "WebApplication",
-              "name": "ZEDX Copilot",
-              "alternateName": ["ZEDX Copilot", "ZEDX"],
-              "url": "https://zedx-ai-assistant-1.vercel.app",
-              "description": "ZEDX Copilot is a real-time AI interview simulation assistant providing live transcriptions and answer verification.",
-              "applicationCategory": "BusinessApplication",
-              "operatingSystem": "Web Browser",
-              "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-              },
-              "aggregateRating": {
-                "@type": "AggregateRating",
-                "ratingValue": "4.9",
-                "ratingCount": "150"
-              },
-              "author": {
-                "@type": "Organization",
-                "name": "ZEDX Copilot",
-                "url": "https://zedx-ai-assistant-1.vercel.app",
-                "logo": "https://zedx-ai-assistant-1.vercel.app/zedx-logo.png"
-              },
-              "brand": {
-                "@type": "Brand",
-                "name": "ZEDX Copilot",
-                "alternateName": ["ZEDX", "zedx"]
-              },
-              "sameAs": [
-                "https://www.producthunt.com/posts/zedx-ai"
-              ]
-            })
-          }}
-        />
-        {/* Organization Schema for Brand Recognition */}
-        <script
-          key="schema-org-brand"
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "Organization",
-              "name": "ZEDX Copilot",
-              "alternateName": ["ZEDX", "ZEDX Copilot"],
-              "url": "https://zedx-ai-assistant-1.vercel.app",
-              "logo": "https://zedx-ai-assistant-1.vercel.app/zedx-logo.png",
-              "description": "ZEDX Copilot - Free Real-Time Interview Simulation & Training Assistant.",
-              "sameAs": [
-                "https://www.producthunt.com/posts/zedx-ai"
-              ]
-            })
-          }}
-        />
+
 
       </head>
       <body

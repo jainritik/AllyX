@@ -59,9 +59,9 @@ OPENAI_API_KEY=YOUR_SERVER_SIDE_OPENAI_KEY
 Optional deployment/build variables:
 
 ```dotenv
-NEXT_PUBLIC_MAC_ARM64_DOWNLOAD_URL=https://example.com/ZEDX-AI-arm64.dmg
-NEXT_PUBLIC_MAC_X64_DOWNLOAD_URL=https://example.com/ZEDX-AI-x64.dmg
-NEXT_PUBLIC_WINDOWS_X64_DOWNLOAD_URL=https://example.com/ZEDX-AI-Setup.exe
+NEXT_PUBLIC_ZEDX_MAC_ARM64_URL=https://example.com/ZEDX-AI-arm64.dmg
+NEXT_PUBLIC_ZEDX_MAC_X64_URL=https://example.com/ZEDX-AI-x64.dmg
+NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL=https://example.com/ZEDX-AI-Setup.exe
 ZEDX_APP_URL=https://your-hosted-renderer.example.com
 ```
 

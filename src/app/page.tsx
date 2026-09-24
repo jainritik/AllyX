@@ -1,336 +1,124 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowRight, Apple, AudioLines, BadgeCheck, Check, Code2, Download, FileText, MessageSquareText, MonitorDown, ScanText, ShieldCheck, Sparkles, WandSparkles, Monitor, Zap } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import Image from "next/image";
-import { Check, Globe, Sparkles, ChevronDown } from "lucide-react";
-import { PlatformSection } from "@/components/platform-section";
+
+export const metadata: Metadata = {
+  title: "Real-Time AI Interview Assistant for Mac and Windows",
+  description: "Prepare for technical and behavioral interviews with live transcription, contextual answer suggestions, screen text capture, and a focused desktop overlay for macOS and Windows.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "ZEDX — Real-Time AI Interview Assistant",
+    description: "A desktop interview copilot with live transcription, contextual suggestions, screen text capture, and support for macOS and Windows.",
+    url: "/",
+    images: [{ url: "/zedx-cyberpunk-banner.png", width: 1200, height: 630, alt: "ZEDX desktop interview assistant" }],
+  },
+};
+
+const features = [
+  { icon: AudioLines, title: "Understands the conversation", copy: "Transcribes microphone and supported desktop audio so the current question stays in context." },
+  { icon: MessageSquareText, title: "Answers with your context", copy: "Uses your resume, target role, preferred tone, and recent questions to generate relevant suggestions." },
+  { icon: ScanText, title: "Reads text and code", copy: "Capture a selected area or paste a technical question when audio alone is not enough." },
+  { icon: ShieldCheck, title: "Focused desktop overlay", copy: "Keep suggestions in a compact, movable window with adjustable opacity and click-through controls." },
+];
+
+const plans = [
+  { name: "Free trial", interviews: "1 trial", price: "₹0", detail: "Up to 10 minutes", featured: false },
+  { name: "Starter", interviews: "2 interviews", price: "₹1,000", detail: "Use when you need it", featured: false },
+  { name: "Growth", interviews: "5 interviews", price: "₹2,000", detail: "Best for an active search", featured: true },
+  { name: "Pro", interviews: "10 interviews", price: "₹3,500", detail: "Lowest cost per interview", featured: false },
+];
+
+const faqs = [
+  ["Does ZEDX join my meeting?", "No. The desktop app runs locally as a separate assistant and does not appear as a meeting participant or bot."],
+  ["Which computers are supported?", "The desktop product is designed for Apple Silicon and Intel Macs, plus 64-bit Windows 10 and Windows 11 computers. Each published build will identify its supported systems."],
+  ["Can I try it before purchasing?", "The planned beta includes one account-level trial of up to 10 minutes. Paid interview packs will be added in the billing phase."],
+  ["Does it work with technical interviews?", "Yes. You can paste questions and code, capture text from the screen, and provide resume and role context for more relevant answers."],
+  ["Will the pricing change?", "These are planned beta launch prices. The final price and included usage may change before billing is enabled."],
+];
+
+function ProductPreview() {
+  return (
+    <div className="relative mx-auto mt-16 w-full max-w-6xl px-3 sm:px-6">
+      <div className="absolute inset-x-16 -top-20 h-64 rounded-full bg-cyan-300/25 blur-[100px]" />
+      <div className="absolute -bottom-12 right-12 h-64 w-64 rounded-full bg-violet-300/25 blur-[90px]" />
+      <div className="relative overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/80 p-2 shadow-[0_35px_110px_-35px_rgba(16,66,94,.45)] backdrop-blur-xl sm:rounded-[2rem] sm:p-3">
+        <div className="overflow-hidden rounded-[1.15rem] border border-slate-200 bg-[#101826] sm:rounded-[1.45rem]">
+          <div className="flex h-10 items-center gap-2 border-b border-white/10 px-4">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#ff6b6b]" /><span className="h-2.5 w-2.5 rounded-full bg-[#ffd166]" /><span className="h-2.5 w-2.5 rounded-full bg-[#69db7c]" />
+            <span className="ml-auto rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold text-emerald-300">SESSION LIVE</span>
+          </div>
+          <div className="grid min-h-[430px] lg:grid-cols-[1.1fr_.9fr]">
+            <div className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_20%_10%,rgba(56,189,248,.16),transparent_35%),linear-gradient(145deg,#101827,#18273d)] p-5 sm:p-8 lg:border-b-0 lg:border-r">
+              <div className="mb-8 flex items-center gap-3 text-xs text-slate-400"><Code2 className="h-4 w-4 text-cyan-300" /><span>candidate-service / handler.go</span></div>
+              <pre className="overflow-hidden text-[10px] leading-6 text-slate-400 sm:text-xs sm:leading-7"><code><span className="text-violet-300">func</span> <span className="text-cyan-200">ProcessJobs</span>(ctx context.Context) error {'{'}{"\n"}  jobs, err := queue.Fetch(ctx){"\n"}  <span className="text-violet-300">if</span> err != nil {'{'}{"\n"}    <span className="text-violet-300">return</span> err{"\n"}  {'}'}{"\n\n"}  <span className="text-slate-500">{"// How would you control concurrency here?"}</span>{"\n"}  <span className="text-violet-300">for</span> _, job := <span className="text-violet-300">range</span> jobs {'{'}{"\n"}    go process(job){"\n"}  {'}'}{"\n"}  <span className="text-violet-300">return</span> nil{"\n"}{'}'}</code></pre>
+              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-[11px] text-slate-300 backdrop-blur sm:left-8 sm:right-8"><span className="flex items-center gap-2"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />Listening to meeting audio</span><span className="hidden text-slate-500 sm:block">00:07:42</span></div>
+            </div>
+            <div className="relative bg-[#0b111d] p-5 sm:p-8">
+              <div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-cyan-300">SUGGESTED ANSWER</p><p className="mt-1 text-xs text-slate-500">Grounded in your role and resume</p></div><Sparkles className="h-5 w-5 text-violet-300" /></div>
+              <div className="space-y-4 text-xs leading-6 text-slate-300 sm:text-sm sm:leading-7">
+                <p>I&apos;d use a bounded worker pool instead of starting one goroutine per job. That gives us explicit backpressure and prevents a large queue from exhausting memory.</p>
+                <div className="rounded-xl border border-cyan-400/15 bg-cyan-400/[.06] p-4"><p className="font-semibold text-cyan-200">Approach</p><ul className="mt-2 space-y-1.5 text-slate-400"><li>• Set the worker count from workload and CPU limits.</li><li>• Stop workers through the parent context.</li><li>• Collect errors with an errgroup.</li><li>• Add metrics for queue depth and processing time.</li></ul></div>
+                <p className="text-slate-400">For strict ordering, I&apos;d separate concurrent processing from ordered result publication.</p>
+              </div>
+              <div className="mt-6 flex gap-2"><span className="rounded-full bg-white/5 px-3 py-1.5 text-[10px] text-slate-400">Concise</span><span className="rounded-full bg-white/5 px-3 py-1.5 text-[10px] text-slate-400">Go</span><span className="rounded-full bg-white/5 px-3 py-1.5 text-[10px] text-slate-400">Technical</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
+  const macUrl = process.env.NEXT_PUBLIC_ZEDX_MAC_ARM64_URL || "/download#mac";
+  const windowsUrl = process.env.NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL || "/download#windows";
+  const softwareSchema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "ZEDX Copilot", applicationCategory: "BusinessApplication", operatingSystem: "macOS, Windows", description: metadata.description, url: "https://zedx-private-demo.vercel.app/", offers: { "@type": "Offer", price: "0", priceCurrency: "INR", description: "Planned 10-minute beta trial" } };
+
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-black font-sans text-gray-900 dark:text-gray-100 overflow-x-hidden">
+    <div className="min-h-screen overflow-x-hidden bg-[#f8fbff] text-slate-950 dark:bg-[#05070b] dark:text-white">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareSchema) }} />
       <Navbar />
-
-      <main className="flex-grow pt-24 relative">
-        {/* Global Background Fusion */}
-        <div className="fixed inset-0 pointer-events-none z-0">
-          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-green-100/40 rounded-full blur-[100px] animate-float"></div>
-          <div className="absolute top-[20%] right-[-10%] w-[40%] h-[60%] bg-teal-50/40 rounded-full blur-[120px] animate-float-delayed"></div>
-        </div>
-
-        {/* Hero Section */}
-        <section className="py-20 md:py-32 text-center container mx-auto px-4 relative z-10">
-          <div className="max-w-4xl mx-auto flex flex-col items-center">
-            <div className="mb-8 inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white dark:bg-zinc-800 border border-green-100 dark:border-green-800 shadow-sm text-green-700 dark:text-green-400 font-semibold text-sm animate-fade-in-up">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
-              ZEDX Copilot: Live Interview Simulation
+      <main>
+        <section className="relative isolate overflow-hidden px-4 pb-24 pt-36 sm:px-6 sm:pt-44">
+          <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_50%_-10%,#8bdcff_0,rgba(192,230,255,.76)_24%,rgba(248,251,255,.96)_58%,#f8fbff_78%)] dark:bg-[radial-gradient(circle_at_50%_-10%,#164e63_0,#0b1320_34%,#05070b_72%)]" />
+          <div className="absolute inset-0 -z-10 opacity-[.17] [background-image:linear-gradient(rgba(15,23,42,.13)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,.13)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:linear-gradient(to_bottom,black,transparent_72%)]" />
+          <div className="mx-auto max-w-5xl text-center">
+            <div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-sky-300/60 bg-white/65 px-4 py-2 text-xs font-semibold text-sky-900 shadow-sm backdrop-blur dark:border-cyan-300/20 dark:bg-white/5 dark:text-cyan-200"><Zap className="h-3.5 w-3.5 fill-current" />Desktop beta for macOS and Windows</div>
+            <h1 className="text-balance text-5xl font-semibold leading-[.98] tracking-[-.055em] sm:text-7xl lg:text-[6.2rem]">Think clearly.<br /><span className="bg-gradient-to-r from-sky-600 via-cyan-500 to-violet-600 bg-clip-text text-transparent">Answer confidently.</span></h1>
+            <p className="mx-auto mt-7 max-w-2xl text-pretty text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-xl sm:leading-8">A real-time AI interview assistant that listens, understands your context, and provides focused answer suggestions when you need them.</p>
+            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <a href={macUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950"><Apple className="h-4 w-4" />Download for Mac</a>
+              <a href={windowsUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white/70 px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"><Monitor className="h-4 w-4" />Download for Windows</a>
             </div>
-
-            <h1 className="text-[2.25rem] xs:text-4xl sm:text-5xl md:text-[5.5rem] font-bold tracking-tight text-gray-900 dark:text-white mb-6 md:mb-8 leading-[1.15] md:leading-[1.1] max-w-[90rem] mx-auto px-4">
-              Master Your Interviews with <br className="xs:hidden" />
-              <span className="text-gradient-fusion">Real-Time AI Simulation.</span>
-            </h1>
-
-            <p className="text-[0.95rem] md:text-xl text-gray-500 dark:text-gray-400 mb-8 md:mb-12 max-w-4xl mx-auto leading-relaxed font-medium px-6 md:px-0">
-              Upload your CV, simulate live interview questions, and receive instant AI-generated <br className="hidden md:block" />
-              benchmark answers to train and verify your performance in real-time.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-5 w-full justify-center mb-16 px-4">
-              <Link href="/dashboard" className="w-full sm:w-auto">
-                <Button className="w-full sm:w-auto text-lg md:text-2xl px-8 py-6 md:px-12 md:py-8 rounded-full bg-gray-900 hover:bg-gray-800 text-white shadow-xl shadow-gray-900/20 transition-all hover:scale-105">
-                  Get Started for Free
-                </Button>
-              </Link>
-            </div>
-
-            {/* Hero Visual: Realistic UI Mockup (Reverted) */}
-            <div className="relative w-full max-w-[1180px] mx-auto perspective-1000 px-4">
-              <div className="bg-white dark:bg-zinc-900 rounded-[1.5rem] md:rounded-[2.25rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.12)] border border-gray-100 dark:border-zinc-700 overflow-hidden relative z-10 transition-transform duration-700 hover:rotate-x-1">
-                <div className="bg-gray-50 dark:bg-zinc-800 border-b border-gray-100 dark:border-zinc-700 p-3 md:p-4 flex items-center gap-2 md:gap-2.5">
-                  <div className="flex gap-1.5 md:gap-2">
-                    <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-400"></div>
-                    <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-yellow-400"></div>
-                    <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-green-400"></div>
-                  </div>
-                  <div className="mx-auto bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 px-3 py-1 md:px-4 md:py-1 rounded-full text-[10px] md:text-[12px] text-gray-500 font-bold flex items-center gap-2 md:gap-2.5">
-                    <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    Live Interview Simulation
-                  </div>
-                </div>
-                <div className="p-4 md:p-14 bg-white dark:bg-zinc-900 min-h-[320px] md:min-h-[440px] flex flex-col items-center justify-center relative overflow-hidden">
-                  {/* Background Grid */}
-                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] bg-[size:3rem_3rem] md:bg-[size:5rem_5rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
-
-                  {/* Floating Chat Bubbles */}
-                  <div className="relative z-10 w-full max-w-4xl space-y-6 md:space-y-10">
-                    <div className="flex gap-3 md:gap-7 items-start animate-fade-in-up">
-                      <div className="w-8 h-8 md:w-13 md:h-13 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center shadow-md flex-shrink-0 border border-gray-200">
-                        <Image src="/IIcon1.jpg" alt="Manager" width={52} height={52} className="object-cover w-full h-full" />
-                      </div>
-                      <div className="bg-gray-100 dark:bg-zinc-800 rounded-[1.1rem] md:rounded-[2rem] rounded-tl-none p-3.5 md:p-6 text-[0.85rem] md:text-[1.05rem] text-gray-700 dark:text-gray-200 shadow-sm max-w-[88%] md:max-w-[85%] border border-gray-200/50 leading-relaxed font-medium">
-                        Let&apos;s review your CV. Can you explain the bottleneck you resolved in the database query?
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 md:gap-7 items-start justify-end animate-fade-in-up" style={{ animationDelay: '1s' }}>
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border border-green-200 dark:border-green-800 rounded-[1.1rem] md:rounded-[2.1rem] rounded-tr-none p-4 md:p-8 text-[0.85rem] md:text-[1.1rem] text-gray-800 dark:text-gray-100 shadow-xl max-w-[88%] md:max-w-[85%] relative border-l-4 border-l-green-500">
-                        <div className="absolute -top-2.5 -left-2.5 md:-top-5 md:-left-5 bg-white dark:bg-zinc-800 border-2 border-green-500 dark:border-green-600 rounded-full p-1 md:p-2.5 shadow-xl">
-                          <Sparkles className="w-4 h-4 md:w-6 md:h-6 text-green-500 fill-green-500" />
-                        </div>
-                        <p className="font-extrabold text-green-600 mb-1.5 md:mb-2.5 text-[9px] md:text-sm uppercase tracking-widest">Live Insight</p>
-                        <p className="leading-relaxed">
-                          &quot;Based on last month&apos;s report, the PostgreSQL join logic on the analytics table was causing a 4-second delay. Adding a composite index decreased execution time by 85%...&quot;
-                        </p>
-                      </div>
-                      <div className="w-8 h-8 md:w-13 md:h-13 rounded-full overflow-hidden bg-green-100 flex items-center justify-center shadow-xl border-2 border-green-500/20 flex-shrink-0">
-                        <Image src="/AI.jpg" alt="ZEDX AI Assistant" width={52} height={52} className="object-cover w-full h-full" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {/* Massive Atmosphere Glow */}
-              <div className="absolute -inset-16 bg-gradient-to-r from-green-400/20 to-teal-400/20 blur-[130px] -z-10 rounded-full"></div>
-            </div>
-
+            <p className="mt-4 text-xs text-slate-500">One planned 10-minute trial per account · No payment required for the trial</p>
           </div>
-
-          <div className="mt-20 md:mt-32 relative w-full max-w-[1180px] mx-auto perspective-1000 px-4">
-            <div className="text-center mb-10 md:mb-16">
-              <span className="inline-block px-4 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] md:text-xs font-extrabold tracking-widest uppercase mb-4">
-                Advanced Coding
-              </span>
-              <h2 className="text-2xl md:text-5xl font-extrabold text-gray-900 dark:text-white mb-6">
-                Technical <span className="text-gradient-fusion">Precision.</span>
-              </h2>
-            </div>
-
-            <div className="bg-white dark:bg-zinc-900 rounded-[1.5rem] md:rounded-[2.25rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.12)] border border-gray-100 dark:border-zinc-700 overflow-hidden relative z-10 transition-transform duration-700 hover:rotate-x-1">
-              <div className="bg-gray-50 dark:bg-zinc-800 border-b border-gray-100 dark:border-zinc-700 p-3 md:p-4 flex items-center gap-2 md:gap-2.5">
-                <div className="flex gap-1.5 md:gap-2">
-                  <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-400"></div>
-                  <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-yellow-400"></div>
-                  <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-green-400"></div>
-                </div>
-                <div className="mx-auto bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 px-3 py-1 md:px-4 md:py-1 rounded-full text-[10px] md:text-[12px] text-gray-500 font-bold flex items-center gap-2 md:gap-2.5">
-                  <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-green-500 animate-pulse"></div>
-                  Mock Interview - Architecture Review
-                </div>
-              </div>
-              <div className="p-4 md:p-14 bg-white dark:bg-zinc-900 min-h-[380px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden">
-                {/* Background Grid */}
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] bg-[size:3rem_3rem] md:bg-[size:5rem_5rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60"></div>
-
-                {/* Floating Chat Bubbles */}
-                <div className="relative z-10 w-full max-w-4xl space-y-6 md:space-y-10">
-                  <div className="flex gap-3 md:gap-7 items-start animate-fade-in-up">
-                    <div className="w-8 h-8 md:w-13 md:h-13 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center shadow-md flex-shrink-0 border border-gray-200">
-                      <Image src="/IIcon1.jpg" alt="CTO" width={52} height={52} className="object-cover w-full h-full" />
-                    </div>
-                    <div className="bg-gray-100 dark:bg-zinc-800 rounded-[1.1rem] md:rounded-[2rem] rounded-tl-none p-3.5 md:p-6 text-[0.85rem] md:text-[1.05rem] text-gray-700 dark:text-gray-200 shadow-sm max-w-[88%] md:max-w-[85%] border border-gray-200/50 leading-relaxed font-medium">
-                      How would you implement a custom React hook to track the previous value of a prop?
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 md:gap-7 items-start justify-end animate-fade-in-up" style={{ animationDelay: '1s' }}>
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/40 dark:to-emerald-900/40 border border-green-200 dark:border-green-800 rounded-[1.1rem] md:rounded-[2.1rem] rounded-tr-none p-4 md:p-8 shadow-xl max-w-[88%] md:max-w-[85%] relative border-l-4 border-l-green-500">
-                      <div className="absolute -top-2.5 -left-2.5 md:-top-5 md:-left-5 bg-white dark:bg-zinc-800 border-2 border-green-500 dark:border-green-600 rounded-full p-1 md:p-2.5 shadow-xl">
-                        <Sparkles className="w-4 h-4 md:w-6 md:h-6 text-green-500 fill-green-500" />
-                      </div>
-                      <p className="font-extrabold text-green-600 mb-1.5 md:mb-2.5 text-[9px] md:text-sm uppercase tracking-widest">AI Code Suggestion</p>
-                      <div className="bg-gray-900/5 dark:bg-white/5 rounded-xl p-2.5 md:p-4 mb-3 md:mb-4 font-mono text-[9px] md:text-sm leading-relaxed overflow-x-auto border border-black/5 dark:border-white/5">
-                        <pre className="text-emerald-900 dark:text-emerald-200">
-                          {`const usePrevious = (value) => {
-  const ref = useRef();
-  useEffect(() => {
-    ref.current = value;
-  }, [value]);
-  return ref.current;
-};`}
-                        </pre>
-                      </div>
-                      <p className="leading-relaxed text-[0.85rem] md:text-[1rem] text-gray-700 dark:text-gray-200">
-                        This hook utilizes <code className="bg-green-100 dark:bg-green-900/50 px-1 rounded text-xs">useRef</code> to persist the value and <code className="bg-green-100 dark:bg-green-900/50 px-1 rounded text-xs">useEffect</code> to update it.
-                      </p>
-                    </div>
-                    <div className="w-8 h-8 md:w-13 md:h-13 rounded-full overflow-hidden bg-green-100 flex items-center justify-center shadow-xl border-2 border-green-500/20 flex-shrink-0">
-                      <Image src="/AI.jpg" alt="ZEDX AI Assistant" width={52} height={52} className="object-cover w-full h-full" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Massive Atmosphere Glow */}
-            <div className="absolute -inset-16 bg-gradient-to-r from-emerald-400/10 to-green-400/10 blur-[130px] -z-10 rounded-full"></div>
-          </div>
-          {/* Scroll Indicator */}
-          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce hidden md:flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity cursor-pointer">
-            <span className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500 font-semibold">Scroll</span>
-            <ChevronDown className="text-gray-400 dark:text-gray-500 w-5 h-5" />
-          </div>
+          <ProductPreview />
         </section>
 
-        {/* Platform Integration Section */}
-        <PlatformSection />
+        <section className="border-y border-slate-200/80 bg-white/75 px-4 py-8 dark:border-white/10 dark:bg-white/[.025]"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:justify-between"><span className="text-xs font-bold uppercase tracking-[.2em] text-slate-400">Designed to work alongside</span><span>Google Meet</span><span>Microsoft Teams</span><span>Zoom</span><span>HackerRank</span><span>LeetCode</span></div></section>
 
-        {/* Features Section */}
-        <section id="features" className="py-24 relative z-10">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-20">
-              <h2 className="text-3xl md:text-5xl font-bold text-gray-900 dark:text-white mb-6">
-                Everything you need to <span className="text-gradient-fusion">succeed</span>
-              </h2>
-              <p className="text-lg text-gray-500 max-w-2xl mx-auto">
-                Powerful tools designed to give you the unfair advantage.
-              </p>
-            </div>
+        <section id="features" className="px-4 py-24 sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="max-w-3xl"><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">One focused workspace</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Useful context, exactly when the conversation moves.</h2><p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 dark:text-slate-400">ZEDX combines live transcription, your background, and flexible text capture in a desktop interface built for fast-moving sessions.</p></div>
+          <div className="mt-14 grid gap-5 md:grid-cols-2">{features.map(({ icon: Icon, title, copy }, index) => <article key={title} className="group relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_-38px_rgba(15,23,42,.35)] transition hover:-translate-y-1 hover:shadow-[0_24px_70px_-35px_rgba(14,116,144,.35)] dark:border-white/10 dark:bg-white/[.04] sm:p-9"><span className="absolute right-6 top-5 text-6xl font-semibold tracking-tighter text-slate-100 dark:text-white/[.035]">0{index + 1}</span><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-cyan-300/10 dark:text-cyan-300"><Icon className="h-6 w-6" /></div><h3 className="mt-8 text-2xl font-semibold tracking-tight">{title}</h3><p className="mt-3 max-w-lg leading-7 text-slate-600 dark:text-slate-400">{copy}</p></article>)}</div></div></section>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+        <section id="how-it-works" className="bg-slate-950 px-4 py-24 text-white sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="grid gap-14 lg:grid-cols-[.8fr_1.2fr] lg:items-start"><div className="lg:sticky lg:top-28"><p className="text-sm font-bold uppercase tracking-[.18em] text-cyan-300">How it works</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Ready in three simple steps.</h2><p className="mt-5 text-lg leading-8 text-slate-400">Set the context once, start a session, and choose automatic or manual control.</p></div><div className="space-y-5">
+          {[
+            { icon: FileText, title: "Add your context", copy: "Upload your resume and describe the role, preferred answer style, language, and areas you want the AI to emphasize." },
+            { icon: MonitorDown, title: "Start the desktop session", copy: "Open the app on macOS or Windows, choose your audio source, and position the overlay where it is comfortable to read." },
+            { icon: WandSparkles, title: "Ask, listen, or capture", copy: "Let Auto Answer respond after a pause, paste a question manually, or select text and code from your screen." },
+          ].map(({ icon: StepIcon, title, copy }, index) => <article key={title} className="rounded-[1.75rem] border border-white/10 bg-white/[.045] p-7 sm:p-9"><div className="flex items-start gap-5"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-sky-500 text-slate-950"><StepIcon className="h-6 w-6" /></div><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Step {index + 1}</p><h3 className="mt-2 text-2xl font-semibold">{title}</h3><p className="mt-3 leading-7 text-slate-400">{copy}</p></div></div></article>)}</div></div></div></section>
 
-              {/* Feature 1: Context Upload */}
-              <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-8 border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col h-full">
-                <div className="mb-4">
-                  <span className="inline-block px-4 py-1.5 rounded-full bg-green-100 text-green-800 text-xs font-bold tracking-wider uppercase">
-                    Context
-                  </span>
-                </div>
-                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Upload Context Documents</h3>
+        <section id="pricing" className="px-4 py-24 sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="mx-auto max-w-3xl text-center"><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">Planned beta pricing</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Pay for the interviews you need.</h2><p className="mt-5 text-lg leading-8 text-slate-600 dark:text-slate-400">Start with a short account-level trial. Interview packs will become purchasable when Razorpay billing launches.</p></div>
+          <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{plans.map(plan => <article key={plan.name} className={`relative flex min-h-72 flex-col rounded-[1.6rem] border p-6 ${plan.featured ? "border-sky-500 bg-slate-950 text-white shadow-2xl shadow-sky-900/15" : "border-slate-200 bg-white dark:border-white/10 dark:bg-white/[.04]"}`}>{plan.featured && <span className="absolute right-5 top-5 rounded-full bg-cyan-300 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-950">Popular</span>}<p className={`text-sm font-semibold ${plan.featured ? "text-cyan-300" : "text-sky-700 dark:text-cyan-300"}`}>{plan.name}</p><p className="mt-7 text-4xl font-semibold tracking-tight">{plan.price}</p><p className={`mt-2 text-sm ${plan.featured ? "text-slate-400" : "text-slate-500"}`}>{plan.interviews}</p><div className={`my-6 h-px ${plan.featured ? "bg-white/10" : "bg-slate-200 dark:bg-white/10"}`} /><p className={`flex items-start gap-2 text-sm ${plan.featured ? "text-slate-300" : "text-slate-600 dark:text-slate-400"}`}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />{plan.detail}</p><Link href="/login" className={`mt-auto inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-semibold ${plan.featured ? "bg-white text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-white"}`}>{plan.name === "Free trial" ? "Start free" : "Join beta"}</Link></article>)}</div><p className="mt-5 text-center text-xs text-slate-500">Prices and included usage may change before payment activation.</p></div></section>
 
-                {/* Visual: Context File */}
-                <div className="flex-grow flex items-center justify-center mb-8">
-                  <div className="bg-gray-50 dark:bg-zinc-800 rounded-xl border border-gray-100 dark:border-zinc-700 p-6 shadow-sm relative overflow-hidden w-full max-w-[280px]">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-16 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-600 rounded-lg flex flex-col items-center justify-center gap-1 shadow-sm">
-                        <div className="w-8 h-1 bg-gray-200 rounded-full"></div>
-                        <div className="w-6 h-1 bg-gray-200 rounded-full"></div>
-                        <div className="w-8 h-1 bg-gray-200 rounded-full"></div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-gray-900 dark:text-white">Q3_Agenda.pdf</div>
-                        <div className="text-xs text-green-600 flex items-center gap-1 font-medium">
-                          <Check size={12} /> Analyzed & Ready
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+        <section className="px-4 pb-24 sm:px-6 sm:pb-32"><div className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-sky-500 via-cyan-500 to-violet-600 p-[1px] shadow-2xl shadow-sky-900/15"><div className="rounded-[calc(2rem-1px)] bg-slate-950 px-6 py-14 text-center text-white sm:px-12 sm:py-20"><BadgeCheck className="mx-auto h-10 w-10 text-cyan-300" /><h2 className="mx-auto mt-6 max-w-3xl text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Built for the computer you already use.</h2><p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-400">Choose the correct installer for your Mac or Windows computer. Published builds will include clear processor and operating-system requirements.</p><div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row"><a href={macUrl} className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3.5 text-sm font-semibold text-slate-950"><Apple className="h-4 w-4" />Get ZEDX for Mac</a><a href={windowsUrl} className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 px-6 py-3.5 text-sm font-semibold text-white"><Monitor className="h-4 w-4" />Get ZEDX for Windows</a></div></div></div></section>
 
-                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Upload your CV or technical reports to get highly contextual benchmark answers during your practice sessions.
-                </p>
-              </div>
+        <section id="faq" className="border-t border-slate-200 px-4 py-24 dark:border-white/10 sm:px-6 sm:py-32"><div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[.7fr_1.3fr]"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">FAQ</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">Questions before your first session.</h2></div><div className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-white/10 dark:border-white/10">{faqs.map(([question, answer]) => <details key={question} className="group py-6"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-semibold">{question}<span className="text-2xl font-light text-slate-400 transition group-open:rotate-45">+</span></summary><p className="max-w-2xl pt-4 leading-7 text-slate-600 dark:text-slate-400">{answer}</p></details>)}</div></div></section>
 
-              {/* Feature 2: Real-Time Accessibility */}
-              <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-8 border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col h-full">
-                <div className="mb-4">
-                  <span className="inline-block px-4 py-1.5 rounded-full bg-teal-100 text-teal-800 text-xs font-bold tracking-wider uppercase">
-                    Live Verification
-                  </span>
-                </div>
-                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Instant Answers</h3>
-
-                {/* Visual: Chat Bubble */}
-                <div className="flex-grow flex items-center justify-center mb-8 w-full">
-                  <div className="space-y-3 w-full max-w-[280px]">
-                    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 p-3 rounded-2xl rounded-tl-none shadow-sm text-sm text-gray-600 dark:text-gray-300 w-3/4">
-                      Can you explain your experience with React?
-                    </div>
-                    <div className="bg-teal-50 dark:bg-teal-900/30 border border-teal-100 dark:border-teal-800 p-3 rounded-2xl rounded-tr-none shadow-sm text-sm text-gray-800 dark:text-gray-200 w-3/4 ml-auto">
-                      I used React to build scalable web applications...
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  ZEDX Copilot generates a relevant suggested answer from the question and the context you provide.
-                </p>
-              </div>
-
-              {/* Feature 3: Multilingual */}
-              <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-8 border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col h-full">
-                <div className="mb-4">
-                  <span className="inline-block px-4 py-1.5 rounded-full bg-[#84cc16] text-black text-xs font-bold tracking-wider uppercase">
-                    Multilingual
-                  </span>
-                </div>
-                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">52 Languages</h3>
-
-                {/* Visual: Language Globe */}
-                <div className="flex-grow flex items-center justify-center mb-8 relative">
-                  <div className="relative w-48 h-48 flex items-center justify-center">
-                    {/* Abstract Globe Circles */}
-                    <div className="absolute inset-0 border border-green-100/50 rounded-full animate-[spin_10s_linear_infinite]"></div>
-                    <div className="absolute inset-4 border border-green-200/50 rounded-full animate-[spin_15s_linear_infinite_reverse]"></div>
-                    <div className="absolute inset-8 border border-green-300/50 rounded-full animate-[spin_20s_linear_infinite]"></div>
-
-                    {/* Center Icon */}
-                    <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-full shadow-sm flex items-center justify-center z-10 relative">
-                      <Globe size={32} className="text-gray-700 dark:text-gray-300" strokeWidth={1.5} />
-                    </div>
-
-                    {/* Floating Flags (represented as dots/badges) */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 w-6 h-4 bg-gray-100 rounded shadow-sm"></div>
-                    <div className="absolute bottom-4 right-4 w-6 h-4 bg-gray-100 rounded shadow-sm"></div>
-                    <div className="absolute top-1/3 left-2 w-6 h-4 bg-gray-100 rounded shadow-sm"></div>
-                  </div>
-                </div>
-
-                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Simulate interview questions in any language - practice your professional communication wherever you are.
-                </p>
-              </div>
-
-              {/* Feature 4: Session Review */}
-              <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-8 border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col h-full">
-                <div className="mb-4">
-                  <span className="inline-block px-4 py-1.5 rounded-full bg-[#84cc16] dark:bg-green-700 text-black dark:text-white text-xs font-bold tracking-wider uppercase">
-                    Review
-                  </span>
-                </div>
-                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Session History</h3>
-
-                {/* Visual: Summary Card Mockup */}
-                <div className="flex-grow flex items-center justify-center mb-8">
-                  <div className="w-full max-w-[280px] bg-white dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-5 relative overflow-hidden">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center text-white font-bold text-xs">P</div>
-                        <div>
-                          <div className="text-xs font-bold text-gray-900 dark:text-white">Training</div>
-                          <div className="text-[10px] text-gray-400">Interview Analysis</div>
-                        </div>
-                      </div>
-                      <div className="flex gap-0.5">
-                        {[1, 2, 3, 4, 5].map(i => <div key={i} className="w-2 h-2 rounded-full bg-yellow-400"></div>)}
-                      </div>
-                    </div>
-
-                    <div className="bg-green-50/50 dark:bg-green-900/20 rounded-xl p-3 mb-2">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Summary</div>
-                      <div className="space-y-1">
-                        <div className="h-1.5 w-full bg-gray-200 rounded-full"></div>
-                        <div className="h-1.5 w-[90%] bg-gray-200 rounded-full"></div>
-                        <div className="h-1.5 w-[95%] bg-gray-200 rounded-full"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Review the saved transcript, questions, and AI answers from each completed practice session.
-                </p>
-              </div>
-
-            </div>
-          </div>
-        </section>
+        <section className="px-4 pb-24 text-center sm:px-6 sm:pb-32"><div className="mx-auto max-w-3xl"><Download className="mx-auto h-8 w-8 text-sky-600 dark:text-cyan-300" /><h2 className="mt-5 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Try your first session free.</h2><p className="mt-5 text-lg text-slate-600 dark:text-slate-400">Create your account now. Desktop billing and interview packs will follow in the next product phase.</p><Link href="/login" className="mt-8 inline-flex items-center gap-2 rounded-full bg-slate-950 px-7 py-4 text-sm font-semibold text-white dark:bg-white dark:text-slate-950">Create free account <ArrowRight className="h-4 w-4" /></Link></div></section>
       </main>
-
       <Footer />
-    </div >
+    </div>
   );
 }
