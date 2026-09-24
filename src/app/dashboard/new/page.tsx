@@ -258,8 +258,8 @@ export default function NewInterviewPage() {
                                             <BriefcaseIcon />
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-lg sm:text-2xl text-gray-900 dark:text-white mb-0.5 sm:mb-1">Role &amp; Answer Preferences</h3>
-                                            <p className="text-sm sm:text-base text-gray-500 font-medium">Add the role details and describe how you want answers written.</p>
+                                            <h3 className="font-bold text-lg sm:text-2xl text-gray-900 dark:text-white mb-0.5 sm:mb-1">AI Context &amp; Answer Style</h3>
+                                            <p className="text-sm sm:text-base text-gray-500 font-medium">Give the AI role context and response instructions for more relevant, interview-ready answers.</p>
                                         </div>
                                     </div>
                                     <span className="text-[10px] sm:text-sm font-bold font-mono text-emerald-800 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl tracking-wider uppercase">REQUIRED</span>
