@@ -109,6 +109,7 @@ export default function InterviewPage() {
     const [interviewStartTime, setInterviewStartTime] = useState<Date>(new Date());
     const [manualQuestion, setManualQuestion] = useState(""); // Manual input for coding questions
     const [isScreenAudioActive, setIsScreenAudioActive] = useState(false);
+    const [isScreenCapturing, setIsScreenCapturing] = useState(false);
     const screenStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
@@ -1433,53 +1434,94 @@ export default function InterviewPage() {
     }, [appendFullTranscript, interviewContext.lang]);
 
 
+    const processCapturedImage = useCallback(async (imageData: string) => {
+        let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
+        try {
+            if (!imageData?.startsWith('data:image/')) throw new Error('The captured image was invalid.');
+            window.electronAPI?.sendOverlayStatus?.("Reading captured code…", "progress");
+            const deadline = <T,>(promise: Promise<T>, ms: number, message: string) => Promise.race<T>([
+                promise,
+                new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+            ]);
+            worker = await deadline(createWorker('eng', 1, {
+                langPath: '/tessdata',
+                logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
+            }), 30000, "OCR engine initialization timed out. Check your connection and retry.");
+            await worker.setParameters({
+                tessedit_pageseg_mode: '3',
+                preserve_interword_spaces: '1',
+            } as unknown as Record<string, string>);
+            const ret = await deadline(worker.recognize(imageData), 30000, "OCR took too long. Capture a smaller area and retry.");
+            const text = ret.data.text.trim();
+            if (!text) {
+                const message = "No readable text was detected. Enlarge the code and try again.";
+                showToast(message, "info");
+                window.electronAPI?.sendOverlayStatus?.(message, "error");
+                return;
+            }
+            setManualQuestion(text);
+            window.electronAPI?.sendCapturedText?.(text);
+            window.electronAPI?.sendOverlayStatus?.("Code captured. Generating answer…", "progress");
+            showToast("Text captured. Generating the answer.", "success");
+            await getAiAnswer(text);
+        } catch (err) {
+            console.error("[Scanner] OCR processing failed:", err);
+            const message = err instanceof Error ? err.message : "Failed to process screen capture.";
+            showToast(message, "error");
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+        } finally {
+            if (worker) await worker.terminate().catch(console.error);
+        }
+    }, [getAiAnswer, showToast]);
+
+    const captureBrowserScreen = useCallback(async () => {
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+            setError("Screen capture is not supported by this browser. Use the AllyX desktop app or a current Chrome, Edge, or Safari version.");
+            return;
+        }
+        let stream: MediaStream | null = null;
+        setIsScreenCapturing(true);
+        setError(null);
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            const video = document.createElement("video");
+            video.muted = true;
+            video.playsInline = true;
+            video.srcObject = stream;
+            await new Promise<void>((resolve, reject) => {
+                const timeout = window.setTimeout(() => reject(new Error("Screen capture timed out. Please try again.")), 10000);
+                video.onloadedmetadata = () => { window.clearTimeout(timeout); resolve(); };
+                video.onerror = () => { window.clearTimeout(timeout); reject(new Error("The selected screen could not be captured.")); };
+            });
+            await video.play();
+            if (!video.videoWidth || !video.videoHeight) throw new Error("The selected screen returned an empty image.");
+
+            const maxDimension = 2400;
+            const scale = Math.min(1, maxDimension / Math.max(video.videoWidth, video.videoHeight));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+            canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Screen capture could not initialize.");
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            await processCapturedImage(canvas.toDataURL("image/png"));
+        } catch (captureError) {
+            const cancelled = captureError instanceof DOMException && ["NotAllowedError", "AbortError"].includes(captureError.name);
+            const message = cancelled
+                ? "Screen capture was cancelled. Press Screen Capture and select the screen or window containing the question."
+                : captureError instanceof Error ? captureError.message : "Screen capture failed. Please try again.";
+            setError(message);
+            showToast(message, cancelled ? "info" : "error");
+        } finally {
+            stream?.getTracks().forEach(track => track.stop());
+            setIsScreenCapturing(false);
+        }
+    }, [processCapturedImage, showToast]);
+
     useEffect(() => {
         if (!window.electronAPI) return;
-
-        const cleanup = window.electronAPI.onProcessOcr(async (data) => {
-            console.log("[Scanner] Received OCR request:", data);
-            let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
-            try {
-                if (!data.imageData?.startsWith('data:image/')) throw new Error('The captured image was invalid.');
-                window.electronAPI?.sendOverlayStatus?.("Reading captured code…", "progress");
-                const deadline = <T,>(promise: Promise<T>, ms: number, message: string) => Promise.race<T>([
-                    promise,
-                    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
-                ]);
-                worker = await deadline(createWorker('eng', 1, {
-                    langPath: '/tessdata',
-                    logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
-                }), 30000, "OCR engine initialization timed out. Check your connection and retry.");
-                await worker.setParameters({
-                    tessedit_pageseg_mode: '3',
-                    preserve_interword_spaces: '1',
-                } as unknown as Record<string, string>);
-                const ret = await deadline(worker.recognize(data.imageData), 30000, "OCR took too long. Capture a smaller area and retry.");
-                const text = ret.data.text.trim();
-                if (text) {
-                    console.log("[Scanner] Extracted text:", text);
-                    setManualQuestion(text);
-                    window.electronAPI?.sendCapturedText?.(text);
-                    window.electronAPI?.sendOverlayStatus?.("Code captured. Generating answer…", "progress");
-                    showToast("Text captured. Generating the answer.", "success");
-                    void getAiAnswer(text);
-                } else {
-                    const message = "No readable text was detected. Enlarge the code and try again.";
-                    showToast(message, "info");
-                    window.electronAPI?.sendOverlayStatus?.(message, "error");
-                }
-            } catch (err) {
-                console.error("[Scanner] OCR processing failed:", err);
-                const message = err instanceof Error ? err.message : "Failed to process screen capture.";
-                showToast(message, "error");
-                window.electronAPI?.sendOverlayStatus?.(message, "error");
-            } finally {
-                if (worker) await worker.terminate().catch(console.error);
-            }
-        });
-
-        return cleanup;
-    }, [getAiAnswer, showToast]);
+        return window.electronAPI.onProcessOcr(data => { void processCapturedImage(data.imageData); });
+    }, [processCapturedImage]);
 
     // Handle End Interview - Save to history and navigate
     const handleEndInterview = async () => {
@@ -1815,8 +1857,11 @@ export default function InterviewPage() {
                                     if (window.electronAPI) {
                                         const res = await window.electronAPI.toggleScannerFrame();
                                         setIsScannerActive(res.active);
+                                    } else {
+                                        await captureBrowserScreen();
                                     }
                                 }}
+                                disabled={isScreenCapturing || isLoading}
                                 variant={isScannerActive ? "default" : "outline"}
                                 size="sm"
                                 className={cn(
@@ -1826,9 +1871,9 @@ export default function InterviewPage() {
                                         : "bg-white dark:bg-zinc-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-zinc-700"
                                 )}
                             >
-                                <Scan size={14} />
-                                <span className="hidden sm:inline">{isScannerActive ? "Close Scanner" : "Screen Capture"}</span>
-                                <span className="sm:hidden">{isScannerActive ? "Close" : "Scanner"}</span>
+                                {isScreenCapturing ? <Loader2 size={14} className="animate-spin" /> : <Scan size={14} />}
+                                <span className="hidden sm:inline">{isScreenCapturing ? "Capturing…" : isScannerActive ? "Close Scanner" : "Screen Capture"}</span>
+                                <span className="sm:hidden">{isScreenCapturing ? "Wait…" : isScannerActive ? "Close" : "Capture"}</span>
                             </Button>
                         </div>
                     </div>
