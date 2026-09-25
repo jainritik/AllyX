@@ -24,7 +24,7 @@ function loadCheckout() {
     });
 }
 
-export function PurchaseButton({ planId, className }: { planId: BillingPlanId; className?: string }) {
+export function PurchaseButton({ planId, className, onSuccess }: { planId: BillingPlanId; className?: string; onSuccess?: () => void }) {
     const router = useRouter();
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState("");
@@ -53,6 +53,7 @@ export function PurchaseButton({ planId, className }: { planId: BillingPlanId; c
                         const confirmation = await verification.json();
                         if (!verification.ok) throw new Error(confirmation.error || "Payment confirmation failed.");
                         setMessage(`${confirmation.creditsAdded} interview credits added successfully.`);
+                        onSuccess?.();
                         router.refresh();
                     } catch (error) {
                         setMessage(error instanceof Error ? error.message : "Payment confirmation failed. Your payment will be reconciled automatically.");
