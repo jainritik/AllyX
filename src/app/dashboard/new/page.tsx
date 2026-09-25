@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Upload, AlertCircle, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Upload, AlertCircle, Sparkles, Loader2, CheckCircle2, Circle } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -89,6 +89,8 @@ const AI_MODELS = [
     },
 ];
 
+const MIN_SETUP_CHARACTERS = 11;
+
 // ParticleWave removed to improve mobile performance/clarity
 // import { ParticleWave } from "@/components/ui/particle-wave";
 
@@ -105,25 +107,20 @@ export default function NewInterviewPage() {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [savedResumes, setSavedResumes] = useState<Resume[]>([]);
+    const [selectedResumeId, setSelectedResumeId] = useState("");
+    const [startAttempted, setStartAttempted] = useState(false);
+    const contextRef = useRef<HTMLTextAreaElement>(null);
+    const resumeRef = useRef<HTMLTextAreaElement>(null);
 
     // Load saved resumes
     useEffect(() => {
         if (!accountId) return;
-        const loadResumes = async () => {
-            try {
-                const data = await resumeService.getUserResumes();
-                setSavedResumes(data);
-            } catch {
-                setError("Saved resumes could not be loaded. You can paste a resume or retry after checking your connection.");
-            }
-        };
-        loadResumes();
-
+        let initialResume = "";
         try {
             const handoff = consumeResumeHandoff(accountId);
             const context = readInterviewContext(accountId);
-            if (handoff) setResume(handoff);
-            else if (context) setResume(context.resume);
+            initialResume = handoff || context?.resume || "";
+            if (initialResume) setResume(initialResume);
             if (context) {
                 setJobDescription(context.jd);
                 setInterviewType(context.type);
@@ -134,9 +131,27 @@ export default function NewInterviewPage() {
                 if (savedModel) setSelectedModel(savedModel);
             }
         } catch { setError("Saved interview setup could not be read. You can enter it again below."); }
+        const loadResumes = async () => {
+            try {
+                const data = await resumeService.getUserResumes();
+                setSavedResumes(data);
+                const matchingResume = data.find(item => item.content === initialResume);
+                if (matchingResume) setSelectedResumeId(matchingResume.id);
+                else if (!initialResume && data[0]) {
+                    setSelectedResumeId(data[0].id);
+                    setResume(data[0].content);
+                    setSuccessMessage(`Using your most recent saved resume: ${data[0].name}.`);
+                }
+            } catch {
+                setError("Saved resumes could not be loaded. You can paste a resume or retry after checking your connection.");
+            }
+        };
+        void loadResumes();
     }, [accountId]);
 
-    const isValid = jobDescription.trim().length > 10 && resume.trim().length > 10;
+    const contextReady = jobDescription.trim().length >= MIN_SETUP_CHARACTERS;
+    const resumeReady = resume.trim().length >= MIN_SETUP_CHARACTERS;
+    const isValid = contextReady && resumeReady;
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -161,10 +176,11 @@ export default function NewInterviewPage() {
 
             try {
                 const fileName = file.name.replace(/\.(pdf|txt)$/i, '');
-                await resumeService.createResume(fileName, data.text);
+                const createdResume = await resumeService.createResume(fileName, data.text);
                 const updatedResumes = await resumeService.getUserResumes();
                 setSavedResumes(updatedResumes);
-                setSuccessMessage(`Resume "${file.name}" is ready and saved to your account.`);
+                setSelectedResumeId(createdResume.id);
+                setSuccessMessage(`Resume "${file.name}" is selected and ready for this interview.`);
             } catch (saveErr) {
                 console.warn(saveErr);
                 setSuccessMessage(`Resume "${file.name}" is ready for this interview.`);
@@ -182,8 +198,13 @@ export default function NewInterviewPage() {
     };
 
     const handleStart = () => {
+        setStartAttempted(true);
         if (!isValid) {
-            setError("Please add role details, answer preferences, and your resume to proceed.");
+            const missing = [!resumeReady && "a resume", !contextReady && "AI context and answer style"].filter(Boolean).join(" and ");
+            setError(`Complete ${missing} before starting. We highlighted the first step below.`);
+            const target = !resumeReady ? resumeRef.current : contextRef.current;
+            target?.scrollIntoView({ behavior: "smooth", block: "center" });
+            window.setTimeout(() => target?.focus(), 350);
             return;
         }
 
@@ -239,6 +260,14 @@ export default function NewInterviewPage() {
                     </div>
                 </div>
 
+                <div className="mb-8 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#111111]">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-gray-900 dark:text-white">Complete these 2 steps</h2><p className="mt-1 text-sm text-gray-500">We will guide you to anything that is missing before the interview starts.</p></div><span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{Number(resumeReady) + Number(contextReady)} of 2 ready</span></div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <button type="button" onClick={() => resumeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })} className={`flex items-start gap-3 rounded-xl border p-4 text-left ${resumeReady ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20"}`}>{resumeReady ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />}<span><span className="block font-semibold">1. Select your resume</span><span className="mt-1 block text-sm text-gray-600 dark:text-gray-400">{resumeReady ? "Resume selected and ready." : "Upload, select, or paste your resume."}</span></span></button>
+                        <button type="button" onClick={() => contextRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })} className={`flex items-start gap-3 rounded-xl border p-4 text-left ${contextReady ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20"}`}>{contextReady ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /> : <Circle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />}<span><span className="block font-semibold">2. Add AI instructions</span><span className="mt-1 block text-sm text-gray-600 dark:text-gray-400">{contextReady ? "Context and answer style are ready." : "Describe the role and preferred answer style."}</span></span></button>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[calc(100vh-250px)]">
                     {/* Left Column: Configuration (8 cols) */}
                     <div className="lg:col-span-7 flex flex-col gap-8 h-full">
@@ -265,11 +294,13 @@ export default function NewInterviewPage() {
                                     <span className="text-[10px] sm:text-sm font-bold font-mono text-emerald-800 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl tracking-wider uppercase">REQUIRED</span>
                                 </div>
                                 <textarea
+                                    ref={contextRef}
                                     className="w-full flex-1 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all min-h-[180px] sm:min-h-[220px] leading-relaxed"
                                     placeholder={"Example:\nSenior Go Backend Engineer role requiring microservices, PostgreSQL and AWS.\n\nAnswer as the candidate in first person. Keep conceptual answers natural and under 60 seconds. For coding questions, explain the approach, provide Go code, and include complexity."}
                                     value={jobDescription}
-                                    onChange={(e) => setJobDescription(e.target.value)}
+                                    onChange={(e) => { setJobDescription(e.target.value); setError(null); }}
                                 />
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><span className={contextReady ? "text-emerald-600 dark:text-emerald-400" : startAttempted ? "font-semibold text-amber-700 dark:text-amber-300" : "text-gray-500"}>{contextReady ? "✓ AI instructions ready" : `Add at least ${MIN_SETUP_CHARACTERS} characters so the AI has enough context.`}</span><span className="text-gray-400">{jobDescription.trim().length} characters</span></div>
                             </div>
                         </motion.div>
 
@@ -298,23 +329,30 @@ export default function NewInterviewPage() {
                                     </label>
                                     <select
                                         className="h-11 sm:h-12 px-4 w-full sm:w-56 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-600 dark:text-gray-300 focus:outline-none focus:border-emerald-500/50 truncate order-2"
+                                        value={selectedResumeId}
                                         onChange={(e) => {
                                             const r = savedResumes.find(sr => sr.id === e.target.value);
-                                            if (r) setResume(r.content);
+                                            if (r) {
+                                                setSelectedResumeId(r.id);
+                                                setResume(r.content);
+                                                setError(null);
+                                                setSuccessMessage(`Using saved resume: ${r.name}.`);
+                                            }
                                         }}
-                                        defaultValue=""
                                     >
-                                        <option value="" disabled>Saved Resumes</option>
+                                        <option value="" disabled>Select a saved resume</option>
                                         {savedResumes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                                     </select>
                                 </div>
                             </div>
                             <textarea
+                                ref={resumeRef}
                                 className="w-full flex-1 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all min-h-[180px] sm:min-h-[220px]"
                                 placeholder="Paste resume text or upload PDF..."
                                 value={resume}
-                                onChange={(e) => setResume(e.target.value)}
+                                onChange={(e) => { setResume(e.target.value); setSelectedResumeId(""); setError(null); }}
                             />
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><span className={resumeReady ? "text-emerald-600 dark:text-emerald-400" : startAttempted ? "font-semibold text-amber-700 dark:text-amber-300" : "text-gray-500"}>{resumeReady ? "✓ Resume ready" : `Upload, select, or paste at least ${MIN_SETUP_CHARACTERS} characters.`}</span><span className="text-gray-400">{resume.trim().length} characters</span></div>
                             {successMessage && (
                                 <div className="mt-4 flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-500/10 p-3 rounded-xl">
                                     <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center">✓</span>
@@ -460,12 +498,12 @@ export default function NewInterviewPage() {
                                     )}
                                     <Button
                                         onClick={handleStart}
-                                        disabled={isLoading || !isValid}
+                                        disabled={isLoading}
                                         className={cn(
                                             "w-full h-14 sm:h-16 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 shadow-xl",
                                             isValid
                                                 ? "bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white shadow-emerald-500/25 hover:shadow-emerald-500/35 hover:-translate-y-0.5 active:translate-y-0"
-                                                : "bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                                                : "bg-amber-500 text-slate-950 shadow-amber-500/20 hover:bg-amber-400"
                                         )}
                                     >
                                         {isLoading ? (
@@ -475,7 +513,7 @@ export default function NewInterviewPage() {
                                             </span>
                                         ) : (
                                             <span className="flex items-center justify-center gap-3">
-                                                Start Interview
+                                                {isValid ? "Start Interview" : "Check Setup & Start"}
                                                 <ArrowLeft className="rotate-180 sm:size-[24px]" size={20} />
                                             </span>
                                         )}
