@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
         const decoder = new TextDecoder();
         let carry = "";
         let providerCompleted = false;
+        let deliveredContent = false;
         let commitPromise: Promise<void> | null = null;
         const processLines = (lines: string[], controller: TransformStreamDefaultController<Uint8Array>) => {
             for (const line of lines) {
@@ -96,7 +97,10 @@ export async function POST(request: NextRequest) {
                 try {
                     const providerEvent = JSON.parse(data);
                     const content = providerEvent.choices?.[0]?.delta?.content;
-                    if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                    if (content) {
+                        deliveredContent = true;
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                    }
                     const finishReason = providerEvent.choices?.[0]?.finish_reason;
                     if (finishReason) {
                         providerCompleted = true;
@@ -117,6 +121,12 @@ export async function POST(request: NextRequest) {
             async flush(controller) {
                 carry += decoder.decode();
                 if (carry.trim()) processLines([carry], controller);
+                if (!providerCompleted && deliveredContent) {
+                    providerCompleted = true;
+                    shouldRefund = false;
+                    commitPromise ||= commitApiQuota(request, reservationId);
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ finishReason: "length", model: effectiveModel })}\n\n`));
+                }
                 if (commitPromise) await commitPromise;
                 if (!providerCompleted && shouldRefund) {
                     shouldRefund = false;

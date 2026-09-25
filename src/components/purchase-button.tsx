@@ -34,6 +34,20 @@ export function PurchaseButton({ planId, className, onSuccess }: { planId: Billi
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState("");
 
+    const reconcileOrder = async (orderId: string) => {
+        for (let attempt = 0; attempt < 5; attempt++) {
+            if (attempt) await new Promise(resolve => setTimeout(resolve, 1500));
+            const response = await fetch("/api/billing/account", { cache: "no-store" });
+            if (!response.ok) continue;
+            const account = await response.json() as { purchases?: Array<{ orderId?: string; status?: string; credits?: number }> };
+            const purchase = account.purchases?.find(item => item.orderId === orderId);
+            if (purchase && ["paid", "refund_pending", "partially_refunded", "refunded", "disputed"].includes(purchase.status || "")) {
+                return purchase;
+            }
+        }
+        return null;
+    };
+
     const purchase = async () => {
         setBusy(true); setMessage("");
         try {
@@ -62,7 +76,14 @@ export function PurchaseButton({ planId, className, onSuccess }: { planId: Billi
                         onSuccess?.();
                         router.refresh();
                     } catch (error) {
-                        setMessage(error instanceof Error ? error.message : "Payment confirmation failed. Your payment will be reconciled automatically.");
+                        const reconciled = await reconcileOrder(order.orderId).catch(() => null);
+                        if (reconciled) {
+                            setMessage(`${reconciled.credits || order.credits || "Your"} interview credits were added successfully.`);
+                            onSuccess?.();
+                            router.refresh();
+                        } else {
+                            setMessage(error instanceof Error ? `${error.message} Refresh Billing & Credits in a moment; captured payments are reconciled automatically.` : "Payment confirmation is pending. Refresh Billing & Credits in a moment.");
+                        }
                     } finally { setBusy(false); }
                 },
             });

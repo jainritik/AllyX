@@ -91,6 +91,8 @@ test('billing webhook routes captured payments and refunds through idempotent se
 test('refund ledger keeps processed refunds final when webhook events arrive out of order', () => {
     const migration = fs.readFileSync('supabase_payment_lifecycle_migration.sql', 'utf8');
     assert.match(migration, /when public\.payment_refunds\.status = 'processed' or excluded\.status = 'processed' then 'processed'/);
+    assert.match(migration, /ceil\(\(purchase\.credits::numeric \* processed_total::numeric\) \/ purchase\.amount::numeric\)/);
+    assert.match(migration, /credit_debt = credit_debt \+ debt/);
 });
 
 test('payment confirmation email uses an atomic retryable outbox', () => {
@@ -103,6 +105,8 @@ test('payment confirmation email uses an atomic retryable outbox', () => {
     assert.match(sender, /Payment confirmed/);
     assert.match(sender, /Credits available/);
     assert.match(sender, /dashboard\/billing\/receipt/);
+    assert.match(sender, /retryPaymentConfirmationEmailsForUser/);
+    assert.match(sender, /confirmation_email_attempts", 5/);
 });
 
 test('closing Razorpay Checkout releases the purchase button', () => {

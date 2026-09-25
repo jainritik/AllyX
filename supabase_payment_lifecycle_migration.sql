@@ -113,6 +113,7 @@ create or replace function public.record_refund_event(
 )
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare purchase public.payment_orders; processed_total integer; available integer; reversed integer; debt integer;
+  target_reversal integer; outstanding_reversal integer;
 begin
   if event_type not in ('refund.created', 'refund.processed', 'refund.failed') then raise exception 'Unsupported refund event'; end if;
   if refund_amount <= 0 then raise exception 'Invalid refund amount'; end if;
@@ -138,16 +139,24 @@ begin
     where order_id = purchase.order_id and status = 'processed';
   processed_total := least(processed_total, purchase.amount);
 
+  if processed_total > 0 then
+    target_reversal := least(purchase.credits,
+      ceil((purchase.credits::numeric * processed_total::numeric) / purchase.amount::numeric)::integer);
+    outstanding_reversal := greatest(0, target_reversal - purchase.credits_reversed);
+    if outstanding_reversal > 0 then
+      select interview_credits into available from public.account_entitlements where user_id = purchase.user_id for update;
+      reversed := least(outstanding_reversal, coalesce(available, 0));
+      debt := outstanding_reversal - reversed;
+      update public.account_entitlements set interview_credits = interview_credits - reversed,
+        credit_debt = credit_debt + debt, updated_at = now() where user_id = purchase.user_id;
+      update public.payment_orders set credits_reversed = credits_reversed + outstanding_reversal
+        where order_id = purchase.order_id returning * into purchase;
+    end if;
+  end if;
+
   if event_type = 'refund.created' and processed_total = 0 then
     update public.payment_orders set status = 'refund_pending', updated_at = now() where order_id = purchase.order_id;
   elsif processed_total >= purchase.amount then
-    if purchase.credits_reversed < purchase.credits then
-      select interview_credits into available from public.account_entitlements where user_id = purchase.user_id for update;
-      reversed := least(purchase.credits - purchase.credits_reversed, coalesce(available, 0));
-      debt := purchase.credits - purchase.credits_reversed - reversed;
-      update public.account_entitlements set interview_credits = interview_credits - reversed,
-        credit_debt = credit_debt + debt, updated_at = now() where user_id = purchase.user_id;
-    end if;
     update public.payment_orders set status = 'refunded', refunded_amount = processed_total,
       credits_reversed = credits, refunded_at = now(), updated_at = now() where order_id = purchase.order_id;
   elsif processed_total > 0 then

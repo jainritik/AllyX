@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiClient } from "@/lib/api-access";
+import { retryPaymentConfirmationEmailsForUser } from "@/lib/payment-confirmation-email";
 
 export async function GET(request: NextRequest) {
     const client = apiClient(request);
@@ -11,5 +12,8 @@ export async function GET(request: NextRequest) {
         console.error("[Billing account]", error.code);
         return NextResponse.json({ error: "Billing details are temporarily unavailable" }, { status: 503 });
     }
+    await retryPaymentConfirmationEmailsForUser(auth.user.id).catch(emailError => {
+        console.error("[Billing email retry]", emailError instanceof Error ? emailError.message : emailError);
+    });
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }

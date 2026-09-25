@@ -115,3 +115,28 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
         throw error;
     }
 }
+
+export async function retryPaymentConfirmationEmailsForUser(userId: string) {
+    const admin = billingAdminClient();
+    const retryBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data, error } = await admin
+        .from("payment_orders")
+        .select("order_id,confirmation_email_status,confirmation_email_last_attempt_at")
+        .eq("user_id", userId)
+        .in("status", ["paid", "refund_pending", "partially_refunded", "refunded", "disputed"])
+        .is("confirmation_email_sent_at", null)
+        .lt("confirmation_email_attempts", 5)
+        .order("paid_at", { ascending: false })
+        .limit(3);
+    if (error) throw error;
+
+    for (const order of data || []) {
+        const retryable = order.confirmation_email_status !== "sending"
+            || !order.confirmation_email_last_attempt_at
+            || order.confirmation_email_last_attempt_at < retryBefore;
+        if (!retryable) continue;
+        await sendPaymentConfirmationEmail(order.order_id).catch(emailError => {
+            console.error("[Billing email retry]", emailError instanceof Error ? emailError.message : emailError);
+        });
+    }
+}

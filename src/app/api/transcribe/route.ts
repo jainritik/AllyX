@@ -89,9 +89,15 @@ export async function POST(request: NextRequest) {
 
                 if (response.ok) {
                     const data = await response.json();
+                    const text = typeof data.text === "string" ? data.text.trim() : "";
+                    if (!text) {
+                        await refundApiQuota(request, reservationId);
+                        quotaReserved = false;
+                        return NextResponse.json({ text: "" });
+                    }
                     await commitApiQuota(request, reservationId);
                     quotaReserved = false;
-                    return NextResponse.json({ text: data.text });
+                    return NextResponse.json({ text });
                 }
 
                 // If not ok, capture error and try next key

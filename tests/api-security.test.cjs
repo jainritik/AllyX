@@ -113,6 +113,57 @@ test('streaming parser preserves SSE events split across bytes', async () => {
     } finally { delete process.env.GROQ_API_KEY; }
 });
 
+test('streaming content without a provider finish event is committed and offered for continuation', async () => {
+    const api = load('src/lib/api-access.ts');
+    const encoder = new TextEncoder();
+    let commits = 0;
+    let refunds = 0;
+    const provider = new ReadableStream({ start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"partial answer"}}]}\n\n'));
+        controller.close();
+    } });
+    const route = load(paths.stream, { '@/lib/api-access': {
+        authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }),
+        refundApiQuota: async () => { refunds++; },
+        commitApiQuota: async () => { commits++; },
+        isOpenAiModel: api.isOpenAiModel,
+        parseGenerationBody: api.parseGenerationBody,
+    } }, async () => new Response(provider, { status: 200 }));
+    process.env.GROQ_API_KEY = 'mock-only';
+    try {
+        const response = await route.POST(request());
+        const body = await response.text();
+        assert.match(body, /partial answer/);
+        assert.match(body, /"finishReason":"length"/);
+        assert.equal(commits, 1);
+        assert.equal(refunds, 0);
+    } finally { delete process.env.GROQ_API_KEY; }
+});
+
+test('blank transcription results refund quota and never mark an interview as used', async () => {
+    let commits = 0;
+    let refunds = 0;
+    const route = load('src/app/api/transcribe/route.ts', { '@/lib/api-access': {
+        authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }),
+        commitApiQuota: async () => { commits++; },
+        refundApiQuota: async () => { refunds++; },
+    } }, async () => Response.json({ text: '   ' }));
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array([1, 2, 3])], 'audio.webm', { type: 'audio/webm' }));
+    const transcribeRequest = new NextRequest('https://allyx.invalid/api/transcribe', {
+        method: 'POST',
+        headers: { 'x-allyx-session-id': '11111111-1111-4111-8111-111111111111' },
+        body: form,
+    });
+    process.env.GROQ_API_KEY = 'mock-only';
+    try {
+        const response = await route.POST(transcribeRequest);
+        assert.deepEqual(await response.json(), { text: '' });
+        assert.equal(commits, 0);
+        assert.equal(refunds, 1);
+    } finally { delete process.env.GROQ_API_KEY; }
+});
+
 test('OpenAI model uses the OpenAI endpoint with direct-answer settings', async () => {
     const api = load('src/lib/api-access.ts');
     const encoder = new TextEncoder();

@@ -147,9 +147,9 @@ export default function HowToUsePage() {
     return (
         <div className="min-h-screen bg-white dark:bg-black text-foreground relative overflow-hidden flex flex-col items-center justify-center px-6 py-12">
             {/* Background Orbs */}
-            <div className="fixed inset-0 pointer-events-none z-0">
-                <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/10 rounded-full blur-[120px] animate-pulse"></div>
-                <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }}></div>
+            <div className="fixed inset-0 pointer-events-none z-0 hidden sm:block">
+                <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/10 rounded-full blur-[120px]"></div>
+                <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px]"></div>
             </div>
 
             <div className="relative z-10 max-w-4xl w-full flex flex-col items-center">

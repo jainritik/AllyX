@@ -269,8 +269,9 @@ export default function InterviewPage() {
             setInterviewContext({ type: saved.type, jd: saved.jd, resume: saved.resume, lang: saved.lang, model: saved.model });
             setContextReady(true);
         } catch {
-            // localStorage unavailable (private mode)
-            setInterviewContext({ type: "General", jd: "", resume: "", lang: "en-US", model: "openai/gpt-oss-120b" });
+            setError("Interview setup could not be read. Return to setup and start again.");
+            router.replace("/dashboard/new");
+            return;
         }
 
         // v18.0: Listen for scanner state changes (Atomic Sync)
@@ -1564,6 +1565,7 @@ export default function InterviewPage() {
         if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
             await interviewAccess.finish(sessionIdRef.current).catch(console.error);
             sessionStorage.removeItem("allyx_access_session");
+            localStorage.removeItem('interview_draft');
             isSavingRef.current = false;
             setIsSaving(false);
             router.push("/dashboard");
