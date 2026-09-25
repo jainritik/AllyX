@@ -67,6 +67,12 @@ export async function commitApiQuota(request: NextRequest, reservationId: string
     if (!client) return;
     const { error } = await client.rpc("commit_api_quota", { reservation_id: reservationId });
     if (error) console.error("[API quota] Unable to commit request:", error.code);
+    const sessionId = request.headers.get("x-zedx-session-id");
+    if (!sessionId) return;
+    const { error: usageError } = await client.rpc("mark_interview_meaningful_use", {
+        requested_session_id: sessionId,
+    });
+    if (usageError) console.error("[Interview access] Unable to record meaningful use:", usageError.code);
 }
 
 export const OPENAI_MODELS = ["gpt-5.4-mini"] as const;

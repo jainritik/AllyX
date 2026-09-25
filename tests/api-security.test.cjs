@@ -76,6 +76,25 @@ test('AI requests require an active server-verified interview session', async ()
     }
 });
 
+test('successful provider usage commits quota and marks the active interview as meaningful', async () => {
+    const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://zedx.invalid';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-key';
+    const calls = [];
+    try {
+        const api = load('src/lib/api-access.ts', { '@supabase/ssr': { createServerClient: () => ({
+            rpc: async (name, args) => { calls.push({ name, args }); return { error: null }; },
+        }) } });
+        await api.commitApiQuota(request(), '22222222-2222-4222-8222-222222222222');
+        assert.deepEqual(calls.map(call => call.name), ['commit_api_quota', 'mark_interview_meaningful_use']);
+        assert.equal(calls[1].args.requested_session_id, '11111111-1111-4111-8111-111111111111');
+    } finally {
+        if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
+        if (oldKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = oldKey;
+    }
+});
+
 test('streaming parser preserves SSE events split across bytes', async () => {
     const api = load('src/lib/api-access.ts');
     const encoder = new TextEncoder();

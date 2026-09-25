@@ -5,6 +5,7 @@ export type InterviewAccess = {
     expiresAt: string | null;
     remainingSeconds: number;
     creditsRemaining: number;
+    creditRefunded?: boolean;
     reason?: string;
 };
 
