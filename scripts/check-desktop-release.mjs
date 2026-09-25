@@ -4,7 +4,7 @@ const target = process.argv[2];
 const tag = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : "";
 const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
-if (!tag) process.exit(0);
+if (!tag || !tag.startsWith("desktop-v")) process.exit(0);
 if (tag !== `desktop-v${pkg.version}`) throw new Error(`Tag ${tag} must match package version desktop-v${pkg.version}`);
 
 const required = target.startsWith("macos-")

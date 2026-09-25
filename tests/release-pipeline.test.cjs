@@ -25,6 +25,15 @@ test('tagged releases are blocked when signing secrets are absent', () => {
     assert.match(result.stderr, /Signed release blocked/);
 });
 
+test('explicit unsigned prerelease tags do not require signing secrets', () => {
+    const version = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+    const result = spawnSync(process.execPath, [path.resolve('scripts/check-desktop-release.mjs'), 'windows-x64'], {
+        env: { ...process.env, GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: `allyx-v${version}-unsigned`, WIN_CSC_LINK: '', WIN_CSC_KEY_PASSWORD: '' },
+        encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+});
+
 test('desktop workflow separates signed releases from explicitly unsigned prereleases', () => {
     const workflow = fs.readFileSync('.github/workflows/desktop-installers.yml', 'utf8');
     assert.match(workflow, /Verify Apple signature and notarization/);
