@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiClient } from "@/lib/api-access";
 import { billingAdminClient, fetchRazorpayPayment, verifyCheckoutSignature } from "@/lib/razorpay-server";
+import { sendPaymentConfirmationEmail } from "@/lib/payment-confirmation-email";
 
 const safeId = (value: unknown, prefix: string) => typeof value === "string" && value.startsWith(prefix) && value.length <= 80;
 
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
             captured_currency: payment.currency,
         });
         if (error) throw error;
+        await sendPaymentConfirmationEmail(body.razorpay_order_id).catch(emailError => {
+            console.error("[Billing email]", emailError instanceof Error ? emailError.message : emailError);
+        });
         return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
         console.error("[Billing verify]", error instanceof Error ? error.message : error);

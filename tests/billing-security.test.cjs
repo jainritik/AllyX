@@ -52,11 +52,13 @@ test('checkout and webhook signatures reject tampered payment data', () => {
 
 test('billing webhook routes captured payments and refunds through idempotent server RPCs', async () => {
     const calls = [];
+    const emails = [];
     const route = load('src/app/api/billing/webhook/route.ts', {
         '@/lib/razorpay-server': {
             verifyWebhookSignature: () => true,
             billingAdminClient: () => ({ rpc: async (name, args) => { calls.push({ name, args }); return { error: null }; } }),
         },
+        '@/lib/payment-confirmation-email': { sendPaymentConfirmationEmail: async orderId => emails.push(orderId) },
     });
     const captured = new Request('https://allyx.invalid/api/billing/webhook', {
         method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
@@ -65,6 +67,7 @@ test('billing webhook routes captured payments and refunds through idempotent se
     assert.equal((await route.POST(captured)).status, 200);
     assert.deepEqual(calls.map(call => call.name), ['fulfill_payment_order', 'record_payment_attempt_event']);
     assert.equal(calls[1].args.event_key, 'evt_capture');
+    assert.deepEqual(emails, ['order_1']);
 
     calls.length = 0;
     const refunded = new Request('https://allyx.invalid/api/billing/webhook', {
@@ -88,6 +91,18 @@ test('billing webhook routes captured payments and refunds through idempotent se
 test('refund ledger keeps processed refunds final when webhook events arrive out of order', () => {
     const migration = fs.readFileSync('supabase_payment_lifecycle_migration.sql', 'utf8');
     assert.match(migration, /when public\.payment_refunds\.status = 'processed' or excluded\.status = 'processed' then 'processed'/);
+});
+
+test('payment confirmation email uses an atomic retryable outbox', () => {
+    const migration = fs.readFileSync('supabase_payment_email_migration.sql', 'utf8');
+    assert.match(migration, /confirmation_email_sent_at is null/);
+    assert.match(migration, /confirmation_email_attempts < 5/);
+    assert.match(migration, /confirmation_email_status in \('pending', 'failed'\)/);
+    assert.match(migration, /grant execute on function public\.claim_payment_confirmation_email\(text\) to service_role/);
+    const sender = fs.readFileSync('src/lib/payment-confirmation-email.ts', 'utf8');
+    assert.match(sender, /Payment confirmed/);
+    assert.match(sender, /Credits available/);
+    assert.match(sender, /dashboard\/billing\/receipt/);
 });
 
 test('closing Razorpay Checkout releases the purchase button', () => {

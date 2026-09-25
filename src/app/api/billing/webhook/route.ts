@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { billingAdminClient, verifyWebhookSignature } from "@/lib/razorpay-server";
 import { createHash } from "node:crypto";
+import { sendPaymentConfirmationEmail } from "@/lib/payment-confirmation-email";
 
 const paymentEvents = new Set(["payment.authorized", "payment.captured", "payment.failed"]);
 const refundEvents = new Set(["refund.created", "refund.processed", "refund.failed"]);
@@ -41,6 +42,9 @@ export async function POST(request: NextRequest) {
                     captured_currency: payment.currency,
                 });
                 if (error) throw error;
+                await sendPaymentConfirmationEmail(payment.order_id).catch(emailError => {
+                    console.error("[Billing email]", emailError instanceof Error ? emailError.message : emailError);
+                });
             }
             const { error } = await admin.rpc("record_payment_attempt_event", {
                 event_key: key,
