@@ -1,5 +1,8 @@
 name: Desktop installers
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   push:
@@ -22,6 +25,14 @@ jobs:
             artifact: windows-x64
             command: npx electron-builder --win --x64
     runs-on: ${{ matrix.os }}
+    env:
+      CSC_LINK: ${{ matrix.artifact != 'windows-x64' && secrets.MAC_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.artifact != 'windows-x64' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+      APPLE_ID: ${{ matrix.artifact != 'windows-x64' && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.artifact != 'windows-x64' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ matrix.artifact != 'windows-x64' && secrets.APPLE_TEAM_ID || '' }}
+      WIN_CSC_LINK: ${{ matrix.artifact == 'windows-x64' && secrets.WIN_CSC_LINK || '' }}
+      WIN_CSC_KEY_PASSWORD: ${{ matrix.artifact == 'windows-x64' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,13 +40,49 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Require signing credentials for tagged releases
+        run: node scripts/check-desktop-release.mjs ${{ matrix.artifact }}
       - run: npm run lint
       - run: node --test tests/*.test.cjs electron/*.test.cjs
       - run: ${{ matrix.command }}
+      - name: Verify Apple signature and notarization
+        if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64'
+        run: |
+          codesign --verify --deep --strict --verbose=2 "dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/ZEDX AI.app"
+          xcrun stapler validate dist/*.dmg
+      - name: Verify Windows Authenticode signature
+        if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact == 'windows-x64'
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem dist -Filter *.exe
+          if ($installers.Count -ne 1) { throw "Expected one Windows installer" }
+          $signature = Get-AuthenticodeSignature $installers[0].FullName
+          if ($signature.Status -ne 'Valid') { throw "Invalid Windows signature: $($signature.Status)" }
+      - name: Create SHA-256 checksum
+        run: node scripts/create-release-checksums.mjs ${{ matrix.artifact }}
       - uses: actions/upload-artifact@v4
         with:
           name: zedx-${{ matrix.artifact }}
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/SHA256SUMS-*.txt
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Publish signed installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t assets < <(find release-assets -type f \( -name '*.dmg' -o -name '*.exe' -o -name 'SHA256SUMS-*.txt' \) | sort)
+          test "${#assets[@]}" -eq 6
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes --title "ZEDX AI ${GITHUB_REF_NAME#desktop-v}"

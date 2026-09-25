@@ -157,6 +157,10 @@ The DMG is written to `dist/ZEDX-AI-<version>-arm64.dmg`.
 
 The current beta build is unsigned. macOS may require Control-clicking the application and choosing **Open**. A public release should use an Apple Developer ID certificate, hardened runtime, notarization, and an owner-controlled update/download channel.
 
+Tagged desktop releases use `.github/workflows/desktop-installers.yml`. A tag must exactly match `desktop-v<package version>`. The workflow refuses to publish unless both Mac builds have Developer ID signing and Apple notarization credentials and the Windows build has an Authenticode certificate. It verifies the resulting signatures, generates SHA-256 checksums, and publishes all three installers to one GitHub Release. Workflow-dispatch builds remain private test artifacts and may be unsigned.
+
+Required GitHub Actions secrets for a public desktop tag are `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `WIN_CSC_LINK`, and `WIN_CSC_KEY_PASSWORD`. Never add certificate data or passwords to the repository.
+
 ## Repository layout
 
 ```text
