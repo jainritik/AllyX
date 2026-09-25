@@ -131,6 +131,6 @@ test('public policy pages do not expose the previous project owner email', () =>
     assert.match(policies, /seven calendar days/i);
     assert.match(policies, /Razorpay/);
     const contact = fs.readFileSync('src/lib/support-contact.ts', 'utf8');
-    assert.match(contact, /kitirjain@gamil\.com/);
+    assert.match(contact, /kitirjain@gmail\.com/);
     assert.match(contact, /wa\.me\/918377038800/);
 });
