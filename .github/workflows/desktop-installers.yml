@@ -24,13 +24,13 @@ jobs:
         include:
           - os: macos-14
             artifact: macos-arm64
-            command: npx electron-builder --mac --arm64
+            command: npx electron-builder --mac --arm64 --publish never
           - os: macos-15-intel
             artifact: macos-x64
-            command: npx electron-builder --mac --x64
+            command: npx electron-builder --mac --x64 --publish never
           - os: windows-latest
             artifact: windows-x64
-            command: npx electron-builder --win --x64
+            command: npx electron-builder --win --x64 --publish never
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
