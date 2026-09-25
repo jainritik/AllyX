@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Clock3, CreditCard, Loader2, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, Clock3, CreditCard, LifeBuoy, Loader2, RefreshCw } from "lucide-react";
 import { BILLING_PLANS, type BillingPlanId } from "@/lib/billing-plans";
 import { PurchaseButton } from "@/components/purchase-button";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export default function BillingPage() {
     return <div className="space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div><h1 className="text-3xl font-bold text-gray-950 dark:text-white">Billing & Credits</h1><p className="mt-2 text-gray-600 dark:text-gray-400">Manage interview access and review your purchases.</p></div>
-            <Button variant="outline" onClick={loadAccount} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button>
+            <div className="flex flex-wrap gap-2"><Link href="/dashboard/billing/support" className="inline-flex items-center rounded-md border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900"><LifeBuoy className="mr-2 h-4 w-4" />Payment support</Link><Button variant="outline" onClick={loadAccount} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button></div>
         </div>
 
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</div>}

@@ -113,7 +113,7 @@ export default function AboutPage() {
                             { icon: <Mic />, title: "Voice Capture", desc: "Advanced VAD (Voice Activity Detection) filters noise and captures key interview questions instantly." },
                             { icon: <Layers />, title: "Context Aware", desc: "Analyzes your uploaded CV and job descriptions to tailor answers specifically to your profile." },
                             { icon: <Globe />, title: "Multi-Language", desc: "Native support for English, Arabic, Spanish, and 30+ other global languages." },
-                            { icon: <Zap />, title: "Instant Transcription", desc: "Powered by Groq™ for ultra-fast speech-to-text conversion with 99% accuracy." },
+                            { icon: <Zap />, title: "Fast Transcription", desc: "Converts supported microphone and desktop audio into text for answer generation." },
                             { icon: <Shield />, title: "Privacy First", desc: "Your audio data is processed ephemerally and never stored on our servers." },
                             { icon: <Cpu />, title: "Model Agnostic", desc: "Switch between Llama 3, GPT-4, and Qwen models on the fly for best results." }
                         ].map((item, i) => (

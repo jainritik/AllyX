@@ -7,12 +7,13 @@ export const metadata: Metadata = {
 };
 
 export default function PrivacyPolicyPage() {
+    const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
     return (
         <div className="min-h-screen bg-white dark:bg-zinc-950 py-24 px-4">
             <div className="max-w-4xl mx-auto">
                 <div className="mb-12">
                     <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">Privacy Policy</h1>
-                    <p className="text-gray-500 dark:text-gray-400">Last Updated: December 22, 2024</p>
+                    <p className="text-gray-500 dark:text-gray-400">Last Updated: September 25, 2026</p>
                 </div>
 
                 <div className="prose prose-gray dark:prose-invert max-w-none">
@@ -22,12 +23,12 @@ export default function PrivacyPolicyPage() {
                             This Privacy Notice for ZEDX AI (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;), describes how and why we might access, collect, store, use, and/or share (&quot;process&quot;) your personal information when you use our services (&quot;Services&quot;), including when you:
                         </p>
                         <ul className="list-disc ml-6 mt-4 space-y-2 text-gray-600 dark:text-gray-300">
-                            <li>Visit our website at zedx-ai-assistant-1.vercel.app, or any website of ours that links to this Privacy Notice</li>
+                            <li>Visit zedx-private-demo.vercel.app, or another ZEDX website that links to this Privacy Notice</li>
                             <li>Use our AI-powered interview assistant application</li>
                             <li>Engage with us in other related ways, including any sales, marketing, or events</li>
                         </ul>
                         <p className="mt-4 text-gray-600 dark:text-gray-300">
-                            <strong>Questions or concerns?</strong> Reading this Privacy Notice will help you understand your privacy rights and choices. If you do not agree with our policies and practices, please do not use our Services. If you still have any questions or concerns, please contact us at <a href="mailto:ziademadbts@gmail.com" className="text-emerald-600 hover:underline">ziademadbts@gmail.com</a>.
+                            <strong>Questions or concerns?</strong> Reading this Privacy Notice will help you understand your privacy rights and choices. Payment and refund questions can be submitted through <Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link>.{supportEmail ? <> Other privacy questions can be sent to <a href={`mailto:${supportEmail}`} className="text-emerald-600 hover:underline">{supportEmail}</a>.</> : null}
                         </p>
                     </section>
 
@@ -36,7 +37,7 @@ export default function PrivacyPolicyPage() {
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Summary of Key Points</h2>
                         <ul className="space-y-3 text-gray-600 dark:text-gray-300">
                             <li><strong>What personal information do we process?</strong> When you use our Services, we may process personal information depending on how you interact with us and the Services.</li>
-                            <li><strong>Do we process any sensitive personal information?</strong> We do not process sensitive personal information.</li>
+                            <li><strong>Do we request sensitive personal information?</strong> No. Avoid adding confidential or sensitive information to resumes, context, transcripts, or support requests unless it is necessary and you are permitted to share it.</li>
                             <li><strong>Do we collect any information from third parties?</strong> We may collect limited information from Google when you use social login.</li>
                             <li><strong>How do we process your information?</strong> We process your information to provide, improve, and administer our Services, communicate with you, for security and fraud prevention, and to comply with law.</li>
                             <li><strong>How do we keep your information safe?</strong> We have adequate organizational and technical processes in place to protect your personal information.</li>
@@ -80,9 +81,10 @@ export default function PrivacyPolicyPage() {
                             <li>Resume content (for interview preparation)</li>
                             <li>Job descriptions (for interview context)</li>
                             <li>Interview transcripts and AI responses</li>
+                            <li>Purchase, payment-status, refund, receipt, and billing-support records</li>
                         </ul>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
-                            <strong>Sensitive Information.</strong> We do not process sensitive information.
+                            <strong>Sensitive Information.</strong> We do not intentionally request sensitive information. Content you submit can nevertheless contain information you choose to provide, so review it before uploading or recording.
                         </p>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
                             <strong>Social Media Login Data.</strong> We may provide you with the option to register with us using your existing Google account. If you choose to register in this way, we will collect certain profile information about you from Google, as described in Section 7 below.
@@ -140,6 +142,7 @@ export default function PrivacyPolicyPage() {
                         <ul className="list-disc ml-6 space-y-2 text-gray-600 dark:text-gray-300">
                             <li><strong>With AI Service Providers.</strong> We share your input (resume, AI context, answer preferences, and interview questions) with OpenAI or Groq to generate answers. These providers process your data according to their privacy policies.</li>
                             <li><strong>With Service Providers.</strong> We share your data with Supabase for database storage and authentication.</li>
+                            <li><strong>With Payment Providers.</strong> Razorpay processes checkout and payment-instrument information. We receive transaction identifiers, amounts, payment status, and refund or dispute updates, but we do not store your full card, bank-account, CVV, or UPI credentials.</li>
                             <li><strong>Business Transfers.</strong> We may share or transfer your information in connection with any merger, sale of company assets, or acquisition.</li>
                         </ul>
                     </section>
@@ -198,10 +201,10 @@ export default function PrivacyPolicyPage() {
                             <em>In Short: We keep your information for as long as necessary to fulfill the purposes outlined in this Privacy Notice.</em>
                         </p>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
-                            We will only keep your personal information for as long as it is necessary for the purposes set out in this Privacy Notice, unless a longer retention period is required by law. When you delete your account, we will delete or anonymize your personal information within 30 days.
+                            We keep personal information only as long as necessary for the purposes described here, subject to legal, fraud-prevention, accounting, payment-dispute, and security retention requirements.
                         </p>
                         <p className="text-gray-600 dark:text-gray-300">
-                            Your interview transcripts, resumes, and AI responses are stored as long as you have an active account. You can delete individual interviews or your entire account at any time.
+                            Interview transcripts, resumes, and AI responses remain associated with your account until deleted or until the account is closed. Payment and refund records may be retained longer where required for accounting, chargebacks, fraud prevention, or law.
                         </p>
                     </section>
 
@@ -251,10 +254,10 @@ export default function PrivacyPolicyPage() {
                             <li>Withdraw your consent at any time</li>
                         </ul>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
-                            <strong>Account Information:</strong> You can review, change, or delete your account information at any time by logging into your account settings. Upon your request to terminate your account, we will deactivate or delete your account and information from our active databases.
+                            <strong>Account Information:</strong> You can review available account information after signing in. Requests to correct, export, or delete personal data are handled through the contact method below and remain subject to records we must retain by law.
                         </p>
                         <p className="text-gray-600 dark:text-gray-300">
-                            If you have questions about your privacy rights, you may email us at <a href="mailto:ziademadbts@gmail.com" className="text-emerald-600 hover:underline">ziademadbts@gmail.com</a>.
+                            If you have questions about your privacy rights, use the contact method in Section 13.
                         </p>
                     </section>
 
@@ -273,11 +276,12 @@ export default function PrivacyPolicyPage() {
                     <section id="section13" className="mb-10">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">13. How can you contact us?</h2>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
-                            If you have questions or comments about this notice, you may email us at:
+                            If you have questions or comments about this notice, use the authenticated support page{supportEmail ? " or the email below" : ""}:
                         </p>
                         <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-xl">
                             <p className="text-gray-900 dark:text-white font-semibold">ZEDX AI</p>
-                            <p className="text-gray-600 dark:text-gray-300">Email: <a href="mailto:ziademadbts@gmail.com" className="text-emerald-600 hover:underline">ziademadbts@gmail.com</a></p>
+                            <p className="text-gray-600 dark:text-gray-300"><Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link></p>
+                            {supportEmail && <p className="text-gray-600 dark:text-gray-300">Email: <a href={`mailto:${supportEmail}`} className="text-emerald-600 hover:underline">{supportEmail}</a></p>}
                         </div>
                     </section>
                 </div>

@@ -95,3 +95,24 @@ test('closing Razorpay Checkout releases the purchase button', () => {
     assert.match(component, /modal:\s*\{\s*ondismiss:/);
     assert.match(component, /Checkout closed\. Any completed payment will appear automatically\./);
 });
+
+test('billing support requires authentication and keeps writes behind RPCs', async () => {
+    const route = load('src/app/api/billing/support/route.ts', {
+        '@/lib/api-access': { apiClient: () => null },
+    });
+    const response = await route.POST(new Request('https://zedx.invalid/api/billing/support', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: 'refund', message: 'Please refund this order.' }),
+    }));
+    assert.equal(response.status, 503);
+    const migration = fs.readFileSync('supabase_billing_support_migration.sql', 'utf8');
+    assert.match(migration, /revoke all on public\.billing_support_requests from anon, authenticated/);
+    assert.match(migration, /where order_id = requested_order_id and user_id = auth\.uid\(\)/);
+    assert.match(migration, /recent_count >= 5/);
+});
+
+test('public policy pages do not expose the previous project owner email', () => {
+    const policies = fs.readFileSync('src/app/terms/page.tsx', 'utf8') + fs.readFileSync('src/app/privacy/page.tsx', 'utf8');
+    assert.doesNotMatch(policies, /ziademadbts/i);
+    assert.match(policies, /seven calendar days/i);
+    assert.match(policies, /Razorpay/);
+});

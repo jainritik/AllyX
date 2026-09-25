@@ -1,77 +1,21 @@
 import Link from "next/link";
 
 export default function TermsOfServicePage() {
-    return (
-        <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 py-12 px-4">
-            <div className="max-w-3xl mx-auto bg-white dark:bg-zinc-800 rounded-2xl shadow-sm p-8">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Terms of Service</h1>
-                <p className="text-gray-500 text-sm mb-8">Last updated: September 2026</p>
-
-                <div className="space-y-6 text-gray-700 dark:text-gray-300">
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">1. Acceptance of Terms</h2>
-                        <p>By accessing and using ZEDX-AI Assistant, you accept and agree to be bound by the terms and conditions of this agreement.</p>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">2. Description of Service</h2>
-                        <p>ZEDX-AI Assistant is an AI-powered interview preparation tool that provides:</p>
-                        <ul className="list-disc ml-6 mt-2 space-y-1">
-                            <li>Real-time interview assistance</li>
-                            <li>Resume-based response generation</li>
-                            <li>Interview transcript storage</li>
-                            <li>AI-powered answer suggestions</li>
-                        </ul>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">3. User Responsibilities</h2>
-                        <p>You agree to:</p>
-                        <ul className="list-disc ml-6 mt-2 space-y-1">
-                            <li>Provide accurate information during registration</li>
-                            <li>Use the service for legitimate interview preparation</li>
-                            <li>Not misuse or abuse the AI capabilities</li>
-                            <li>Keep your account credentials secure</li>
-                        </ul>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">4. AI Service</h2>
-                        <p>ZEDX-AI Assistant uses server-side AI processing from Groq and OpenAI. Model availability, usage limits, and costs depend on the selected model and service configuration.</p>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">5. Limitation of Liability</h2>
-                        <p>ZEDX-AI Assistant is provided &quot;as is&quot; without warranties of any kind. We are not responsible for:</p>
-                        <ul className="list-disc ml-6 mt-2 space-y-1">
-                            <li>Interview outcomes or job offers</li>
-                            <li>Accuracy of AI-generated responses</li>
-                            <li>Third-party API service interruptions</li>
-                        </ul>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">6. Termination</h2>
-                        <p>We reserve the right to terminate or suspend access to our service at any time, without prior notice, for conduct that we believe violates these Terms of Service.</p>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">7. Changes to Terms</h2>
-                        <p>We may modify these terms at any time. Continued use of the service after changes constitutes acceptance of the modified terms.</p>
-                    </section>
-
-                    <section>
-                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">8. Contact</h2>
-                        <p>For questions about these Terms, contact us at: ziademadbts@gmail.com</p>
-                    </section>
-                </div>
-
-                <div className="mt-8 pt-6 border-t">
-                    <Link href="/" className="text-teal-600 hover:text-teal-700">
-                        ← Back to Home
-                    </Link>
-                </div>
-            </div>
+    const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
+    return <div className="min-h-screen bg-gray-50 px-4 py-12 dark:bg-zinc-900"><div className="mx-auto max-w-3xl rounded-2xl bg-white p-8 shadow-sm dark:bg-zinc-800">
+        <h1 className="mb-3 text-3xl font-bold text-gray-900 dark:text-white">Terms of Service</h1><p className="mb-8 text-sm text-gray-500">Last updated: September 25, 2026</p>
+        <div className="space-y-7 text-gray-700 dark:text-gray-300">
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">1. Service and eligibility</h2><p>ZEDX AI provides AI-generated suggestions, transcription, screen-text extraction, practice-session storage, and related interview preparation tools. You must be at least 18 and legally able to enter this agreement.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">2. Accounts and acceptable use</h2><p>You are responsible for your account and activity. Use the service only where permitted by law, workplace rules, platform rules, and any agreement governing your meeting or assessment. Do not use it to deceive, impersonate, harm others, bypass security controls, or submit confidential material you are not allowed to process.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">3. AI output</h2><p>AI output can be incomplete, delayed, or incorrect. Review it before relying on it. ZEDX does not guarantee interview results, employment, answer accuracy, or uninterrupted availability. Selected providers and models can change when a provider is unavailable.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">4. Free trial and interview credits</h2><ul className="ml-6 list-disc space-y-2"><li>Each account receives one server-enforced trial lasting up to 10 minutes from the time it starts.</li><li>Trial time does not reset after refresh, sign-out, reinstall, or device change.</li><li>Purchased interview packs are one-time purchases, not recurring subscriptions.</li><li>One interview credit is reserved when a paid session starts. It is returned when the session ends before meaningful use; otherwise it is consumed.</li><li>Credits have no cash value and cannot be transferred between accounts.</li></ul></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">5. Prices and payments</h2><p>Prices are shown in INR before checkout. Payments are processed by Razorpay using the payment method you select. We do not receive or store your full card, bank-account, CVV, or UPI credentials. A purchase is complete only after payment verification. Failed or pending payments do not grant credits unless a later verified capture is received.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">6. Refunds</h2><p>You may request a refund within seven calendar days of purchase if none of the credits from that interview pack have been used. Duplicate charges, successful payments that did not grant credits, and other payment errors are reviewed even after seven days. Used credits are normally non-refundable except where required by law.</p><p className="mt-3">Approved refunds are issued to the original payment method. They normally appear within 5–7 business days after processing, but the bank or payment provider may take longer. Refunded credits are removed; credits already used may be offset against future purchases.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">7. Suspension and termination</h2><p>We may limit or suspend access for fraud, payment abuse, security risks, illegal conduct, or material violations of these terms. We will preserve payment records where needed for accounting, disputes, and legal obligations.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">8. Liability</h2><p>The service is provided on an “as available” basis. To the maximum extent permitted by law, ZEDX is not liable for interview outcomes, lost opportunities, third-party outages, or decisions made from AI output. Nothing in these terms limits rights or liability that cannot legally be limited.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">9. Changes</h2><p>We may update these terms when the service, prices, providers, or legal requirements change. The current version and update date will remain available here.</p></section>
+            <section><h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-white">10. Support</h2><p>For payment, credit, or refund help, submit an authenticated request from <Link href="/dashboard/billing/support" className="font-semibold text-emerald-600 hover:underline">Payment & refund support</Link>.{supportEmail ? <> For account-access or legal questions, email <a href={`mailto:${supportEmail}`} className="text-emerald-600 hover:underline">{supportEmail}</a>.</> : null}</p></section>
         </div>
-    );
+        <div className="mt-8 border-t pt-6"><Link href="/" className="text-teal-600 hover:text-teal-700">← Back to Home</Link></div>
+    </div></div>;
 }
