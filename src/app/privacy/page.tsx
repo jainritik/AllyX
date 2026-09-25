@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Metadata } from "next";
+import { supportContact } from "@/lib/support-contact";
 
 export const metadata: Metadata = {
     title: "Privacy Policy - AllyX",
@@ -7,7 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default function PrivacyPolicyPage() {
-    const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
     return (
         <div className="min-h-screen bg-white dark:bg-zinc-950 py-24 px-4">
             <div className="max-w-4xl mx-auto">
@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
                             <li>Engage with us in other related ways, including any sales, marketing, or events</li>
                         </ul>
                         <p className="mt-4 text-gray-600 dark:text-gray-300">
-                            <strong>Questions or concerns?</strong> Reading this Privacy Notice will help you understand your privacy rights and choices. Payment and refund questions can be submitted through <Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link>.{supportEmail ? <> Other privacy questions can be sent to <a href={`mailto:${supportEmail}`} className="text-emerald-600 hover:underline">{supportEmail}</a>.</> : null}
+                            <strong>Questions or concerns?</strong> Reading this Privacy Notice will help you understand your privacy rights and choices. Payment and refund questions can be submitted through <Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link>. Other questions can be sent to <a href={`mailto:${supportContact.email}`} className="text-emerald-600 hover:underline">{supportContact.email}</a> or through <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">WhatsApp</a>.
                         </p>
                     </section>
 
@@ -276,12 +276,13 @@ export default function PrivacyPolicyPage() {
                     <section id="section13" className="mb-10">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">13. How can you contact us?</h2>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
-                            If you have questions or comments about this notice, use the authenticated support page{supportEmail ? " or the email below" : ""}:
+                            If you have questions or comments about this notice, use the authenticated support page or contact us below:
                         </p>
                         <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-xl">
                             <p className="text-gray-900 dark:text-white font-semibold">AllyX</p>
                             <p className="text-gray-600 dark:text-gray-300"><Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link></p>
-                            {supportEmail && <p className="text-gray-600 dark:text-gray-300">Email: <a href={`mailto:${supportEmail}`} className="text-emerald-600 hover:underline">{supportEmail}</a></p>}
+                            <p className="text-gray-600 dark:text-gray-300">Email: <a href={`mailto:${supportContact.email}`} className="text-emerald-600 hover:underline">{supportContact.email}</a></p>
+                            <p className="text-gray-600 dark:text-gray-300">WhatsApp: <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">{supportContact.whatsappDisplay}</a></p>
                         </div>
                     </section>
                 </div>

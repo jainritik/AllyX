@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { supportContact } from "@/lib/support-contact";
 
 type RequestItem = { id: string; category: string; orderId: string | null; message: string; status: string; createdAt: string };
 type Purchase = { orderId: string; status: string; amount: number; createdAt: string };
@@ -41,7 +42,7 @@ export default function BillingSupportPage() {
 
     const requiresOrder = category === "payment" || category === "refund";
     return <div className="mx-auto max-w-4xl space-y-8">
-        <div><Link href="/dashboard/billing" className="inline-flex items-center text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"><ArrowLeft className="mr-2 h-4 w-4" />Billing & Credits</Link><h1 className="mt-4 text-3xl font-bold">Payment & refund support</h1><p className="mt-2 text-gray-600 dark:text-gray-400">Send a request linked to your account and track its progress.</p></div>
+        <div><Link href="/dashboard/billing" className="inline-flex items-center text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"><ArrowLeft className="mr-2 h-4 w-4" />Billing & Credits</Link><h1 className="mt-4 text-3xl font-bold">Payment & refund support</h1><p className="mt-2 text-gray-600 dark:text-gray-400">Send a request linked to your account and track its progress. For direct help, message <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">{supportContact.whatsappDisplay} on WhatsApp</a> or email <a href={`mailto:${supportContact.email}`} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">{supportContact.email}</a>.</p></div>
         <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"><h2 className="text-lg font-bold">Refund policy</h2><p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-400">You may request a refund within seven calendar days of purchase when none of the credits from that interview pack have been used. Duplicate charges, successful payments that did not grant credits, and other payment errors are reviewed even after seven days. Approved refunds return to the original payment method and normally appear within 5–7 business days, depending on the bank.</p></section>
         <form onSubmit={submit} className="space-y-5 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
             <label className="block text-sm font-semibold">What do you need help with?<select value={category} onChange={event => setCategory(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-300 bg-transparent px-4 py-3 dark:border-gray-700"><option value="payment">Payment</option><option value="refund">Refund request</option><option value="credits">Missing or incorrect credits</option><option value="technical">Technical problem</option><option value="other">Other</option></select></label>

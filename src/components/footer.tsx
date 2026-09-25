@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { supportContact } from "@/lib/support-contact";
 
 export function Footer() {
     return (
@@ -14,6 +15,8 @@ export function Footer() {
                     <Link href="/download" className="hover:text-sky-600 dark:hover:text-cyan-300">Download</Link>
                     <Link href="/privacy" className="hover:text-sky-600 dark:hover:text-cyan-300">Privacy</Link>
                     <Link href="/terms" className="hover:text-sky-600 dark:hover:text-cyan-300">Terms</Link>
+                    <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="hover:text-sky-600 dark:hover:text-cyan-300">WhatsApp support</a>
+                    <a href={`mailto:${supportContact.email}`} className="hover:text-sky-600 dark:hover:text-cyan-300">Email support</a>
                 </nav>
             </div>
             <div className="mx-auto mt-8 max-w-6xl border-t border-slate-200 px-6 pt-6 text-center text-xs text-slate-400 dark:border-white/10 sm:text-left">© {new Date().getFullYear()} AllyX. All rights reserved.</div>
