@@ -9,6 +9,7 @@ import { interviewService, Interview } from "@/lib/interview-service";
 import { useRouter } from "next/navigation";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { interviewAccess } from "@/lib/interview-access";
+import { DesktopAppNotice } from "@/components/desktop-app-notice";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -104,6 +105,7 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-8">
+            <DesktopAppNotice compact />
             {error && (
                 <div role="alert" className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
                     <AlertCircle size={20} />

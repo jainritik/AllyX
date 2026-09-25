@@ -1,6 +1,7 @@
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 import { desktopDownloads } from '@/lib/download-links';
+import { DesktopAppNotice } from '@/components/desktop-app-notice';
 
 const builds = [
     { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: desktopDownloads.macArm64 },
@@ -14,7 +15,8 @@ export default function DownloadPage() {
         <main className="flex-grow max-w-4xl mx-auto w-full px-6 pt-32 pb-20">
             <h1 className="text-4xl font-bold mb-4">Download AllyX desktop</h1>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Choose the installer that matches your computer.</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-10">Capture privacy depends on your OS and the sharing app. Verify the receiver view before relying on it.</p>
+            <div className="mb-8"><DesktopAppNotice showDownload={false} /></div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-10">Before a real session, use a second participant view to confirm the overlay behaves as expected with your computer and meeting app.</p>
             <div className="grid gap-4 sm:grid-cols-3">
                 {builds.map(build => <div id={build.id} key={build.name} className="scroll-mt-28 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6">
                     <h2 className="font-semibold text-lg">{build.name}</h2>
@@ -24,8 +26,8 @@ export default function DownloadPage() {
                         : <p className="mt-5 text-sm font-medium text-sky-700 dark:text-cyan-300">Installer available at launch</p>}
                 </div>)}
             </div>
-            <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">Current direct-download installers are unsigned. macOS Gatekeeper or Windows SmartScreen may show an unknown-publisher warning. Signed installers will replace these files later.</p>
-            <p className="mt-10 text-sm text-gray-500">The web app is available through your account. Desktop-specific capture controls require the installed app.</p>
+            <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"><p className="font-semibold">Your computer may ask for confirmation when opening AllyX for the first time.</p><p className="mt-1">This can happen with the current download. Only continue when you downloaded AllyX from this official page.</p></div>
+            <p className="mt-10 text-sm text-gray-500">Phones and tablets can access account pages, billing, and history. Starting a live interview session requires the installed Mac or Windows app.</p>
         </main>
         <Footer />
     </div>;
