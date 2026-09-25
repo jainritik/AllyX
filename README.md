@@ -80,6 +80,7 @@ Apply the SQL in this order through the Supabase SQL editor:
 3. `supabase_trial_migration.sql`
 4. `supabase_billing_migration.sql`
 5. `supabase_billing_account_migration.sql`
+6. `supabase_session_recovery_migration.sql`
 
 These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, and interview credits. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
 

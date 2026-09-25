@@ -27,6 +27,7 @@ export default function HowToUsePage() {
     const [setupReady, setSetupReady] = useState(false);
     const [setupError, setSetupError] = useState("");
     const [isStarting, setIsStarting] = useState(false);
+    const [hasActiveSession, setHasActiveSession] = useState(false);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -40,6 +41,15 @@ export default function HowToUsePage() {
             }
         }, 0);
         return () => clearTimeout(timer);
+    }, [accountId]);
+
+    useEffect(() => {
+        if (!accountId) return;
+        let cancelled = false;
+        void interviewAccess.status().then(access => {
+            if (!cancelled) setHasActiveSession(Boolean(access.allowed && access.sessionId));
+        }).catch(() => { /* The start action will surface access errors. */ });
+        return () => { cancelled = true; };
     }, [accountId]);
 
     const instructions = [
@@ -111,13 +121,21 @@ export default function HowToUsePage() {
         setIsStarting(true);
         setSetupError("");
         try {
-            const sessionId = crypto.randomUUID();
-            const access = await interviewAccess.start(sessionId);
+            // Reuse a server-authorized session after a refresh, renderer restart,
+            // or accidental return to setup. Starting a second UUID here could
+            // otherwise reserve another paid interview credit.
+            const currentAccess = await interviewAccess.status();
+            const sessionId = currentAccess.allowed && currentAccess.sessionId
+                ? currentAccess.sessionId
+                : crypto.randomUUID();
+            const access = currentAccess.allowed && currentAccess.sessionId
+                ? currentAccess
+                : await interviewAccess.start(sessionId);
             if (!access.allowed) {
                 setSetupError(access.reason || "Your free trial has ended. Choose an interview pack to continue.");
                 return;
             }
-            sessionStorage.setItem("zedx_access_session", sessionId);
+            sessionStorage.setItem("zedx_access_session", access.sessionId || sessionId);
             router.push("/interview");
         } catch (error) {
             setSetupError(error instanceof Error ? error.message : "Could not start the interview. Try again.");
@@ -188,7 +206,7 @@ export default function HowToUsePage() {
                         disabled={!setupReady || isStarting}
                         className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
                     >
-                        {isStarting ? "Starting securely…" : "Got it, Start Interview!"}
+                        {isStarting ? "Opening securely…" : hasActiveSession ? "Resume Active Interview" : "Got it, Start Interview!"}
                         <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
                     </Button>
 
