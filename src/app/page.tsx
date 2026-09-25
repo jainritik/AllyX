@@ -44,9 +44,9 @@ const faqs = [
 function ProductPreview() {
   return (
     <div className="relative mx-auto mt-16 w-full max-w-6xl px-3 sm:px-6">
-      <div className="absolute inset-x-16 -top-20 h-64 rounded-full bg-cyan-300/25 blur-[100px]" />
-      <div className="absolute -bottom-12 right-12 h-64 w-64 rounded-full bg-violet-300/25 blur-[90px]" />
-      <div className="relative overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/80 p-2 shadow-[0_35px_110px_-35px_rgba(16,66,94,.45)] backdrop-blur-xl sm:rounded-[2rem] sm:p-3">
+      <div className="absolute inset-x-16 -top-20 hidden h-64 rounded-full bg-cyan-300/25 blur-[100px] sm:block" />
+      <div className="absolute -bottom-12 right-12 hidden h-64 w-64 rounded-full bg-violet-300/25 blur-[90px] sm:block" />
+      <div className="relative overflow-hidden rounded-[1.5rem] border border-white/80 bg-white p-2 shadow-lg sm:rounded-[2rem] sm:bg-white/80 sm:p-3 sm:shadow-[0_35px_110px_-35px_rgba(16,66,94,.45)] sm:backdrop-blur-xl">
         <div className="overflow-hidden rounded-[1.15rem] border border-slate-200 bg-[#101826] sm:rounded-[1.45rem]">
           <div className="flex h-10 items-center gap-2 border-b border-white/10 px-4">
             <span className="h-2.5 w-2.5 rounded-full bg-[#ff6b6b]" /><span className="h-2.5 w-2.5 rounded-full bg-[#ffd166]" /><span className="h-2.5 w-2.5 rounded-full bg-[#69db7c]" />
@@ -56,7 +56,7 @@ function ProductPreview() {
             <div className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_20%_10%,rgba(56,189,248,.16),transparent_35%),linear-gradient(145deg,#101827,#18273d)] p-5 sm:p-8 lg:border-b-0 lg:border-r">
               <div className="mb-8 flex items-center gap-3 text-xs text-slate-400"><Code2 className="h-4 w-4 text-cyan-300" /><span>candidate-service / handler.go</span></div>
               <pre className="overflow-hidden text-[10px] leading-6 text-slate-400 sm:text-xs sm:leading-7"><code><span className="text-violet-300">func</span> <span className="text-cyan-200">ProcessJobs</span>(ctx context.Context) error {'{'}{"\n"}  jobs, err := queue.Fetch(ctx){"\n"}  <span className="text-violet-300">if</span> err != nil {'{'}{"\n"}    <span className="text-violet-300">return</span> err{"\n"}  {'}'}{"\n\n"}  <span className="text-slate-500">{"// How would you control concurrency here?"}</span>{"\n"}  <span className="text-violet-300">for</span> _, job := <span className="text-violet-300">range</span> jobs {'{'}{"\n"}    go process(job){"\n"}  {'}'}{"\n"}  <span className="text-violet-300">return</span> nil{"\n"}{'}'}</code></pre>
-              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-[11px] text-slate-300 backdrop-blur sm:left-8 sm:right-8"><span className="flex items-center gap-2"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />Listening to meeting audio</span><span className="hidden text-slate-500 sm:block">00:07:42</span></div>
+              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-[11px] text-slate-300 sm:left-8 sm:right-8 sm:bg-black/20 sm:backdrop-blur"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-400 motion-safe:sm:animate-pulse" />Listening to meeting audio</span><span className="hidden text-slate-500 sm:block">00:07:42</span></div>
             </div>
             <div className="relative bg-[#0b111d] p-5 sm:p-8">
               <div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-cyan-300">SUGGESTED ANSWER</p><p className="mt-1 text-xs text-slate-500">Grounded in your role and resume</p></div><Sparkles className="h-5 w-5 text-violet-300" /></div>
@@ -86,14 +86,14 @@ export default function Home() {
       <main>
         <section className="relative isolate overflow-hidden px-4 pb-24 pt-36 sm:px-6 sm:pt-44">
           <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_50%_-10%,#8bdcff_0,rgba(192,230,255,.76)_24%,rgba(248,251,255,.96)_58%,#f8fbff_78%)] dark:bg-[radial-gradient(circle_at_50%_-10%,#164e63_0,#0b1320_34%,#05070b_72%)]" />
-          <div className="absolute inset-0 -z-10 opacity-[.17] [background-image:linear-gradient(rgba(15,23,42,.13)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,.13)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:linear-gradient(to_bottom,black,transparent_72%)]" />
+          <div className="absolute inset-0 -z-10 hidden opacity-[.17] [background-image:linear-gradient(rgba(15,23,42,.13)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,.13)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:linear-gradient(to_bottom,black,transparent_72%)] sm:block" />
           <div className="mx-auto max-w-5xl text-center">
-            <div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-sky-300/60 bg-white/65 px-4 py-2 text-xs font-semibold text-sky-900 shadow-sm backdrop-blur dark:border-cyan-300/20 dark:bg-white/5 dark:text-cyan-200"><Zap className="h-3.5 w-3.5 fill-current" />Desktop app for macOS and Windows</div>
+            <div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-sky-300/60 bg-white px-4 py-2 text-xs font-semibold text-sky-900 shadow-sm sm:bg-white/65 sm:backdrop-blur dark:border-cyan-300/20 dark:bg-slate-900 sm:dark:bg-white/5 dark:text-cyan-200"><Zap className="h-3.5 w-3.5 fill-current" />Desktop app for macOS and Windows</div>
             <h1 className="text-balance text-5xl font-semibold leading-[.98] tracking-[-.055em] sm:text-7xl lg:text-[6.2rem]">Think clearly.<br /><span className="bg-gradient-to-r from-sky-600 via-cyan-500 to-violet-600 bg-clip-text text-transparent">Answer confidently.</span></h1>
             <p className="mx-auto mt-7 max-w-2xl text-pretty text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-xl sm:leading-8">A real-time AI interview assistant that listens, understands your context, and provides focused answer suggestions when you need them.</p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a href={macUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950"><Apple className="h-4 w-4" />Download for Mac</a>
-              <a href={windowsUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white/70 px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:bg-white dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"><Monitor className="h-4 w-4" />Download for Windows</a>
+              <a href={windowsUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-white sm:bg-white/70 sm:backdrop-blur dark:border-white/15 dark:bg-slate-900 sm:dark:bg-white/5 dark:text-white dark:hover:bg-white/10"><Monitor className="h-4 w-4" />Download for Windows</a>
             </div>
             <p className="mt-4 text-xs text-slate-500">One 10-minute trial per account · No payment required for the trial</p>
           </div>
