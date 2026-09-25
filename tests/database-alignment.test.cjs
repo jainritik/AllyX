@@ -19,6 +19,7 @@ test("README lists every database script exactly once in deployment order", () =
         "supabase_payment_email_migration.sql",
         "supabase_billing_support_migration.sql",
         "supabase_bug_reports_migration.sql",
+        "supabase_interview_setup_migration.sql",
     ];
     const actualFiles = fs.readdirSync(root).filter(name => /^supabase.*\.sql$/.test(name)).sort();
     assert.deepEqual([...expected].sort(), actualFiles);

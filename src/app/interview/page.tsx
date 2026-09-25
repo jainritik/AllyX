@@ -12,7 +12,7 @@ import { SettingsDialog } from "@/components/settings-dialog";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { interviewService } from "@/lib/interview-service";
 import { useAuth } from "@/lib/auth";
-import { readInterviewContext } from "@/lib/interview-context";
+import { loadInterviewContext, readInterviewContext } from "@/lib/interview-context";
 import { interviewAccess } from "@/lib/interview-access";
 
 // --- Types for Web Speech API ---
@@ -168,7 +168,7 @@ export default function InterviewPage() {
     }, [accountId]);
 
     useEffect(() => {
-        if (!accountId || !sessionIdRef.current) return;
+        if (!accountId || !sessionIdRef.current || !contextReady || !window.electronAPI?.isElectron) return;
         let cancelled = false;
         const verify = async () => {
             try {
@@ -192,7 +192,7 @@ export default function InterviewPage() {
         void verify();
         const heartbeat = window.setInterval(verify, 15000);
         return () => { cancelled = true; window.clearInterval(heartbeat); };
-    }, [accountId]);
+    }, [accountId, contextReady]);
 
     useEffect(() => {
         if (accessRemaining === null || accessRemaining <= 0) return;
@@ -259,8 +259,16 @@ export default function InterviewPage() {
     useEffect(() => {
         if (!accountId) return;
         setHasMounted(true);
+        if (!window.electronAPI?.isElectron) {
+            setError("Live interview sessions require the AllyX desktop app. Browser screen sharing can make this page visible to other participants.");
+            router.replace("/dashboard/new/how-to-use");
+            return;
+        }
+        let cancelled = false;
+        const load = async () => {
         try {
-            const saved = readInterviewContext(accountId);
+            const saved = await loadInterviewContext(accountId);
+            if (cancelled) return;
             if (!saved) {
                 setError("Interview setup is missing. Return to setup and start again.");
                 router.replace("/dashboard/new");
@@ -269,10 +277,13 @@ export default function InterviewPage() {
             setInterviewContext({ type: saved.type, jd: saved.jd, resume: saved.resume, lang: saved.lang, model: saved.model });
             setContextReady(true);
         } catch {
+            if (cancelled) return;
             setError("Interview setup could not be read. Return to setup and start again.");
             router.replace("/dashboard/new");
             return;
         }
+        };
+        void load();
 
         // v18.0: Listen for scanner state changes (Atomic Sync)
         if (typeof window !== 'undefined' && window.electronAPI?.onScannerStateChange) {
@@ -280,8 +291,9 @@ export default function InterviewPage() {
                 console.log('[Sync] Scanner state changed:', active);
                 setIsScannerActive(active);
             });
-            return cleanup;
+            return () => { cancelled = true; cleanup(); };
         }
+        return () => { cancelled = true; };
     }, [accountId, router]);
 
     // Initialize Camera

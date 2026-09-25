@@ -90,6 +90,7 @@ Apply the SQL in this order through the Supabase SQL editor:
 9. `supabase_payment_email_migration.sql`
 10. `supabase_billing_support_migration.sql`
 11. `supabase_bug_reports_migration.sql`
+12. `supabase_interview_setup_migration.sql`
 
 These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, interview credits, payment-email outbox, authenticated billing support, and private bug-report attachments. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
 
@@ -178,6 +179,7 @@ tests/                       Web/auth/service regression tests
 supabase_schema.sql          Base database schema
 supabase_beta_migration.sql  Beta security, quota and consistency migration
 supabase_bug_reports_migration.sql  Bug reports, private attachments and email outbox
+supabase_interview_setup_migration.sql  Account-synced desktop and website interview setup
 ```
 
 ## Release boundaries

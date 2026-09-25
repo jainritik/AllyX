@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { readInterviewContext } from "@/lib/interview-context";
+import { loadInterviewContext } from "@/lib/interview-context";
 import { useAuth } from "@/lib/auth";
 import { interviewAccess } from "@/lib/interview-access";
 
@@ -30,17 +30,21 @@ export default function HowToUsePage() {
     const [hasActiveSession, setHasActiveSession] = useState(false);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setIsElectron(Boolean(window.electronAPI));
+        let cancelled = false;
+        const load = async () => {
+            setIsElectron(Boolean(window.electronAPI?.isElectron));
             try {
-                const ready = Boolean(accountId && readInterviewContext(accountId));
+                const ready = Boolean(accountId && await loadInterviewContext(accountId));
+                if (cancelled) return;
                 setSetupReady(ready);
                 setSetupError(ready ? "" : "Interview context is missing. Return to setup to add AI context, answer style, and a resume.");
             } catch {
+                if (cancelled) return;
                 setSetupError("Interview setup could not be read on this device. Return to setup and try again.");
             }
-        }, 0);
-        return () => clearTimeout(timer);
+        };
+        void load();
+        return () => { cancelled = true; };
     }, [accountId]);
 
     useEffect(() => {
@@ -108,8 +112,12 @@ export default function HowToUsePage() {
     ];
 
     const handleStart = async () => {
+        if (!window.electronAPI?.isElectron) {
+            setSetupError("Live interview sessions work only in the AllyX desktop app. Browser screen sharing can show this page to other participants. Download AllyX for Mac or Windows, sign in, and your saved setup will be ready there.");
+            return;
+        }
         try {
-            if (!accountId || !readInterviewContext(accountId)) {
+            if (!accountId || !await loadInterviewContext(accountId)) {
                 setSetupReady(false);
                 setSetupError("Interview context is missing. Return to setup to add AI context, answer style, and a resume.");
                 return;
@@ -206,11 +214,12 @@ export default function HowToUsePage() {
                         disabled={!setupReady || isStarting}
                         className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
                     >
-                        {isStarting ? "Opening securely…" : hasActiveSession ? "Resume Active Interview" : "Got it, Start Interview!"}
+                        {isStarting ? "Opening securely…" : !isElectron ? "Open in AllyX desktop app" : hasActiveSession ? "Resume Active Interview" : "Got it, Start Interview!"}
                         <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
                     </Button>
 
                     {!setupReady && <Button variant="outline" onClick={() => router.push("/dashboard/new")}>Return to setup</Button>}
+                    {!isElectron && <Button variant="outline" onClick={() => router.push("/download")}>Download AllyX for Mac or Windows</Button>}
                     {setupReady && <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
                         <CheckCircle2 size={18} />
                         <span>Interview context ready</span>

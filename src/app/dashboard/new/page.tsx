@@ -11,7 +11,7 @@ import { SUPPORTED_LANGUAGES } from "@/lib/languages";
 import { resumeService, Resume } from "@/lib/resume-service";
 import { ModelChat } from "@/components/dashboard/model-chat";
 import { motion } from "framer-motion";
-import { consumeResumeHandoff, readInterviewContext, saveInterviewContext } from "@/lib/interview-context";
+import { consumeResumeHandoff, loadInterviewContext, persistInterviewContext, readInterviewContext } from "@/lib/interview-context";
 import { useAuth } from "@/lib/auth";
 
 // Custom SVG Icons
@@ -116,8 +116,9 @@ export default function NewInterviewPage() {
     useEffect(() => {
         if (!accountId) return;
         let initialResume = "";
+        let handoff: string | null = null;
         try {
-            const handoff = consumeResumeHandoff(accountId);
+            handoff = consumeResumeHandoff(accountId);
             const context = readInterviewContext(accountId);
             initialResume = handoff || context?.resume || "";
             if (initialResume) setResume(initialResume);
@@ -133,6 +134,15 @@ export default function NewInterviewPage() {
         } catch { setError("Saved interview setup could not be read. You can enter it again below."); }
         const loadResumes = async () => {
             try {
+                const syncedContext = await loadInterviewContext(accountId);
+                if (!handoff && syncedContext) {
+                    initialResume = syncedContext.resume;
+                    setResume(syncedContext.resume);
+                    setJobDescription(syncedContext.jd);
+                    setInterviewType(syncedContext.type);
+                    setLanguage(syncedContext.lang);
+                    setSelectedModel(syncedContext.model);
+                }
                 const data = await resumeService.getUserResumes();
                 setSavedResumes(data);
                 const matchingResume = data.find(item => item.content === initialResume);
@@ -197,7 +207,7 @@ export default function NewInterviewPage() {
         }
     };
 
-    const handleStart = () => {
+    const handleStart = async () => {
         setStartAttempted(true);
         if (!isValid) {
             const missing = [!resumeReady && "a resume", !contextReady && "AI context and answer style"].filter(Boolean).join(" and ");
@@ -210,7 +220,7 @@ export default function NewInterviewPage() {
 
         setIsLoading(true);
         try {
-            saveInterviewContext({
+            await persistInterviewContext({
                 accountId: accountId || "",
                 jd: jobDescription,
                 resume,
@@ -221,7 +231,7 @@ export default function NewInterviewPage() {
             localStorage.setItem("selected_ai_model", selectedModel);
         } catch (e) {
             console.warn("Could not save interview setup:", e);
-            setError(e instanceof Error ? e.message : "Your interview setup could not be saved on this device. Check available storage and try again.");
+            setError(e instanceof Error ? `Your interview setup could not be synced: ${e.message}` : "Your interview setup could not be synced. Check your connection and try again.");
             setIsLoading(false);
             return;
         }

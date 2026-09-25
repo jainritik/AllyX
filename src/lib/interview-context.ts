@@ -35,6 +35,47 @@ export function readInterviewContext(accountId: string): InterviewContext | null
     return value as InterviewContext;
 }
 
+export async function loadInterviewContext(accountId: string): Promise<InterviewContext | null> {
+    if (!accountId) return null;
+    const { data, error } = await supabase
+        .from("interview_setups")
+        .select("job_context,resume_content,interview_type,language,model,updated_at")
+        .eq("user_id", accountId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return readInterviewContext(accountId);
+    const context: InterviewContext = {
+        accountId,
+        jd: data.job_context,
+        resume: data.resume_content,
+        type: data.interview_type,
+        lang: data.language,
+        model: data.model,
+        savedAt: new Date(data.updated_at).getTime(),
+    };
+    saveInterviewContext(context);
+    return context;
+}
+
+export async function persistInterviewContext(context: Omit<InterviewContext, "savedAt">): Promise<InterviewContext> {
+    const local = saveInterviewContext(context);
+    const { data, error } = await supabase
+        .from("interview_setups")
+        .upsert({
+            user_id: context.accountId,
+            job_context: context.jd.trim(),
+            resume_content: context.resume.trim(),
+            interview_type: context.type,
+            language: context.lang,
+            model: context.model,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" })
+        .select("updated_at")
+        .single();
+    if (error) throw error;
+    return { ...local, savedAt: new Date(data.updated_at).getTime() };
+}
+
 export function saveResumeHandoff(accountId: string, resume: string) {
     if (!accountId || !resume.trim()) throw new Error("Resume selection could not be saved.");
     sessionStorage.setItem(RESUME_HANDOFF_KEY, JSON.stringify({ accountId, resume }));
@@ -47,3 +88,4 @@ export function consumeResumeHandoff(accountId: string): string | null {
     const value = JSON.parse(raw) as { accountId?: unknown; resume?: unknown };
     return value.accountId === accountId && typeof value.resume === "string" ? value.resume : null;
 }
+import { supabase } from "@/lib/supabase";
