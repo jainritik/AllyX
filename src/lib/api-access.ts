@@ -25,7 +25,7 @@ export async function authorizeApi(request: NextRequest, kind?: UsageKind) {
         return { error: NextResponse.json({ error: "Please sign in again" }, { status: 401 }) };
     }
     if (kind) {
-        const sessionId = request.headers.get("x-zedx-session-id");
+        const sessionId = request.headers.get("x-allyx-session-id");
         if (!sessionId) {
             return { error: NextResponse.json({ error: "Start an interview session before using AI features." }, { status: 403 }) };
         }
@@ -67,7 +67,7 @@ export async function commitApiQuota(request: NextRequest, reservationId: string
     if (!client) return;
     const { error } = await client.rpc("commit_api_quota", { reservation_id: reservationId });
     if (error) console.error("[API quota] Unable to commit request:", error.code);
-    const sessionId = request.headers.get("x-zedx-session-id");
+    const sessionId = request.headers.get("x-allyx-session-id");
     if (!sessionId) return;
     const { error: usageError } = await client.rpc("mark_interview_meaningful_use", {
         requested_session_id: sessionId,

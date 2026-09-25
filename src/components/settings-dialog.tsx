@@ -57,12 +57,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 "interview_context_type",
                 "interview_context_lang",
                 "selected_ai_model",
-                "zedx_interview_context",
-                "zedx_resume_handoff",
+                "allyx_interview_context",
+                "allyx_resume_handoff",
                 "interview_draft"
             ];
             keysToRemove.forEach(key => localStorage.removeItem(key));
-            sessionStorage.removeItem("zedx_resume_handoff");
+            sessionStorage.removeItem("allyx_resume_handoff");
             showToast("App data cleared. Page will reload.", "success");
             setTimeout(() => window.location.reload(), 1000);
         }

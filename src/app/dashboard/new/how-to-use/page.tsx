@@ -135,7 +135,7 @@ export default function HowToUsePage() {
                 setSetupError(access.reason || "Your free trial has ended. Choose an interview pack to continue.");
                 return;
             }
-            sessionStorage.setItem("zedx_access_session", access.sessionId || sessionId);
+            sessionStorage.setItem("allyx_access_session", access.sessionId || sessionId);
             router.push("/interview");
         } catch (error) {
             setSetupError(error instanceof Error ? error.message : "Could not start the interview. Try again.");

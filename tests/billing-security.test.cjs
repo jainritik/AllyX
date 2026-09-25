@@ -58,7 +58,7 @@ test('billing webhook routes captured payments and refunds through idempotent se
             billingAdminClient: () => ({ rpc: async (name, args) => { calls.push({ name, args }); return { error: null }; } }),
         },
     });
-    const captured = new Request('https://zedx.invalid/api/billing/webhook', {
+    const captured = new Request('https://allyx.invalid/api/billing/webhook', {
         method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
         body: JSON.stringify({ id: 'evt_capture', event: 'payment.captured', payload: { payment: { entity: { id: 'pay_1', order_id: 'order_1', amount: 100000, currency: 'INR' } } } }),
     });
@@ -67,7 +67,7 @@ test('billing webhook routes captured payments and refunds through idempotent se
     assert.equal(calls[1].args.event_key, 'evt_capture');
 
     calls.length = 0;
-    const refunded = new Request('https://zedx.invalid/api/billing/webhook', {
+    const refunded = new Request('https://allyx.invalid/api/billing/webhook', {
         method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
         body: JSON.stringify({ id: 'evt_refund', event: 'refund.processed', payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 100000 } } } }),
     });
@@ -76,7 +76,7 @@ test('billing webhook routes captured payments and refunds through idempotent se
     assert.equal(calls[0].args.event_type, 'refund.processed');
 
     calls.length = 0;
-    const disputed = new Request('https://zedx.invalid/api/billing/webhook', {
+    const disputed = new Request('https://allyx.invalid/api/billing/webhook', {
         method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
         body: JSON.stringify({ id: 'evt_dispute', event: 'payment.dispute.lost', payload: { payment_dispute: { entity: { id: 'disp_1', payment_id: 'pay_1', reason_code: 'chargeback' } } } }),
     });
@@ -100,7 +100,7 @@ test('billing support requires authentication and keeps writes behind RPCs', asy
     const route = load('src/app/api/billing/support/route.ts', {
         '@/lib/api-access': { apiClient: () => null },
     });
-    const response = await route.POST(new Request('https://zedx.invalid/api/billing/support', {
+    const response = await route.POST(new Request('https://allyx.invalid/api/billing/support', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ category: 'refund', message: 'Please refund this order.' }),
     }));
     assert.equal(response.status, 503);

@@ -5,7 +5,7 @@ export interface Resume {
     createdAt: number;
 }
 
-const RESUMES_KEY = "zedx_resumes";
+const RESUMES_KEY = "allyx_resumes";
 
 export const resumeStore = {
     getResumes: (): Resume[] => {

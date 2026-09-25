@@ -6,7 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 test('release checksum script produces a deterministic manifest for one installer', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'zedx-release-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'allyx-release-'));
     fs.mkdirSync(path.join(root, 'dist'));
     fs.writeFileSync(path.join(root, 'dist', 'AllyX-test-arm64.dmg'), 'signed-installer-fixture');
     const result = spawnSync(process.execPath, [path.resolve('scripts/create-release-checksums.mjs'), 'macos-arm64'], { cwd: root, encoding: 'utf8' });

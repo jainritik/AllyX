@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 Connection: "keep-alive",
-                "X-ZEDX-Model": effectiveModel,
+                "X-ALLYX-Model": effectiveModel,
             },
         });
     } catch (error: unknown) {

@@ -1,5 +1,5 @@
-export const INTERVIEW_CONTEXT_KEY = "zedx_interview_context";
-export const RESUME_HANDOFF_KEY = "zedx_resume_handoff";
+export const INTERVIEW_CONTEXT_KEY = "allyx_interview_context";
+export const RESUME_HANDOFF_KEY = "allyx_resume_handoff";
 
 export interface InterviewContext {
     accountId: string;

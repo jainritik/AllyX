@@ -141,7 +141,7 @@ export default function InterviewPage() {
         if (!accountId || draftHydratedRef.current) return;
         draftHydratedRef.current = true;
         try {
-            const accessSessionId = sessionStorage.getItem("zedx_access_session");
+            const accessSessionId = sessionStorage.getItem("allyx_access_session");
             if (accessSessionId) sessionIdRef.current = accessSessionId;
             const draft = JSON.parse(localStorage.getItem('interview_draft') || 'null');
             const setup = readInterviewContext(accountId);
@@ -436,7 +436,7 @@ export default function InterviewPage() {
                 try {
                     response = await fetch("/api/generate-stream", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json", "X-ZEDX-Session-ID": sessionIdRef.current },
+                        headers: { "Content-Type": "application/json", "X-ALLYX-Session-ID": sessionIdRef.current },
                         signal: controller.signal,
                         body: requestBody,
                     });
@@ -497,7 +497,7 @@ export default function InterviewPage() {
 
             const completeAnswer = `${prefix}${text}`;
             setAiResponse(completeAnswer);
-            const effectiveModel = response.headers.get("X-ZEDX-Model") || interviewContext.model;
+            const effectiveModel = response.headers.get("X-ALLYX-Model") || interviewContext.model;
             setAnswerModel(effectiveModel);
             setAnswerTruncated(finishReason === "length");
             const fallbackMessage = effectiveModel !== interviewContext.model
@@ -770,7 +770,7 @@ export default function InterviewPage() {
                 try {
                     response = await fetch('/api/transcribe', {
                         method: 'POST',
-                        headers: { "X-ZEDX-Session-ID": sessionIdRef.current },
+                        headers: { "X-ALLYX-Session-ID": sessionIdRef.current },
                         body: formData,
                         signal: controller.signal,
                     });
@@ -1521,7 +1521,7 @@ export default function InterviewPage() {
         // Only save if there's meaningful content
         if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
             await interviewAccess.finish(sessionIdRef.current).catch(console.error);
-            sessionStorage.removeItem("zedx_access_session");
+            sessionStorage.removeItem("allyx_access_session");
             isSavingRef.current = false;
             setIsSaving(false);
             router.push("/dashboard");
@@ -1558,7 +1558,7 @@ export default function InterviewPage() {
             );
             showToast("Meeting saved to history", "success");
             await interviewAccess.finish(sessionIdRef.current).catch(console.error);
-            sessionStorage.removeItem("zedx_access_session");
+            sessionStorage.removeItem("allyx_access_session");
             localStorage.removeItem('interview_draft');
             router.push("/dashboard");
         } catch (error) {

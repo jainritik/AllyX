@@ -7,10 +7,10 @@ test('same-origin navigation works while foreign navigation and redirects are ca
     const webContents = new EventEmitter();
     webContents.setWindowOpenHandler = handler => { webContents.openHandler = handler; };
     const opened = [];
-    allowAppNavigation({ webContents }, 'https://zedx.example', url => opened.push(url));
+    allowAppNavigation({ webContents }, 'https://allyx.example', url => opened.push(url));
     for (const channel of ['will-frame-navigate', 'will-redirect']) {
         let cancelled = false;
-        webContents.emit(channel, { url: 'https://zedx.example/dashboard', preventDefault: () => { cancelled = true; } });
+        webContents.emit(channel, { url: 'https://allyx.example/dashboard', preventDefault: () => { cancelled = true; } });
         assert.equal(cancelled, false);
         webContents.emit(channel, { url: 'https://attacker.example/', preventDefault: () => { cancelled = true; } });
         assert.equal(cancelled, true);

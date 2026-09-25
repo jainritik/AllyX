@@ -20,7 +20,7 @@ function authWith(provider) {
     let state;
     return load('src/lib/auth.ts', {
         './supabase': { supabase: { auth: provider } },
-        './auth-navigation': { authCallbackUrl: () => 'https://zedx.invalid/auth/callback?from=%2Fdashboard' },
+        './auth-navigation': { authCallbackUrl: () => 'https://allyx.invalid/auth/callback?from=%2Fdashboard' },
         zustand: { create: initializer => {
             state = initializer(update => Object.assign(state, update));
             return { getState: () => state };
@@ -117,7 +117,7 @@ const { completeAuthCallback } = load('src/lib/auth-callback.ts', {
 test('email token-hash links work without a browser PKCE verifier and enforce token type', async () => {
     for (const type of ['email', 'recovery']) {
         let verified;
-        const destination = await completeAuthCallback(new URL(`https://zedx.invalid/auth/callback#token_hash=test-hash&type=${type}`), { auth: {
+        const destination = await completeAuthCallback(new URL(`https://allyx.invalid/auth/callback#token_hash=test-hash&type=${type}`), { auth: {
             verifyOtp: async args => { verified = args; return { error: null }; },
             getUser: async () => ({ data: { user: { id: 'test' } }, error: null }),
         } });
@@ -125,15 +125,15 @@ test('email token-hash links work without a browser PKCE verifier and enforce to
         assert.equal(verified.type, type);
         assert.equal(destination, type === 'recovery' ? '/auth/reset-password' : '/dashboard');
     }
-    await assert.rejects(() => completeAuthCallback(new URL('https://zedx.invalid/auth/callback#token_hash=test&type=invalid'), { auth: {} }), /Invalid email link/);
-    await assert.rejects(() => completeAuthCallback(new URL('https://zedx.invalid/auth/callback#token_hash=test&type=recovery'), { auth: {
+    await assert.rejects(() => completeAuthCallback(new URL('https://allyx.invalid/auth/callback#token_hash=test&type=invalid'), { auth: {} }), /Invalid email link/);
+    await assert.rejects(() => completeAuthCallback(new URL('https://allyx.invalid/auth/callback#token_hash=test&type=recovery'), { auth: {
         verifyOtp: async () => ({ error: { code: 'otp_expired' } }),
     } }), /expired/);
 });
 
 test('callback exchanges PKCE code before verifying identity and honoring destination', async () => {
     const calls = [];
-    const result = await completeAuthCallback(new URL('https://zedx.invalid/auth/callback?code=test-code&from=/interview'), { auth: {
+    const result = await completeAuthCallback(new URL('https://allyx.invalid/auth/callback?code=test-code&from=/interview'), { auth: {
         exchangeCodeForSession: async code => { calls.push(code); return { error: null }; },
         getUser: async () => { calls.push('verify'); return { data: { user: { id: 'test' } }, error: null }; },
     } });
@@ -142,7 +142,7 @@ test('callback exchanges PKCE code before verifying identity and honoring destin
 });
 
 test('recovery callback goes to reset form only after successful identity verification', async () => {
-    const result = await completeAuthCallback(new URL('https://zedx.invalid/auth/callback?code=test-code&recovery=1'), { auth: {
+    const result = await completeAuthCallback(new URL('https://allyx.invalid/auth/callback?code=test-code&recovery=1'), { auth: {
         exchangeCodeForSession: async () => ({ error: null }),
         getUser: async () => ({ data: { user: { id: 'test' } }, error: null }),
     } });
@@ -150,15 +150,15 @@ test('recovery callback goes to reset form only after successful identity verifi
 });
 
 test('expired callback and missing reset session do not report success', async () => {
-    await assert.rejects(() => completeAuthCallback(new URL('https://zedx.invalid/auth/callback#error=access_denied&error_description=Link+expired'), { auth: {} }), /Link expired/);
-    await assert.rejects(() => completeAuthCallback(new URL('https://zedx.invalid/auth/callback?recovery=1'), { auth: {
+    await assert.rejects(() => completeAuthCallback(new URL('https://allyx.invalid/auth/callback#error=access_denied&error_description=Link+expired'), { auth: {} }), /Link expired/);
+    await assert.rejects(() => completeAuthCallback(new URL('https://allyx.invalid/auth/callback?recovery=1'), { auth: {
         getUser: async () => ({ data: { user: null }, error: null }),
     } }), /No valid session/);
 });
 
 test('fabricated legacy cookie cannot authorize dashboard access', async () => {
     const response = await proxyFor({ data: { user: null }, error: null })(
-        new NextRequest('https://zedx.invalid/dashboard/new?step=1', { headers: { cookie: 'auth_token=' + 'a'.repeat(32) } }));
+        new NextRequest('https://allyx.invalid/dashboard/new?step=1', { headers: { cookie: 'auth_token=' + 'a'.repeat(32) } }));
     assert.equal(response.status, 307);
     const destination = new URL(response.headers.get('location'));
     assert.equal(destination.pathname, '/login');
@@ -168,7 +168,7 @@ test('fabricated legacy cookie cannot authorize dashboard access', async () => {
 
 test('only a verified identity passes; refreshed cookies reach browser and server renderer', async () => {
     const response = await proxyFor({ data: { user: { id: 'verified-user' } }, error: null }, true)(
-        new NextRequest('https://zedx.invalid/dashboard'));
+        new NextRequest('https://allyx.invalid/dashboard'));
     assert.equal(response.status, 200);
     assert.equal(response.cookies.get('sb-test-auth-token').value, 'refreshed');
     assert.match(response.headers.get('x-middleware-request-cookie'), /sb-test-auth-token=refreshed/);
@@ -177,14 +177,14 @@ test('only a verified identity passes; refreshed cookies reach browser and serve
 
 test('failed verification rejects access even if a user object is present', async () => {
     const response = await proxyFor({ data: { user: { id: 'untrusted' } }, error: { status: 401 } }, true)(
-        new NextRequest('https://zedx.invalid/interview'));
+        new NextRequest('https://allyx.invalid/interview'));
     assert.equal(response.status, 307);
     assert.equal(response.cookies.get('sb-test-auth-token').value, 'refreshed');
 });
 
 test('temporary auth outages do not sign users out or redirect them into a login loop', async () => {
     const response = await proxyFor({ data: { user: null }, error: { status: 503 } })(
-        new NextRequest('https://zedx.invalid/dashboard'));
+        new NextRequest('https://allyx.invalid/dashboard'));
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('location'), null);
     assert.equal(response.headers.get('retry-after'), '10');

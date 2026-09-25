@@ -25,10 +25,10 @@ export async function signOutAndClear() {
 function clearPrivateContext() {
     if (typeof localStorage === 'undefined') return;
     try {
-        for (const key of ['interview_context_jd', 'interview_context_resume', 'interview_context_type', 'interview_context_lang', 'zedx_interview_context', 'selected_ai_model', 'interview_draft']) {
+        for (const key of ['interview_context_jd', 'interview_context_resume', 'interview_context_type', 'interview_context_lang', 'allyx_interview_context', 'selected_ai_model', 'interview_draft']) {
             localStorage.removeItem(key);
         }
-        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('zedx_resume_handoff');
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('allyx_resume_handoff');
     } catch {
         // Authentication must still complete when browser storage is unavailable.
     }
@@ -77,10 +77,10 @@ if (typeof window !== 'undefined') {
     supabase.auth.onAuthStateChange((_event, session) => {
         const accountId = session?.user?.id || '';
         try {
-            const previousId = localStorage.getItem('zedx_context_owner') || '';
+            const previousId = localStorage.getItem('allyx_context_owner') || '';
             if (previousId && previousId !== accountId) clearPrivateContext();
-            if (accountId) localStorage.setItem('zedx_context_owner', accountId);
-            else localStorage.removeItem('zedx_context_owner');
+            if (accountId) localStorage.setItem('allyx_context_owner', accountId);
+            else localStorage.removeItem('allyx_context_owner');
         } catch { /* The in-memory session remains authoritative. */ }
         useAuth.setState({ user: session?.user ?? null, loading: false });
         document.cookie = 'auth_token=; path=/; max-age=0';

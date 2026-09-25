@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     const plan = BILLING_PLANS[planId];
     try {
-        const receipt = `zedx_${Date.now()}_${auth.user.id.slice(0, 8)}`.slice(0, 40);
+        const receipt = `allyx_${Date.now()}_${auth.user.id.slice(0, 8)}`.slice(0, 40);
         const order = await createRazorpayOrder({
             amount: plan.amount,
             receipt,

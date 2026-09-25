@@ -42,7 +42,7 @@ const ICON_PATH = path.join(__dirname, '..', 'public', 'favicon.ico');
 
 function initPlatform() {
     if (process.platform === 'win32') {
-        app.setAppUserModelId('com.zedx.ai');
+        app.setAppUserModelId('com.allyx.ai');
     }
 }
 
@@ -57,9 +57,7 @@ let isOverlayInteractive = true;
 let isInterviewRendererReady = false;
 
 const isDev = !app.isPackaged;
-// ALLYX_APP_URL is the preferred name. Keep ZEDX_APP_URL as a migration alias
-// so existing local launch scripts continue to work after the brand change.
-const APP_URL = process.env.ALLYX_APP_URL || process.env.ZEDX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://allyx.vercel.app');
+const APP_URL = process.env.ALLYX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://allyx.vercel.app');
 const APP_ORIGIN = new URL(APP_URL).origin;
 let isQuitting = false;
 

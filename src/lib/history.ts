@@ -24,7 +24,7 @@ export interface SessionSummaryStats {
     totalMinutes: number;
 }
 
-const STORAGE_KEY = 'zedx_interview_history';
+const STORAGE_KEY = 'allyx_interview_history';
 
 /**
  * Fallback LocalStorage cache for immediate UI rendering before DB sync occurs.

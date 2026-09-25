@@ -13,7 +13,7 @@ function load(file, mocks = {}, fetchMock = global.fetch) {
 }
 
 const paths = { generate: 'src/app/api/generate/route.ts', stream: 'src/app/api/generate-stream/route.ts' };
-const request = (model = 'llama-3.1-8b-instant') => new NextRequest('https://zedx.invalid/api/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'x-zedx-session-id': '11111111-1111-4111-8111-111111111111' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hello' }] }) });
+const request = (model = 'llama-3.1-8b-instant') => new NextRequest('https://allyx.invalid/api/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'x-allyx-session-id': '11111111-1111-4111-8111-111111111111' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hello' }] }) });
 
 test('anonymous callers never reach paid generation provider', async () => {
     let providerCalls = 0;
@@ -41,7 +41,7 @@ test('generation rejects unsupported models and oversized prompts', () => {
 test('quota exhaustion and usage-ledger failures fail closed', async () => {
     const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://zedx.invalid';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://allyx.invalid';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-key';
     try {
         for (const [rpcResult, expectedStatus] of [[{ data: false, error: null }, 429], [{ data: null, error: { code: 'PGRST202' } }, 503]]) {
@@ -58,7 +58,7 @@ test('quota exhaustion and usage-ledger failures fail closed', async () => {
 test('AI requests require an active server-verified interview session', async () => {
     const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://zedx.invalid';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://allyx.invalid';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-key';
     try {
         const api = load('src/lib/api-access.ts', { '@supabase/ssr': { createServerClient: () => ({
@@ -79,7 +79,7 @@ test('AI requests require an active server-verified interview session', async ()
 test('successful provider usage commits quota and marks the active interview as meaningful', async () => {
     const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://zedx.invalid';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://allyx.invalid';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-key';
     const calls = [];
     try {
@@ -168,7 +168,7 @@ test('paid OpenAI failure falls back to free Groq and reports the effective mode
         assert.equal(response.status, 200);
         assert.equal(calls.length, 2);
         assert.equal(calls[1].body.model, 'openai/gpt-oss-120b');
-        assert.equal(response.headers.get('X-ZEDX-Model'), 'openai/gpt-oss-120b');
+        assert.equal(response.headers.get('X-ALLYX-Model'), 'openai/gpt-oss-120b');
         assert.match(await response.text(), /fallback answer/);
     } finally {
         delete process.env.OPENAI_API_KEY;
