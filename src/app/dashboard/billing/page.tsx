@@ -12,7 +12,11 @@ type Purchase = {
     amount: number;
     currency: string;
     credits: number;
-    status: "created" | "paid";
+    status: "created" | "authorized" | "paid" | "failed" | "refund_pending" | "partially_refunded" | "refunded" | "disputed";
+    paymentId: string | null;
+    receiptNumber: string | null;
+    refundedAmount: number;
+    failureReason: string | null;
     createdAt: string;
     paidAt: string | null;
 };
@@ -27,6 +31,17 @@ type BillingAccount = {
 };
 
 const planIds = Object.keys(BILLING_PLANS) as BillingPlanId[];
+const statusLabels: Record<Purchase["status"], string> = {
+    created: "Pending", authorized: "Authorized", paid: "Paid", failed: "Failed",
+    refund_pending: "Refund pending", partially_refunded: "Partially refunded",
+    refunded: "Refunded", disputed: "Disputed",
+};
+
+function statusClass(status: Purchase["status"]) {
+    if (status === "paid") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+    if (["failed", "refunded", "disputed"].includes(status)) return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+    return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+}
 
 export default function BillingPage() {
     const [account, setAccount] = useState<BillingAccount | null>(null);
@@ -65,7 +80,7 @@ export default function BillingPage() {
 
             <section><h2 className="text-xl font-bold text-gray-950 dark:text-white">Buy interview credits</h2><div className="mt-4 grid gap-4 lg:grid-cols-3">{planIds.map(planId => { const plan = BILLING_PLANS[planId]; return <article key={planId} className="flex min-h-56 flex-col rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"><p className="font-semibold text-emerald-600 dark:text-emerald-400">{plan.name}</p><p className="mt-4 text-3xl font-bold">{plan.displayPrice}</p><p className="mt-2 text-sm text-gray-500">{plan.credits} interview credits</p><PurchaseButton planId={planId} onSuccess={loadAccount} className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-950" /></article>; })}</div></section>
 
-            <section><h2 className="text-xl font-bold text-gray-950 dark:text-white">Purchase history</h2><div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">{account.purchases.length === 0 ? <p className="p-8 text-center text-gray-500">No interview packs purchased yet.</p> : <div className="divide-y divide-gray-200 dark:divide-gray-800">{account.purchases.map(purchase => <div key={purchase.orderId} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{BILLING_PLANS[purchase.planId]?.name || purchase.planId}</p><p className="mt-1 text-xs text-gray-500">{new Date(purchase.createdAt).toLocaleString()} · {purchase.orderId}</p></div><div className="flex items-center gap-4"><span className="font-semibold">₹{(purchase.amount / 100).toLocaleString("en-IN")}</span><span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${purchase.status === "paid" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"}`}>{purchase.status === "paid" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}{purchase.status === "paid" ? "Paid" : "Pending"}</span></div></div>)}</div>}</div></section>
+            <section><h2 className="text-xl font-bold text-gray-950 dark:text-white">Purchase history</h2><div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">{account.purchases.length === 0 ? <p className="p-8 text-center text-gray-500">No interview packs purchased yet.</p> : <div className="divide-y divide-gray-200 dark:divide-gray-800">{account.purchases.map(purchase => <div key={purchase.orderId} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{BILLING_PLANS[purchase.planId]?.name || purchase.planId}</p><p className="mt-1 text-xs text-gray-500">{new Date(purchase.createdAt).toLocaleString()} · {purchase.orderId}</p>{purchase.failureReason && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{purchase.failureReason}</p>}{purchase.refundedAmount > 0 && <p className="mt-2 text-xs text-gray-500">Refunded ₹{(purchase.refundedAmount / 100).toLocaleString("en-IN")}</p>}</div><div className="flex flex-wrap items-center gap-3"><span className="font-semibold">₹{(purchase.amount / 100).toLocaleString("en-IN")}</span><span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(purchase.status)}`}>{purchase.status === "paid" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}{statusLabels[purchase.status]}</span>{purchase.paymentId && <a href={`/dashboard/billing/receipt/${encodeURIComponent(purchase.orderId)}`} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-400">View receipt</a>}</div></div>)}</div>}</div></section>
         </>}
     </div>;
 }

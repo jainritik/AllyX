@@ -49,3 +49,29 @@ test('checkout and webhook signatures reject tampered payment data', () => {
         delete process.env.RAZORPAY_KEY_ID;
     }
 });
+
+test('billing webhook routes captured payments and refunds through idempotent server RPCs', async () => {
+    const calls = [];
+    const route = load('src/app/api/billing/webhook/route.ts', {
+        '@/lib/razorpay-server': {
+            verifyWebhookSignature: () => true,
+            billingAdminClient: () => ({ rpc: async (name, args) => { calls.push({ name, args }); return { error: null }; } }),
+        },
+    });
+    const captured = new Request('https://zedx.invalid/api/billing/webhook', {
+        method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
+        body: JSON.stringify({ id: 'evt_capture', event: 'payment.captured', payload: { payment: { entity: { id: 'pay_1', order_id: 'order_1', amount: 100000, currency: 'INR' } } } }),
+    });
+    assert.equal((await route.POST(captured)).status, 200);
+    assert.deepEqual(calls.map(call => call.name), ['fulfill_payment_order', 'record_payment_attempt_event']);
+    assert.equal(calls[1].args.event_key, 'evt_capture');
+
+    calls.length = 0;
+    const refunded = new Request('https://zedx.invalid/api/billing/webhook', {
+        method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
+        body: JSON.stringify({ id: 'evt_refund', event: 'refund.processed', payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 100000 } } } }),
+    });
+    assert.equal((await route.POST(refunded)).status, 200);
+    assert.deepEqual(calls.map(call => call.name), ['record_refund_event']);
+    assert.equal(calls[0].args.event_type, 'refund.processed');
+});

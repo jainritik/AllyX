@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
             requested_order_id: order.id,
             expected_user_id: auth.user.id,
             requested_plan_id: plan.id,
+            requested_receipt: receipt,
         });
         if (ledgerError) throw new Error("Could not record the payment order");
         return NextResponse.json({
