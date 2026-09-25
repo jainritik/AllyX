@@ -7,26 +7,26 @@ import { DesktopNavBar } from "@/components/desktop-nav";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://zedx-private-demo.vercel.app"),
-  applicationName: "ZEDX Copilot",
+  applicationName: "AllyX",
   appleWebApp: {
-    title: "ZEDX Copilot",
+    title: "AllyX",
     statusBarStyle: "default",
     capable: true,
   },
   title: {
-    default: "ZEDX Copilot - Real-Time AI Interview Assistant",
-    template: "%s | ZEDX Copilot"
+    default: "AllyX - Real-Time AI Interview Assistant",
+    template: "%s | AllyX"
   },
-  description: "ZEDX is a desktop AI interview assistant for macOS and Windows with live transcription, contextual answer suggestions, text and code capture, and saved session history.",
+  description: "AllyX is a desktop AI interview assistant for macOS and Windows with live transcription, contextual answer suggestions, text and code capture, and saved session history.",
   keywords: [
-    "ZEDX", "ZEDX AI", "ZEDX Copilot", "Mock Interview Assistant", "Live Transcription",
+    "AllyX", "AllyX AI", "AllyX Interview Assistant", "Mock Interview Assistant", "Live Transcription",
     "Interview Simulation", "Mock Interview Copilot", "AI Interview Notes", "Real-time AI Assistant",
     "Training Assistant", "Interview Practice", "Job Seeker Assistant", "AI Coach",
     "محاكاة مقابلات", "تفريغ صوتي مباشر", "تدريب انترفيو", "ذكاء اصطناعي", "مساعد شخصي"
   ],
-  authors: [{ name: "ZEDX AI Team", url: "https://zedx-private-demo.vercel.app" }],
-  creator: "ZEDX AI",
-  publisher: "ZEDX AI",
+  authors: [{ name: "AllyX Team", url: "https://zedx-private-demo.vercel.app" }],
+  creator: "AllyX",
+  publisher: "AllyX",
   robots: {
     index: true,
     follow: true,
@@ -42,29 +42,29 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://zedx-private-demo.vercel.app",
-    siteName: "ZEDX Copilot",
-    title: "ZEDX Copilot - Real-Time AI Interview Assistant",
+    siteName: "AllyX",
+    title: "AllyX - Real-Time AI Interview Assistant",
     description: "Live transcription and contextual answer suggestions in a focused desktop app for Mac and Windows.",
     images: [
       {
-        url: "/zedx-cyberpunk-banner.png",
+        url: "/allyx-social-banner.png",
         width: 1200,
         height: 630,
-        alt: "ZEDX Copilot - Interview Simulation Assistant",
+        alt: "AllyX - Interview Simulation Assistant",
       },
       {
-        url: "/zedx-logo.png",
+        url: "/allyx-logo.png",
         width: 512,
         height: 512,
-        alt: "ZEDX Copilot Logo",
+        alt: "AllyX Logo",
       }
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ZEDX Copilot - Real-Time AI Interview Assistant",
+    title: "AllyX - Real-Time AI Interview Assistant",
     description: "A desktop interview assistant for live transcription, contextual suggestions, and technical questions.",
-    images: ["/zedx-cyberpunk-banner.png"],
+    images: ["/allyx-social-banner.png"],
   },
   alternates: {
     canonical: "https://zedx-private-demo.vercel.app",
@@ -79,7 +79,7 @@ export const metadata: Metadata = {
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicon-48x48.png", sizes: "48x48", type: "image/png" }, // Favicon for Google Search
-      { url: "/zedx-logo.png", sizes: "192x192", type: "image/png" },
+      { url: "/allyx-logo.png", sizes: "192x192", type: "image/png" },
     ],
     shortcut: "/favicon.ico",
     apple: [
@@ -111,9 +111,9 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={isScanner ? "bg-transparent" : ""}>
       <head>
-        <meta name="name" content="ZEDX Copilot" />
-        <meta property="og:site_name" content="ZEDX Copilot" />
-        <meta name="apple-mobile-web-app-title" content="ZEDX Copilot" />
+        <meta name="name" content="AllyX" />
+        <meta property="og:site_name" content="AllyX" />
+        <meta name="apple-mobile-web-app-title" content="AllyX" />
         <meta name="msvalidate.01" content="410978477B68DFFC4D1109011EAF121F" />
         <script
           key="theme-script"
@@ -140,11 +140,11 @@ export default async function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "WebSite",
-              "name": "ZEDX Copilot",
-              "alternateName": ["ZEDX", "ZEDX Copilot", "ZedX AI Assistant"],
+              "name": "AllyX",
+              "alternateName": ["AllyX AI", "AllyX Interview Assistant"],
               "url": "https://zedx-private-demo.vercel.app",
-              "logo": "https://zedx-private-demo.vercel.app/zedx-logo.png",
-              "image": "https://zedx-private-demo.vercel.app/zedx-logo.png",
+              "logo": "https://zedx-private-demo.vercel.app/allyx-logo.png",
+              "image": "https://zedx-private-demo.vercel.app/allyx-logo.png",
             })
           }}
         />
@@ -156,9 +156,9 @@ export default async function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "Organization",
-              "name": "ZEDX Copilot",
+              "name": "AllyX",
               "url": "https://zedx-private-demo.vercel.app",
-              "logo": "https://zedx-private-demo.vercel.app/zedx-logo.png"
+              "logo": "https://zedx-private-demo.vercel.app/allyx-logo.png"
             })
           }}
         />

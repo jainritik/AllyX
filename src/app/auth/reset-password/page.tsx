@@ -45,7 +45,7 @@ export default function ResetPasswordPage() {
         }}>
             <h1 className="text-2xl font-bold">Choose a new password</h1>
             {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-            {saved ? <p role="status">Password changed. Return to ZEDX-AI and sign in with your new password.</p> : ready ? <>
+            {saved ? <p role="status">Password changed. Return to AllyX and sign in with your new password.</p> : ready ? <>
                 <label className="block" htmlFor="new-password">New password</label>
                 <input id="new-password" disabled={busy} type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} className="w-full border rounded-lg p-3" />
                 <label className="block" htmlFor="confirm-password">Confirm new password</label>

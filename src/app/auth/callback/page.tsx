@@ -34,7 +34,7 @@ export default function AuthCallbackPage() {
             <div className="bg-white dark:bg-zinc-800 p-8 rounded-2xl shadow-lg text-center max-w-md">
                 {awaitingConfirmation && !approved ? (
                     <>
-                        <h1 className="text-xl font-semibold mb-3">Continue to ZEDX AI</h1>
+                        <h1 className="text-xl font-semibold mb-3">Continue to AllyX</h1>
                         <p className="text-sm text-gray-500 mb-5">Confirm that you requested this email to continue. This protects your link from automatic email scanners.</p>
                         <button className="rounded-lg bg-teal-600 text-white px-5 py-3" onClick={() => setApproved(true)}>Continue</button>
                     </>

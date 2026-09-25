@@ -1,8 +1,8 @@
 {
-  "name": "zedx-ai-desktop",
-  "version": "1.3.3",
+  "name": "allyx-desktop",
+  "version": "1.3.4",
   "description": "Real-time AI Mock Interview & Training Assistant",
-  "author": "ZEDX AI",
+  "author": "AllyX",
   "private": true,
   "main": "electron/main.js",
   "scripts": {

@@ -93,7 +93,7 @@ export function DesktopNavBar() {
                     onClick={handlePresentationSafeMode}
                     className="h-8 px-3 rounded-md bg-white/15 text-white flex items-center gap-2 hover:bg-white/25 transition-colors text-xs font-semibold"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                    title="Hide ZEDX and stop all capture (Ctrl/Cmd+Shift+H)"
+                    title="Hide AllyX and stop all capture (Ctrl/Cmd+Shift+H)"
                 >
                     <ShieldCheck size={15} />
                     Safe Mode

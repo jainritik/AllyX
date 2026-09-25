@@ -5,6 +5,12 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_unsigned_release:
+        description: Publish the installers as an explicitly unsigned GitHub prerelease
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - "desktop-v*"
@@ -48,7 +54,7 @@ jobs:
       - name: Verify Apple signature and notarization
         if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64'
         run: |
-          codesign --verify --deep --strict --verbose=2 "dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/ZEDX AI.app"
+          codesign --verify --deep --strict --verbose=2 "dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/AllyX.app"
           xcrun stapler validate dist/*.dmg
       - name: Verify Windows Authenticode signature
         if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact == 'windows-x64'
@@ -62,7 +68,7 @@ jobs:
         run: node scripts/create-release-checksums.mjs ${{ matrix.artifact }}
       - uses: actions/upload-artifact@v4
         with:
-          name: zedx-${{ matrix.artifact }}
+          name: allyx-${{ matrix.artifact }}
           path: |
             dist/*.dmg
             dist/*.exe
@@ -70,19 +76,31 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    if: startsWith(github.ref, 'refs/tags/desktop-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_unsigned_release)
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
-      - name: Publish signed installers
+      - name: Publish installers
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t assets < <(find release-assets -type f \( -name '*.dmg' -o -name '*.exe' -o -name 'SHA256SUMS-*.txt' \) | sort)
           test "${#assets[@]}" -eq 6
-          gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes --title "ZEDX AI ${GITHUB_REF_NAME#desktop-v}"
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes --title "AllyX ${GITHUB_REF_NAME#desktop-v}"
+          else
+            version=$(node -p "require('./package.json').version")
+            tag="allyx-v${version}-unsigned"
+            notes=$'Unsigned early-access installers for direct testing.\n\nmacOS Gatekeeper and Windows SmartScreen may show an unknown-publisher warning. Verify the included SHA-256 checksum before installing. These files will be replaced by signed and notarized installers before the full public release.'
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" "${assets[@]}" --clobber
+              gh release edit "$tag" --prerelease --title "AllyX ${version} unsigned" --notes "$notes"
+            else
+              gh release create "$tag" "${assets[@]}" --target "$GITHUB_SHA" --prerelease --title "AllyX ${version} unsigned" --notes "$notes"
+            fi

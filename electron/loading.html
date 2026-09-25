@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>ZEDX AI - Loading</title>
+    <title>AllyX - Loading</title>
     <style>
         body {
             margin: 0;
@@ -133,7 +133,7 @@
 
     <div class="loader-container">
         <div class="spinner"></div>
-        <h2>Initializing ZEDX AI...</h2>
+        <h2>Initializing AllyX...</h2>
         <p>Establishing secure connection</p>
 
         <div id="error-message"></div>
@@ -152,7 +152,7 @@
 
         // Update status after 3 seconds if still loading
         const slowLoadTimeout = setTimeout(() => {
-            statusText.textContent = 'Connecting to ZEDX Cloud...';
+            statusText.textContent = 'Connecting to AllyX Cloud...';
             statusText.style.color = '#e4e4e7';
         }, 3000);
 
@@ -176,7 +176,7 @@
             errDiv.style.display = 'none';
             retryBtn.style.display = 'none';
             loader.style.display = 'block';
-            h2.textContent = 'Initializing ZEDX AI...';
+            h2.textContent = 'Initializing AllyX...';
             statusText.textContent = 'Retrying connection...';
             statusText.style.color = '#71717a';
         });
@@ -193,7 +193,7 @@
 
                 loader.style.display = 'none';
                 h2.textContent = 'Network Error';
-                statusText.textContent = 'Could not reach ZEDX servers.';
+                statusText.textContent = 'Could not reach AllyX servers.';
                 statusText.style.color = '#ef4444';
             });
         }

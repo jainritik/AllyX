@@ -106,7 +106,7 @@ export function PlatformSection() {
                                 interview platform
                             </h2>
                             <p className="text-white/80 text-base md:text-lg leading-relaxed max-w-sm">
-                                You can use ZEDX-AI with any video or coding platform including Zoom, Google Meet, Microsoft Teams, HackerRank, and LeetCode.
+                                You can use AllyX with any video or coding platform including Zoom, Google Meet, Microsoft Teams, HackerRank, and LeetCode.
                             </p>
                         </div>
 
@@ -117,12 +117,12 @@ export function PlatformSection() {
                             <MarqueeRow icons={iconsSet3} duration="20s" />
                         </div>
 
-                        {/* Static ZEDX Robot Mascot - Pinned to Bottom (Parakeet match) */}
+                        {/* Static AllyX Robot Mascot - Pinned to Bottom (Parakeet match) */}
                         <div className="absolute bottom-0 -right-4 sm:-right-10 md:-right-20 w-72 h-72 sm:w-80 sm:h-80 md:w-[480px] md:h-[480px] z-20 pointer-events-none">
                             <div className="relative w-full h-full flex items-end">
                                 <Image
-                                    src="/zedx-logo-for-v.png"
-                                    alt="ZEDX AI Robot Mascot"
+                                    src="/allyx-logo.png"
+                                    alt="AllyX Robot Mascot"
                                     width={480}
                                     height={480}
                                     className="object-contain object-bottom drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)] relative z-10 transition-transform hover:scale-105 duration-700"

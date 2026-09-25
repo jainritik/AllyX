@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AllyX</title>
+  <desc id="desc">AllyX gradient AX mark</desc>
+  <defs>
+    <linearGradient id="g" x1="72" y1="64" x2="444" y2="452" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38bdf8"/>
+      <stop offset="0.52" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0f172a" flood-opacity=".24"/>
+    </filter>
+  </defs>
+  <rect x="28" y="28" width="456" height="456" rx="128" fill="#08111f"/>
+  <path d="M107 365 219 134c13-27 51-27 64 0l47 97-40 76-42-90-72 148h-69Z" fill="url(#g)" filter="url(#s)"/>
+  <path d="m302 218 48 73 49-73h67l-82 117 86 122h-70l-51-79-53 79h-68l87-124-80-115h67Z" fill="url(#g)" filter="url(#s)"/>
+  <circle cx="122" cy="390" r="15" fill="#e0f2fe"/>
+</svg>

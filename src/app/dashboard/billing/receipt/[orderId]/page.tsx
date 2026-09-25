@@ -39,7 +39,7 @@ export default function ReceiptPage() {
     return <div className="mx-auto max-w-2xl">
         <div className="mb-5 flex justify-end print:hidden"><Button onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print or save PDF</Button></div>
         <article className="rounded-2xl border border-gray-200 bg-white p-8 text-gray-950 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white print:border-0 print:shadow-none">
-            <div className="flex items-start justify-between gap-6 border-b border-gray-200 pb-6 dark:border-gray-800"><div><p className="text-sm font-semibold text-emerald-600">ZEDX</p><h1 className="mt-2 text-3xl font-bold">Payment receipt</h1></div><div className="text-right text-sm text-gray-500"><p>{receipt.receiptNumber}</p><p className="mt-1">{new Date(receipt.paidAt).toLocaleString()}</p></div></div>
+            <div className="flex items-start justify-between gap-6 border-b border-gray-200 pb-6 dark:border-gray-800"><div><p className="text-sm font-semibold text-emerald-600">AllyX</p><h1 className="mt-2 text-3xl font-bold">Payment receipt</h1></div><div className="text-right text-sm text-gray-500"><p>{receipt.receiptNumber}</p><p className="mt-1">{new Date(receipt.paidAt).toLocaleString()}</p></div></div>
             <dl className="mt-7 grid gap-5 text-sm sm:grid-cols-2">
                 <div><dt className="text-gray-500">Interview pack</dt><dd className="mt-1 font-semibold">{receipt.planName}</dd></div>
                 <div><dt className="text-gray-500">Credits</dt><dd className="mt-1 font-semibold">{receipt.credits}</dd></div>
@@ -49,7 +49,7 @@ export default function ReceiptPage() {
                 <div><dt className="text-gray-500">Amount paid</dt><dd className="mt-1 text-xl font-bold">₹{(receipt.amount / 100).toLocaleString("en-IN")}</dd></div>
             </dl>
             {receipt.refundedAmount > 0 && <p className="mt-7 rounded-lg bg-amber-50 p-4 text-sm text-amber-800">Refunded amount: ₹{(receipt.refundedAmount / 100).toLocaleString("en-IN")}</p>}
-            <p className="mt-8 text-xs leading-5 text-gray-500">This receipt confirms payment recorded by ZEDX through Razorpay. It is not a GST tax invoice.</p>
+            <p className="mt-8 text-xs leading-5 text-gray-500">This receipt confirms payment recorded by AllyX through Razorpay. It is not a GST tax invoice.</p>
         </article>
     </div>;
 }

@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = 'https://zedx-ai-assistant-1.vercel.app';
+    const baseUrl = 'https://zedx-private-demo.vercel.app';
 
     const routes = [
         '',

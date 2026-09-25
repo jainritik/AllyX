@@ -1,6 +1,6 @@
-# ZEDX AI Scalability & Growth Guide 🚀🛡️
+# AllyX Scalability & Growth Guide 🚀🛡️
 
-This guide outlines the steps to scale ZEDX AI infrastructure as your user base grows.
+This guide outlines the steps to scale AllyX infrastructure as your user base grows.
 
 ## 1. Database (Supabase) 🗄️
 - **Current:** Free Tier (Shared instances).

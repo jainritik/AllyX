@@ -2,16 +2,16 @@ import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 
 const builds = [
-    { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: process.env.NEXT_PUBLIC_ZEDX_MAC_ARM64_URL },
-    { id: 'mac-intel', name: 'macOS Intel', detail: 'Intel Macs', url: process.env.NEXT_PUBLIC_ZEDX_MAC_X64_URL },
-    { id: 'windows', name: 'Windows x64', detail: 'Windows 10/11, 64-bit', url: process.env.NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL },
+    { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: process.env.NEXT_PUBLIC_ALLYX_MAC_ARM64_URL || process.env.NEXT_PUBLIC_ZEDX_MAC_ARM64_URL },
+    { id: 'mac-intel', name: 'macOS Intel', detail: 'Intel Macs', url: process.env.NEXT_PUBLIC_ALLYX_MAC_X64_URL || process.env.NEXT_PUBLIC_ZEDX_MAC_X64_URL },
+    { id: 'windows', name: 'Windows x64', detail: 'Windows 10/11, 64-bit', url: process.env.NEXT_PUBLIC_ALLYX_WINDOWS_X64_URL || process.env.NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL },
 ];
 
 export default function DownloadPage() {
     return <div className="min-h-screen flex flex-col bg-white dark:bg-black text-gray-900 dark:text-gray-100">
         <Navbar />
         <main className="flex-grow max-w-4xl mx-auto w-full px-6 pt-32 pb-20">
-            <h1 className="text-4xl font-bold mb-4">Download ZEDX desktop</h1>
+            <h1 className="text-4xl font-bold mb-4">Download AllyX desktop</h1>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Choose the installer that matches your computer.</p>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-10">Capture privacy depends on your OS and the sharing app. Verify the receiver view before relying on it.</p>
             <div className="grid gap-4 sm:grid-cols-3">

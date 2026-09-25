@@ -381,7 +381,7 @@ export default function NewInterviewPage() {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-gray-900 dark:text-white text-lg sm:text-xl">AI Model</h3>
-                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Choose the brain behind ZEDX</p>
+                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Choose the brain behind AllyX</p>
                                 </div>
                             </div>
 

@@ -197,7 +197,7 @@ export default function LoginPage() {
                     className="flex flex-col items-center gap-6"
                 >
                     <div className="relative w-20 h-20">
-                        <Image src="/zedx-logo.png" alt="ZEDX-AI" fill className="object-contain animate-pulse" />
+                        <Image src="/allyx-logo.png" alt="AllyX" fill className="object-contain animate-pulse" />
                     </div>
                     <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400 font-medium">
                         <RefreshCw className="animate-spin" size={20} />
@@ -222,8 +222,8 @@ export default function LoginPage() {
                     {/* Updated Logo Section */}
                     <div className="flex items-center">
                         <Image
-                            src="/zedx-logo.png"
-                            alt="ZEDX-AI Logo"
+                            src="/allyx-logo.png"
+                            alt="AllyX Logo"
                             width={87}
                             height={87}
                             className="object-contain w-16 h-16 md:w-[87px] md:h-[87px]"
@@ -267,7 +267,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="relative z-10 flex items-center gap-6 text-sm text-gray-500 font-medium">
-                    <span>© 2026 ZEDX AI</span>
+                    <span>© 2026 AllyX</span>
                     <span className="w-1 h-1 rounded-full bg-gray-700"></span>
                     <Link href="/privacy">Privacy Policy</Link>
                     <span className="w-1 h-1 rounded-full bg-gray-700"></span>
@@ -283,13 +283,13 @@ export default function LoginPage() {
                     <div className="md:hidden text-center mb-6">
                         <div className="relative w-14 h-14 mx-auto mb-3 overflow-hidden rounded-lg">
                             <Image
-                                src="/zedx-logo.png"
-                                alt="ZEDX-AI Logo"
+                                src="/allyx-logo.png"
+                                alt="AllyX Logo"
                                 fill
                                 className="object-cover"
                             />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">ZEDX-AI</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">AllyX</h2>
                     </div>
 
                     <div className="text-center">

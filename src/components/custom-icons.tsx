@@ -1,7 +1,7 @@
 "use client";
 
 // Premium Custom Icons with modern design and glassmorphism effects
-// Clean, minimal, professional icons for ZEDX AI
+// Clean, minimal, professional icons for AllyX
 
 interface IconProps {
     className?: string;

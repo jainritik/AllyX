@@ -46,15 +46,15 @@ export function Navbar() {
                 {/* Logo */}
                 <Link href="/" className="flex items-center group">
                     <Image
-                        src="/zedx-logo.png"
-                        alt="ZEDX-AI Logo"
+                        src="/allyx-logo.png"
+                        alt="AllyX Logo"
                         width={56}
                         height={56}
                         className="object-contain w-11 h-11 transition-transform group-hover:scale-105"
                         style={{ height: 'auto' }}
                         priority
                     />
-                    <span className="-ml-1 text-base font-black tracking-[-0.04em] text-slate-950 dark:text-white">ZEDX</span>
+                    <span className="-ml-1 text-base font-black tracking-[-0.04em] text-slate-950 dark:text-white">AllyX</span>
                 </Link>
 
                 {/* Desktop Navigation */}
@@ -152,7 +152,7 @@ export function Navbar() {
                                     </Link>
                                     <Link href="/about" onClick={() => setIsSheetOpen(false)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
-                                            About ZEDX Copilot
+                                            About AllyX
                                         </Button>
                                     </Link>
 

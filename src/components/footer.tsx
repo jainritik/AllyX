@@ -5,7 +5,7 @@ export function Footer() {
         <footer className="border-t border-slate-200 bg-white py-12 dark:border-white/10 dark:bg-[#05070b]">
             <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-7 px-6 text-center sm:flex-row sm:text-left">
                 <div>
-                    <p className="text-lg font-black tracking-[-0.04em] text-slate-950 dark:text-white">ZEDX</p>
+                    <p className="text-lg font-black tracking-[-0.04em] text-slate-950 dark:text-white">AllyX</p>
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Real-time context and answer suggestions for interview preparation.</p>
                 </div>
                 <nav aria-label="Footer" className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-slate-600 dark:text-slate-400">
@@ -16,7 +16,7 @@ export function Footer() {
                     <Link href="/terms" className="hover:text-sky-600 dark:hover:text-cyan-300">Terms</Link>
                 </nav>
             </div>
-            <div className="mx-auto mt-8 max-w-6xl border-t border-slate-200 px-6 pt-6 text-center text-xs text-slate-400 dark:border-white/10 sm:text-left">© {new Date().getFullYear()} ZEDX AI. All rights reserved.</div>
+            <div className="mx-auto mt-8 max-w-6xl border-t border-slate-200 px-6 pt-6 text-center text-xs text-slate-400 dark:border-white/10 sm:text-left">© {new Date().getFullYear()} AllyX. All rights reserved.</div>
         </footer>
     );
 }

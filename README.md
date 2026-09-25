@@ -1,6 +1,6 @@
-# ZEDX AI
+# AllyX
 
-ZEDX AI is a Next.js and Electron practice assistant. It authenticates users with Supabase, transcribes microphone or supported desktop audio through Groq, generates context-aware answers, stores completed practice sessions, and presents answers in a compact desktop overlay.
+AllyX is a Next.js and Electron practice assistant. It authenticates users with Supabase, transcribes microphone or supported desktop audio through Groq, generates context-aware answers, stores completed practice sessions, and presents answers in a compact desktop overlay.
 
 ## Current capabilities
 
@@ -63,10 +63,10 @@ RAZORPAY_WEBHOOK_SECRET=YOUR_SEPARATE_WEBHOOK_SECRET
 Optional deployment/build variables:
 
 ```dotenv
-NEXT_PUBLIC_ZEDX_MAC_ARM64_URL=https://example.com/ZEDX-AI-arm64.dmg
-NEXT_PUBLIC_ZEDX_MAC_X64_URL=https://example.com/ZEDX-AI-x64.dmg
-NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL=https://example.com/ZEDX-AI-Setup.exe
-ZEDX_APP_URL=https://your-hosted-renderer.example.com
+NEXT_PUBLIC_ALLYX_MAC_ARM64_URL=https://example.com/AllyX-arm64.dmg
+NEXT_PUBLIC_ALLYX_MAC_X64_URL=https://example.com/AllyX-x64.dmg
+NEXT_PUBLIC_ALLYX_WINDOWS_X64_URL=https://example.com/AllyX-Setup.exe
+ALLYX_APP_URL=https://your-hosted-renderer.example.com
 ```
 
 Never place Groq, OpenAI, Razorpay, webhook, or Supabase service-role secrets in a `NEXT_PUBLIC_` variable.
@@ -107,7 +107,7 @@ Generated questions and answers are forwarded from the interview page to a separ
 | Control | macOS | Windows |
 | --- | --- | --- |
 | Toggle overlay interaction/click-through | `Command+Shift+O` | `Ctrl+Shift+O` |
-| Hide/restore all ZEDX windows locally | `Command+Shift+H` | `Ctrl+Shift+H` |
+| Hide/restore all AllyX windows locally | `Command+Shift+H` | `Ctrl+Shift+H` |
 
 Use the overlay header to:
 
@@ -121,7 +121,7 @@ In click-through mode, mouse input goes to the editor or application below the o
 
 ## Capture privacy
 
-Capture Privacy asks Electron and the operating system to exclude ZEDX BrowserWindows from supported capture paths. The request is applied to the main window, overlay, scanner, and future Electron windows.
+Capture Privacy asks Electron and the operating system to exclude AllyX BrowserWindows from supported capture paths. The request is applied to the main window, overlay, scanner, and future Electron windows.
 
 This is an operating-system API request, not proof of what a remote participant receives. Native menus, permission prompts, notifications, and system dialogs are outside the BrowserWindow request. Browser, meeting-client, macOS, and Windows updates can change capture behavior.
 
@@ -129,7 +129,7 @@ Before each supported release:
 
 1. Join the meeting from a second device/account.
 2. Share the entire display.
-3. Confirm ZEDX is absent from the receiver view.
+3. Confirm AllyX is absent from the receiver view.
 4. Repeat with window/tab sharing.
 5. Test Meet, Teams, and Zoom separately.
 6. Test multiple monitors, overlay movement, settings, OCR, sleep/wake, and restart.
@@ -153,11 +153,11 @@ npm run build
 npx electron-builder --mac --arm64
 ```
 
-The DMG is written to `dist/ZEDX-AI-<version>-arm64.dmg`.
+The DMG is written to `dist/AllyX-<version>-arm64.dmg`.
 
-The current beta build is unsigned. macOS may require Control-clicking the application and choosing **Open**. A public release should use an Apple Developer ID certificate, hardened runtime, notarization, and an owner-controlled update/download channel.
+The current direct-download build is unsigned. macOS may require Control-clicking the application and choosing **Open**. A signed public release should use an Apple Developer ID certificate, hardened runtime, notarization, and an owner-controlled update/download channel.
 
-Tagged desktop releases use `.github/workflows/desktop-installers.yml`. A tag must exactly match `desktop-v<package version>`. The workflow refuses to publish unless both Mac builds have Developer ID signing and Apple notarization credentials and the Windows build has an Authenticode certificate. It verifies the resulting signatures, generates SHA-256 checksums, and publishes all three installers to one GitHub Release. Workflow-dispatch builds remain private test artifacts and may be unsigned.
+Tagged desktop releases use `.github/workflows/desktop-installers.yml`. A tag must exactly match `desktop-v<package version>`. The workflow refuses to publish unless both Mac builds have Developer ID signing and Apple notarization credentials and the Windows build has an Authenticode certificate. It verifies the resulting signatures, generates SHA-256 checksums, and publishes all three installers to one GitHub Release. A manual workflow run can explicitly publish an unsigned prerelease for direct testing; that release is labeled unsigned and includes operating-system warning text.
 
 Required GitHub Actions secrets for a public desktop tag are `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `WIN_CSC_LINK`, and `WIN_CSC_KEY_PASSWORD`. Never add certificate data or passwords to the repository.
 

@@ -4,7 +4,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 
-const inputImage = path.join(__dirname, 'public', 'zedx-logo.png');
+const inputImage = path.join(__dirname, 'public', 'allyx-logo.png');
 const outputDir = path.join(__dirname, 'electron', 'assets');
 
 if (!fs.existsSync(outputDir)) {

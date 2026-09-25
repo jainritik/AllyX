@@ -8,7 +8,7 @@ app.whenReady().then(async () => {
     const controller = createCapturePrivacy({ platform: process.platform, release: os.release(), getWindows: () => BrowserWindow.getAllWindows() });
     app.on('browser-window-created', (_, window) => controller.apply(window));
     const window = new BrowserWindow({ show: false, width: 440, height: 220 });
-    await window.loadURL('data:text/html,<h1>ZEDX privacy API test</h1>');
+    await window.loadURL('data:text/html,<h1>AllyX privacy API test</h1>');
     assert.equal(window.isContentProtected(), true);
     window.show();
     assert.equal(window.isVisible(), true);

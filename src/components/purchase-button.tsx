@@ -46,7 +46,7 @@ export function PurchaseButton({ planId, className, onSuccess }: { planId: Billi
             await loadCheckout();
             if (!window.Razorpay) throw new Error("Secure checkout is unavailable.");
             const checkout = new window.Razorpay({
-                key: order.keyId, amount: order.amount, currency: order.currency, name: "ZEDX",
+                key: order.keyId, amount: order.amount, currency: order.currency, name: "AllyX",
                 description: order.planName, order_id: order.orderId,
                 prefill: { email: order.accountEmail }, theme: { color: "#0284c7" },
                 modal: { ondismiss: () => { setMessage("Checkout closed. Any completed payment will appear automatically."); setBusy(false); } },

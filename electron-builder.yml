@@ -1,6 +1,6 @@
 appId: com.zedx.ai
-productName: ZEDX AI
-copyright: Copyright (c) 2024 ZEDX AI
+productName: AllyX
+copyright: Copyright (c) 2024 AllyX
 
 directories:
   output: dist
@@ -24,7 +24,7 @@ win:
       arch:
         - x64
   icon: electron/assets/icon.png
-  artifactName: ZEDX-AI-${version}-Setup.${ext}
+  artifactName: AllyX-${version}-Setup.${ext}
 
 nsis:
   oneClick: true
@@ -38,13 +38,13 @@ mac:
   target:
     - dmg
   icon: electron/assets/icon.png
-  artifactName: ZEDX-AI-${version}-${arch}.${ext}
+  artifactName: AllyX-${version}-${arch}.${ext}
   category: public.app-category.productivity
   extendInfo:
-    NSMicrophoneUsageDescription: ZEDX AI uses the microphone for practice-session transcription.
-    NSAudioCaptureUsageDescription: ZEDX AI captures system audio only when you enable system-audio transcription.
-    NSCameraUsageDescription: ZEDX AI uses the camera only when you enable practice-session video.
-    NSScreenCaptureUsageDescription: ZEDX AI captures a selected practice area for OCR when you request it.
+    NSMicrophoneUsageDescription: AllyX uses the microphone for practice-session transcription.
+    NSAudioCaptureUsageDescription: AllyX captures system audio only when you enable system-audio transcription.
+    NSCameraUsageDescription: AllyX uses the camera only when you enable practice-session video.
+    NSScreenCaptureUsageDescription: AllyX captures a selected practice area for OCR when you request it.
 
 dmg:
   contents:

@@ -21,16 +21,16 @@ function showPrivacyStatus() {
     const failures = state.windows.filter(window => !window.requestApplied);
     dialog.showMessageBox({
         type: 'info',
-        title: 'ZEDX Capture Privacy',
+        title: 'AllyX Capture Privacy',
         message: `Capture privacy request: ${state.requested ? 'ON' : 'OFF'}`,
         detail: [
-            `ZEDX ${app.getVersion()} · ${process.platform} ${os.release()}`,
-            'This mode keeps ZEDX visible on your display. It does not pause the assistant.',
+            `AllyX ${app.getVersion()} · ${process.platform} ${os.release()}`,
+            'This mode keeps AllyX visible on your display. It does not pause the assistant.',
             failures.length ? `${failures.length} window requests were not applied.` : 'Window request settings applied.',
             process.platform === 'darwin'
                 ? 'Experimental on macOS: modern screen sharing can ignore this setting, including captures using ScreenCaptureKit.'
                 : 'Capture exclusion depends on Windows version and the recording application.',
-            `Receiver verification: ${state.receiverVerificationStatus.toUpperCase()}. Check from a second participant while sharing the entire display. If ZEDX is visible there, this mode does not work for that setup.`,
+            `Receiver verification: ${state.receiverVerificationStatus.toUpperCase()}. Check from a second participant while sharing the entire display. If AllyX is visible there, this mode does not work for that setup.`,
             `Not covered by the BrowserWindow request: ${state.uncoveredSurfaces.join(', ')}.`,
             hideShortcutRegistered ? 'Cmd/Ctrl+Shift+H hides the app locally instead.' : 'Hide shortcut unavailable; use the tray menu.',
         ].join('\n\n'),
@@ -57,7 +57,9 @@ let isOverlayInteractive = true;
 let isInterviewRendererReady = false;
 
 const isDev = !app.isPackaged;
-const APP_URL = process.env.ZEDX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://zedx-private-demo.vercel.app');
+// ALLYX_APP_URL is the preferred name. Keep ZEDX_APP_URL as a migration alias
+// so existing local launch scripts continue to work after the brand change.
+const APP_URL = process.env.ALLYX_APP_URL || process.env.ZEDX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://zedx-private-demo.vercel.app');
 const APP_ORIGIN = new URL(APP_URL).origin;
 let isQuitting = false;
 
@@ -319,11 +321,11 @@ async function loadAppContent() {
             if (!response.ok) throw new Error(`Compatibility check failed (${response.status})`);
             const compatibility = await response.json();
             if (!isVersionAtLeast(app.getVersion(), compatibility.minimumDesktopVersion)) {
-                dialog.showErrorBox('ZEDX update required', `This web release needs desktop version ${compatibility.minimumDesktopVersion} or newer. Please install the current desktop build.`);
+                dialog.showErrorBox('AllyX update required', `This web release needs desktop version ${compatibility.minimumDesktopVersion} or newer. Please install the current desktop build.`);
                 return;
             }
         } catch (error) {
-            dialog.showErrorBox('ZEDX connection unavailable', 'Could not verify desktop and web version compatibility. Check your connection and retry from the tray.');
+            dialog.showErrorBox('AllyX connection unavailable', 'Could not verify desktop and web version compatibility. Check your connection and retry from the tray.');
             return;
         }
     }
@@ -399,7 +401,7 @@ function setupIpcHandlers() {
             if (process.platform === 'darwin') {
                 const permission = systemPreferences.getMediaAccessStatus('screen');
                 if (permission === 'denied' || permission === 'restricted') {
-                    return { success: false, error: 'Allow ZEDX AI in System Settings → Privacy & Security → Screen & System Audio Recording, then restart ZEDX.' };
+                    return { success: false, error: 'Allow AllyX in System Settings → Privacy & Security → Screen & System Audio Recording, then restart AllyX.' };
                 }
             }
             const display = screen.getDisplayMatching(bounds);
@@ -420,7 +422,7 @@ function setupIpcHandlers() {
             const source = sources.find(item => item.display_id === String(display.id)) || (sources.length === 1 ? sources[0] : null);
             if (!source) return { success: false, error: 'Could not identify the selected display.' };
             const size = source.thumbnail.getSize();
-            if (source.thumbnail.isEmpty() || !size.width || !size.height) return { success: false, error: 'Screen capture returned no image. Allow Screen & System Audio Recording for ZEDX, then restart the app.' };
+            if (source.thumbnail.isEmpty() || !size.width || !size.height) return { success: false, error: 'Screen capture returned no image. Allow Screen & System Audio Recording for AllyX, then restart the app.' };
             const crop = calculateCaptureCrop(display.bounds, size, bounds);
             const imageData = source.thumbnail.crop(crop).toDataURL();
             mainAppWindow.webContents.send('process-ocr-request', { imageData });
@@ -580,7 +582,7 @@ function updateTrayMenu() {
         { label: 'Quit Entirely', click: () => app.quit() }
     ]);
     tray.setContextMenu(contextMenu);
-    tray.setToolTip(isPresentationSafeMode ? 'ZEDX AI — Presentation Safe Mode' : 'ZEDX AI');
+    tray.setToolTip(isPresentationSafeMode ? 'AllyX — Presentation Safe Mode' : 'AllyX');
 }
 
 function createTray() {

@@ -3,7 +3,7 @@
 const sharp = require('sharp');
 const path = require('path');
 
-const inputImage = path.join(__dirname, '..', 'public', 'zedx-logo.png');
+const inputImage = path.join(__dirname, '..', 'public', 'allyx-logo.png');
 const outputDir = path.join(__dirname, '..', 'public');
 
 const targets = [

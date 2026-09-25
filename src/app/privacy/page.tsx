@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-    title: "Privacy Policy - ZEDX AI",
-    description: "Privacy Policy for ZEDX AI Interview Assistant. Learn how we collect, use, and protect your personal information.",
+    title: "Privacy Policy - AllyX",
+    description: "Privacy Policy for AllyX Interview Assistant. Learn how we collect, use, and protect your personal information.",
 };
 
 export default function PrivacyPolicyPage() {
@@ -20,10 +20,10 @@ export default function PrivacyPolicyPage() {
                     {/* Introduction */}
                     <section className="mb-10">
                         <p className="text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
-                            This Privacy Notice for ZEDX AI (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;), describes how and why we might access, collect, store, use, and/or share (&quot;process&quot;) your personal information when you use our services (&quot;Services&quot;), including when you:
+                            This Privacy Notice for AllyX (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;), describes how and why we might access, collect, store, use, and/or share (&quot;process&quot;) your personal information when you use our services (&quot;Services&quot;), including when you:
                         </p>
                         <ul className="list-disc ml-6 mt-4 space-y-2 text-gray-600 dark:text-gray-300">
-                            <li>Visit zedx-private-demo.vercel.app, or another ZEDX website that links to this Privacy Notice</li>
+                            <li>Visit zedx-private-demo.vercel.app, or another AllyX website that links to this Privacy Notice</li>
                             <li>Use our AI-powered interview assistant application</li>
                             <li>Engage with us in other related ways, including any sales, marketing, or events</li>
                         </ul>
@@ -279,7 +279,7 @@ export default function PrivacyPolicyPage() {
                             If you have questions or comments about this notice, use the authenticated support page{supportEmail ? " or the email below" : ""}:
                         </p>
                         <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-xl">
-                            <p className="text-gray-900 dark:text-white font-semibold">ZEDX AI</p>
+                            <p className="text-gray-900 dark:text-white font-semibold">AllyX</p>
                             <p className="text-gray-600 dark:text-gray-300"><Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link></p>
                             {supportEmail && <p className="text-gray-600 dark:text-gray-300">Email: <a href={`mailto:${supportEmail}`} className="text-emerald-600 hover:underline">{supportEmail}</a></p>}
                         </div>

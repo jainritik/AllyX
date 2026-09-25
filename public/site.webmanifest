@@ -1,14 +1,14 @@
 {
-    "name": "ZEDX AI",
-    "short_name": "ZEDX AI",
+    "name": "AllyX",
+    "short_name": "AllyX",
     "icons": [
         {
-            "src": "/zedx-logo.png",
+            "src": "/allyx-logo.png",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "/zedx-logo.png",
+            "src": "/allyx-logo.png",
             "sizes": "512x512",
             "type": "image/png"
         }
