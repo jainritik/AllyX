@@ -14,11 +14,16 @@ function loadCheckout() {
     if (window.Razorpay) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
         const existing = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
-        if (existing) { existing.addEventListener("load", () => resolve(), { once: true }); return; }
+        if (existing) {
+            if (existing.dataset.loaded === "true") { resolve(); return; }
+            existing.addEventListener("load", () => resolve(), { once: true });
+            existing.addEventListener("error", () => reject(new Error("Could not load secure checkout.")), { once: true });
+            return;
+        }
         const script = document.createElement("script");
         script.src = "https://checkout.razorpay.com/v1/checkout.js";
         script.async = true;
-        script.onload = () => resolve();
+        script.onload = () => { script.dataset.loaded = "true"; resolve(); };
         script.onerror = () => reject(new Error("Could not load secure checkout."));
         document.head.appendChild(script);
     });
@@ -44,6 +49,7 @@ export function PurchaseButton({ planId, className, onSuccess }: { planId: Billi
                 key: order.keyId, amount: order.amount, currency: order.currency, name: "ZEDX",
                 description: order.planName, order_id: order.orderId,
                 prefill: { email: order.accountEmail }, theme: { color: "#0284c7" },
+                modal: { ondismiss: () => { setMessage("Checkout closed. Any completed payment will appear automatically."); setBusy(false); } },
                 handler: async (result: Record<string, string>) => {
                     setBusy(true);
                     try {

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 const paymentEvents = new Set(["payment.authorized", "payment.captured", "payment.failed"]);
 const refundEvents = new Set(["refund.created", "refund.processed", "refund.failed"]);
+const disputeEvents = new Set(["payment.dispute.created", "payment.dispute.action_required", "payment.dispute.under_review", "payment.dispute.won", "payment.dispute.lost", "payment.dispute.closed"]);
 type PaymentEntity = { id?: string; order_id?: string; amount?: number; currency?: string; error_description?: string; error_reason?: string };
 type RefundEntity = { id?: string; payment_id?: string; amount?: number };
 type DisputeEntity = { id?: string; payment_id?: string; reason_description?: string; reason_code?: string };
@@ -60,11 +61,12 @@ export async function POST(request: NextRequest) {
                 refund_amount: refund.amount,
             });
             if (error) throw error;
-        } else if (type === "payment.dispute.created") {
+        } else if (disputeEvents.has(type)) {
             const dispute = event.payload?.payment_dispute?.entity || event.payload?.dispute?.entity;
             if (!dispute?.id || !dispute?.payment_id) return NextResponse.json({ error: "Invalid dispute event" }, { status: 400 });
             const { error } = await admin.rpc("record_payment_dispute", {
                 event_key: key,
+                event_type: type,
                 requested_dispute_id: dispute.id,
                 requested_payment_id: dispute.payment_id,
                 dispute_reason: String(dispute.reason_description || dispute.reason_code || "Payment dispute opened").slice(0, 500),

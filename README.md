@@ -86,7 +86,7 @@ Apply the SQL in this order through the Supabase SQL editor:
 
 These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, and interview credits. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
 
-For Razorpay, enable automatic capture and add the public HTTPS webhook `/api/billing/webhook` with `payment.authorized`, `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, `refund.failed`, and `payment.dispute.created`. Use a separate webhook secret and store it as `RAZORPAY_WEBHOOK_SECRET`. Begin with Razorpay Test Mode keys and replace them with Live Mode keys only after end-to-end payment testing.
+For Razorpay, enable automatic capture and add the public HTTPS webhook `/api/billing/webhook` with `payment.authorized`, `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, `refund.failed`, and all `payment.dispute.*` lifecycle events. Use a separate webhook secret and store it as `RAZORPAY_WEBHOOK_SECRET`. Begin with Razorpay Test Mode keys and replace them with Live Mode keys only after end-to-end payment testing.
 
 Configure the production site URL and allowed redirect URLs in Supabase Authentication. Configure a transactional SMTP provider for reliable confirmation and password-reset email delivery.
 

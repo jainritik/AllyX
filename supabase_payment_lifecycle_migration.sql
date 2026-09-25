@@ -125,7 +125,14 @@ begin
   insert into public.payment_refunds(refund_id, order_id, payment_id, amount, status)
     values(requested_refund_id, purchase.order_id, requested_payment_id, refund_amount,
       case event_type when 'refund.processed' then 'processed' when 'refund.failed' then 'failed' else 'created' end)
-    on conflict (refund_id) do update set status = excluded.status, amount = excluded.amount, updated_at = now();
+    on conflict (refund_id) do update set
+      status = case
+        when public.payment_refunds.status = 'processed' or excluded.status = 'processed' then 'processed'
+        when public.payment_refunds.status = 'failed' or excluded.status = 'failed' then 'failed'
+        else 'created'
+      end,
+      amount = excluded.amount,
+      updated_at = now();
 
   select coalesce(sum(amount), 0) into processed_total from public.payment_refunds
     where order_id = purchase.order_id and status = 'processed';
@@ -154,18 +161,34 @@ end;
 $$;
 
 create or replace function public.record_payment_dispute(
-  event_key text, requested_dispute_id text, requested_payment_id text, dispute_reason text
+  event_key text, event_type text, requested_dispute_id text, requested_payment_id text, dispute_reason text
 )
 returns void language plpgsql security definer set search_path = '' as $$
-declare purchase public.payment_orders;
+declare purchase public.payment_orders; available integer; reversed integer; debt integer;
 begin
+  if event_type not in ('payment.dispute.created', 'payment.dispute.action_required', 'payment.dispute.under_review',
+    'payment.dispute.won', 'payment.dispute.lost', 'payment.dispute.closed') then raise exception 'Unsupported dispute event'; end if;
   select * into purchase from public.payment_orders where payment_id = requested_payment_id for update;
   if not found then raise exception 'Unknown disputed payment'; end if;
   insert into public.payment_webhook_events(event_key, event_type, order_id, payment_id)
-    values(event_key, 'payment.dispute.created', purchase.order_id, requested_payment_id) on conflict do nothing;
+    values(event_key, event_type, purchase.order_id, requested_payment_id) on conflict do nothing;
   if not found then return; end if;
-  update public.payment_orders set status = 'disputed', failure_reason = left(dispute_reason, 500), updated_at = now()
-    where order_id = purchase.order_id and status <> 'refunded';
+  if event_type = 'payment.dispute.lost' and purchase.credits_reversed < purchase.credits then
+    select interview_credits into available from public.account_entitlements where user_id = purchase.user_id for update;
+    reversed := least(purchase.credits - purchase.credits_reversed, coalesce(available, 0));
+    debt := purchase.credits - purchase.credits_reversed - reversed;
+    update public.account_entitlements set interview_credits = interview_credits - reversed,
+      credit_debt = credit_debt + debt, updated_at = now() where user_id = purchase.user_id;
+    update public.payment_orders set credits_reversed = credits where order_id = purchase.order_id;
+  end if;
+  if event_type in ('payment.dispute.won', 'payment.dispute.closed') then
+    update public.payment_orders set status = case when refunded_amount >= amount then 'refunded'
+      when refunded_amount > 0 then 'partially_refunded' else 'paid' end,
+      failure_reason = null, updated_at = now() where order_id = purchase.order_id;
+  else
+    update public.payment_orders set status = 'disputed', failure_reason = left(dispute_reason, 500), updated_at = now()
+      where order_id = purchase.order_id and status <> 'refunded';
+  end if;
 end;
 $$;
 
@@ -212,13 +235,13 @@ revoke all on function public.record_payment_order(text, uuid, text, text) from 
 revoke all on function public.fulfill_payment_order(text, text, uuid, integer, text) from public, anon, authenticated;
 revoke all on function public.record_payment_attempt_event(text, text, text, text, text) from public, anon, authenticated;
 revoke all on function public.record_refund_event(text, text, text, text, integer) from public, anon, authenticated;
-revoke all on function public.record_payment_dispute(text, text, text, text) from public, anon, authenticated;
+revoke all on function public.record_payment_dispute(text, text, text, text, text) from public, anon, authenticated;
 revoke all on function public.get_billing_account() from public, anon;
 revoke all on function public.get_payment_receipt(text) from public, anon;
 grant execute on function public.record_payment_order(text, uuid, text, text) to service_role;
 grant execute on function public.fulfill_payment_order(text, text, uuid, integer, text) to service_role;
 grant execute on function public.record_payment_attempt_event(text, text, text, text, text) to service_role;
 grant execute on function public.record_refund_event(text, text, text, text, integer) to service_role;
-grant execute on function public.record_payment_dispute(text, text, text, text) to service_role;
+grant execute on function public.record_payment_dispute(text, text, text, text, text) to service_role;
 grant execute on function public.get_billing_account() to authenticated;
 grant execute on function public.get_payment_receipt(text) to authenticated;

@@ -74,4 +74,24 @@ test('billing webhook routes captured payments and refunds through idempotent se
     assert.equal((await route.POST(refunded)).status, 200);
     assert.deepEqual(calls.map(call => call.name), ['record_refund_event']);
     assert.equal(calls[0].args.event_type, 'refund.processed');
+
+    calls.length = 0;
+    const disputed = new Request('https://zedx.invalid/api/billing/webhook', {
+        method: 'POST', headers: { 'x-razorpay-signature': 'valid' },
+        body: JSON.stringify({ id: 'evt_dispute', event: 'payment.dispute.lost', payload: { payment_dispute: { entity: { id: 'disp_1', payment_id: 'pay_1', reason_code: 'chargeback' } } } }),
+    });
+    assert.equal((await route.POST(disputed)).status, 200);
+    assert.deepEqual(calls.map(call => call.name), ['record_payment_dispute']);
+    assert.equal(calls[0].args.event_type, 'payment.dispute.lost');
+});
+
+test('refund ledger keeps processed refunds final when webhook events arrive out of order', () => {
+    const migration = fs.readFileSync('supabase_payment_lifecycle_migration.sql', 'utf8');
+    assert.match(migration, /when public\.payment_refunds\.status = 'processed' or excluded\.status = 'processed' then 'processed'/);
+});
+
+test('closing Razorpay Checkout releases the purchase button', () => {
+    const component = fs.readFileSync('src/components/purchase-button.tsx', 'utf8');
+    assert.match(component, /modal:\s*\{\s*ondismiss:/);
+    assert.match(component, /Checkout closed\. Any completed payment will appear automatically\./);
 });
