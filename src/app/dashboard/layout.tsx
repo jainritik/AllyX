@@ -4,7 +4,7 @@ import { signOutAndClear } from "@/lib/auth";
 
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Video, FileText, LogOut, Clock, Loader2, CreditCard } from "lucide-react";
+import { LayoutDashboard, Video, FileText, LogOut, Clock, Loader2, CreditCard, Bug } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -45,6 +45,12 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
                 <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
                     <CreditCard size={20} />
                     Billing & Credits
+                </Button>
+            </Link>
+            <Link href="/dashboard/support/report-bug" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                    <Bug size={20} />
+                    Report a Bug
                 </Button>
             </Link>
 

@@ -82,6 +82,7 @@ export default function PrivacyPolicyPage() {
                             <li>Job descriptions (for interview context)</li>
                             <li>Interview transcripts and AI responses</li>
                             <li>Purchase, payment-status, refund, receipt, and billing-support records</li>
+                            <li>Bug reports, contact details, and screenshots or videos you choose to attach</li>
                         </ul>
                         <p className="text-gray-600 dark:text-gray-300 mb-4">
                             <strong>Sensitive Information.</strong> We do not intentionally request sensitive information. Content you submit can nevertheless contain information you choose to provide, so review it before uploading or recording.
@@ -111,6 +112,7 @@ export default function PrivacyPolicyPage() {
                             <li><strong>To provide AI-powered interview assistance</strong> using your resume and job description to generate relevant answers.</li>
                             <li><strong>To save your interview history</strong> for your future reference and improvement.</li>
                             <li><strong>To respond to user inquiries</strong> and offer support to users.</li>
+                            <li><strong>To investigate product bugs</strong> using the description and optional private attachment you submit.</li>
                             <li><strong>To send administrative information</strong> about our products and services, changes to our terms and policies.</li>
                         </ul>
                     </section>
@@ -141,7 +143,7 @@ export default function PrivacyPolicyPage() {
                         <p className="text-gray-600 dark:text-gray-300 mb-2">We may share your personal information in the following situations:</p>
                         <ul className="list-disc ml-6 space-y-2 text-gray-600 dark:text-gray-300">
                             <li><strong>With AI Service Providers.</strong> We share your input (resume, AI context, answer preferences, and interview questions) with OpenAI or Groq to generate answers. These providers process your data according to their privacy policies.</li>
-                            <li><strong>With Service Providers.</strong> We share your data with Supabase for database storage and authentication.</li>
+                            <li><strong>With Service Providers.</strong> We share your data with Supabase for database storage and authentication and with our transactional email provider when sending account, payment, or support email.</li>
                             <li><strong>With Payment Providers.</strong> Razorpay processes checkout and payment-instrument information. We receive transaction identifiers, amounts, payment status, and refund or dispute updates, but we do not store your full card, bank-account, CVV, or UPI credentials.</li>
                             <li><strong>Business Transfers.</strong> We may share or transfer your information in connection with any merger, sale of company assets, or acquisition.</li>
                         </ul>

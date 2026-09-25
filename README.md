@@ -58,6 +58,10 @@ SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_SIDE_SERVICE_ROLE_KEY
 RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID
 RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET
 RAZORPAY_WEBHOOK_SECRET=YOUR_SEPARATE_WEBHOOK_SECRET
+BREVO_SMTP_USER=YOUR_SMTP_LOGIN
+BREVO_SMTP_PASS=YOUR_SMTP_KEY
+ALLYX_EMAIL_FROM=AllyX <verified-sender@example.com>
+BUG_REPORT_EMAIL_TO=owner@example.com
 ```
 
 Optional deployment/build variables:
@@ -83,9 +87,11 @@ Apply the SQL in this order through the Supabase SQL editor:
 6. `supabase_session_recovery_migration.sql`
 7. `supabase_credit_reservation_migration.sql`
 8. `supabase_payment_lifecycle_migration.sql`
-9. `supabase_billing_support_migration.sql`
+9. `supabase_payment_email_migration.sql`
+10. `supabase_billing_support_migration.sql`
+11. `supabase_bug_reports_migration.sql`
 
-These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, interview credits, and authenticated billing support requests. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
+These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, interview credits, payment-email outbox, authenticated billing support, and private bug-report attachments. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
 
 For Razorpay, enable automatic capture and add the public HTTPS webhook `/api/billing/webhook` with `payment.authorized`, `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, `refund.failed`, and all `payment.dispute.*` lifecycle events. Use a separate webhook secret and store it as `RAZORPAY_WEBHOOK_SECRET`. Begin with Razorpay Test Mode keys and replace them with Live Mode keys only after end-to-end payment testing.
 
@@ -171,6 +177,7 @@ src/lib/                     Authentication, context and persistence helpers
 tests/                       Web/auth/service regression tests
 supabase_schema.sql          Base database schema
 supabase_beta_migration.sql  Beta security, quota and consistency migration
+supabase_bug_reports_migration.sql  Bug reports, private attachments and email outbox
 ```
 
 ## Release boundaries
