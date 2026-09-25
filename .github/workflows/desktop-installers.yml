@@ -120,3 +120,4 @@ jobs:
             else
               gh release create "$tag" "${assets[@]}" --target "$GITHUB_SHA" --prerelease --title "AllyX ${version} unsigned" --notes "$notes"
             fi
+          fi
