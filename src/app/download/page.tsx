@@ -1,10 +1,11 @@
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
+import { desktopDownloads } from '@/lib/download-links';
 
 const builds = [
-    { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: process.env.NEXT_PUBLIC_ALLYX_MAC_ARM64_URL || process.env.NEXT_PUBLIC_ZEDX_MAC_ARM64_URL },
-    { id: 'mac-intel', name: 'macOS Intel', detail: 'Intel Macs', url: process.env.NEXT_PUBLIC_ALLYX_MAC_X64_URL || process.env.NEXT_PUBLIC_ZEDX_MAC_X64_URL },
-    { id: 'windows', name: 'Windows x64', detail: 'Windows 10/11, 64-bit', url: process.env.NEXT_PUBLIC_ALLYX_WINDOWS_X64_URL || process.env.NEXT_PUBLIC_ZEDX_WINDOWS_X64_URL },
+    { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: desktopDownloads.macArm64 },
+    { id: 'mac-intel', name: 'macOS Intel', detail: 'Intel Macs', url: desktopDownloads.macX64 },
+    { id: 'windows', name: 'Windows x64', detail: 'Windows 10/11, 64-bit', url: desktopDownloads.windowsX64 },
 ];
 
 export default function DownloadPage() {
@@ -23,6 +24,7 @@ export default function DownloadPage() {
                         : <p className="mt-5 text-sm font-medium text-sky-700 dark:text-cyan-300">Installer available at launch</p>}
                 </div>)}
             </div>
+            <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">Current direct-download installers are unsigned. macOS Gatekeeper or Windows SmartScreen may show an unknown-publisher warning. Signed installers will replace these files later.</p>
             <p className="mt-10 text-sm text-gray-500">The web app is available through your account. Desktop-specific capture controls require the installed app.</p>
         </main>
         <Footer />
