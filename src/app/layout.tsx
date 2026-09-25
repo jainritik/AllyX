@@ -6,7 +6,7 @@ import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { DesktopNavBar } from "@/components/desktop-nav";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://zedx-private-demo.vercel.app"),
+  metadataBase: new URL("https://allyx.vercel.app"),
   applicationName: "AllyX",
   appleWebApp: {
     title: "AllyX",
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     "Training Assistant", "Interview Practice", "Job Seeker Assistant", "AI Coach",
     "محاكاة مقابلات", "تفريغ صوتي مباشر", "تدريب انترفيو", "ذكاء اصطناعي", "مساعد شخصي"
   ],
-  authors: [{ name: "AllyX Team", url: "https://zedx-private-demo.vercel.app" }],
+  authors: [{ name: "AllyX Team", url: "https://allyx.vercel.app" }],
   creator: "AllyX",
   publisher: "AllyX",
   robots: {
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://zedx-private-demo.vercel.app",
+    url: "https://allyx.vercel.app",
     siteName: "AllyX",
     title: "AllyX - Real-Time AI Interview Assistant",
     description: "Live transcription and contextual answer suggestions in a focused desktop app for Mac and Windows.",
@@ -67,7 +67,7 @@ export const metadata: Metadata = {
     images: ["/allyx-social-banner.png"],
   },
   alternates: {
-    canonical: "https://zedx-private-demo.vercel.app",
+    canonical: "https://allyx.vercel.app",
   },
   verification: {
     google: "googleac3039da11f6677e",
@@ -142,9 +142,9 @@ export default async function RootLayout({
               "@type": "WebSite",
               "name": "AllyX",
               "alternateName": ["AllyX AI", "AllyX Interview Assistant"],
-              "url": "https://zedx-private-demo.vercel.app",
-              "logo": "https://zedx-private-demo.vercel.app/allyx-logo.png",
-              "image": "https://zedx-private-demo.vercel.app/allyx-logo.png",
+              "url": "https://allyx.vercel.app",
+              "logo": "https://allyx.vercel.app/allyx-logo.png",
+              "image": "https://allyx.vercel.app/allyx-logo.png",
             })
           }}
         />
@@ -157,8 +157,8 @@ export default async function RootLayout({
               "@context": "https://schema.org",
               "@type": "Organization",
               "name": "AllyX",
-              "url": "https://zedx-private-demo.vercel.app",
-              "logo": "https://zedx-private-demo.vercel.app/allyx-logo.png"
+              "url": "https://allyx.vercel.app",
+              "logo": "https://allyx.vercel.app/allyx-logo.png"
             })
           }}
         />

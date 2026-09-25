@@ -77,7 +77,7 @@ function ProductPreview() {
 export default function Home() {
   const macUrl = desktopDownloads.macArm64;
   const windowsUrl = desktopDownloads.windowsX64;
-  const softwareSchema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "AllyX", applicationCategory: "BusinessApplication", operatingSystem: "macOS, Windows", description: metadata.description, url: "https://zedx-private-demo.vercel.app/", offers: { "@type": "Offer", price: "0", priceCurrency: "INR", description: "One 10-minute account trial" } };
+  const softwareSchema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "AllyX", applicationCategory: "BusinessApplication", operatingSystem: "macOS, Windows", description: metadata.description, url: "https://allyx.vercel.app/", offers: { "@type": "Offer", price: "0", priceCurrency: "INR", description: "One 10-minute account trial" } };
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f8fbff] text-slate-950 dark:bg-[#05070b] dark:text-white">

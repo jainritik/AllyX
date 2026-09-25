@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
             allow: '/',
             disallow: ['/api/', '/_next/', '/static/'],
         },
-        sitemap: 'https://zedx-private-demo.vercel.app/sitemap.xml',
+        sitemap: 'https://allyx.vercel.app/sitemap.xml',
     };
 }
