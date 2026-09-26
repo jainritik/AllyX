@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supportContact } from "@/lib/support-contact";
+import { LandingSectionLink } from "@/components/landing-section-link";
 
 export function Footer() {
     return (
@@ -10,8 +11,8 @@ export function Footer() {
                     <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Real-time context and answer suggestions for interview preparation.</p>
                 </div>
                 <nav aria-label="Footer" className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    <Link href="/#features" className="hover:text-sky-600 dark:hover:text-cyan-300">Features</Link>
-                    <Link href="/#pricing" className="hover:text-sky-600 dark:hover:text-cyan-300">Pricing</Link>
+                    <LandingSectionLink sectionId="features" className="hover:text-sky-600 dark:hover:text-cyan-300">Features</LandingSectionLink>
+                    <LandingSectionLink sectionId="pricing" className="hover:text-sky-600 dark:hover:text-cyan-300">Pricing</LandingSectionLink>
                     <Link href="/download" className="hover:text-sky-600 dark:hover:text-cyan-300">Download</Link>
                     <Link href="/privacy" className="hover:text-sky-600 dark:hover:text-cyan-300">Privacy</Link>
                     <Link href="/terms" className="hover:text-sky-600 dark:hover:text-cyan-300">Terms</Link>

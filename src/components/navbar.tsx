@@ -30,6 +30,18 @@ export function Navbar() {
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
+    const navigateToSection = (event: React.MouseEvent<HTMLAnchorElement>, sectionId: string, closeSheet = false) => {
+        if (closeSheet) setIsSheetOpen(false);
+        if (window.location.pathname !== "/") return;
+
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+
+        event.preventDefault();
+        window.history.pushState(null, "", `#${sectionId}`);
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
     // Hide full navbar in desktop mode - DesktopNavBar handles navigation
     if (isDesktop) return null;
 
@@ -62,12 +74,7 @@ export function Navbar() {
                     <Link
                         href="/#how-it-works"
                         className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:text-sky-600 dark:hover:text-cyan-300 transition-colors"
-                        onClick={(e) => {
-                            if (window.location.pathname === '/') {
-                                e.preventDefault();
-                                document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
-                            }
-                        }}
+                        onClick={(event) => navigateToSection(event, "how-it-works")}
                     >
                         <span className="px-4 py-2 rounded-full hover:bg-white/70 dark:hover:bg-white/10 transition-all">
                             How it Works
@@ -76,6 +83,7 @@ export function Navbar() {
                     <Link
                         href="/#pricing"
                         className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:text-sky-600 dark:hover:text-cyan-300 transition-colors"
+                        onClick={(event) => navigateToSection(event, "pricing")}
                     >
                         <span className="px-4 py-2 rounded-full hover:bg-white/70 dark:hover:bg-white/10 transition-all">
                             Pricing
@@ -135,12 +143,12 @@ export function Navbar() {
 
                                     <div className="h-px bg-gray-100 dark:bg-gray-800 my-4 mx-2" />
 
-                                    <Link href="/#features" onClick={() => setIsSheetOpen(false)}>
+                                    <Link href="/#how-it-works" onClick={(event) => navigateToSection(event, "how-it-works", true)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
                                             How it Works
                                         </Button>
                                     </Link>
-                                    <Link href="/#pricing" onClick={() => setIsSheetOpen(false)}>
+                                    <Link href="/#pricing" onClick={(event) => navigateToSection(event, "pricing", true)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
                                             Pricing
                                         </Button>
