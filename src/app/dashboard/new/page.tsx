@@ -292,10 +292,10 @@ export default function NewInterviewPage() {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.4 }}
-                            className="group relative bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-3xl p-1 shadow-xl dark:shadow-2xl overflow-hidden flex-1 flex flex-col"
+                            className="group relative bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-3xl p-1 shadow-xl dark:shadow-2xl overflow-visible flex-1 flex flex-col"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
-                            <div className="relative bg-white dark:bg-[#151515] rounded-[22px] p-6 sm:p-10 flex-1 flex flex-col">
+                            <div className="relative bg-white dark:bg-[#151515] rounded-[22px] p-6 sm:p-10 flex-1 flex flex-col overflow-visible">
                                 <div className="flex flex-wrap items-start justify-between gap-3 mb-6 sm:mb-8">
                                     <div className="flex items-center gap-4 sm:gap-5">
                                         <div className="p-3 sm:p-4 bg-emerald-100 dark:bg-emerald-900/40 rounded-xl sm:rounded-2xl text-emerald-700 dark:text-emerald-400">
@@ -311,7 +311,8 @@ export default function NewInterviewPage() {
                                 <textarea
                                     ref={contextRef}
                                     aria-label="AI context and answer style"
-                                    className="w-full flex-1 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all min-h-[180px] sm:min-h-[220px] leading-relaxed"
+                                    rows={10}
+                                    className="w-full min-h-[260px] max-h-[34rem] [field-sizing:content] overflow-y-auto bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-y transition-all leading-relaxed"
                                     placeholder={"Example:\nSenior Go Backend Engineer role requiring microservices, PostgreSQL and AWS.\n\nAnswer as the candidate in first person. Keep conceptual answers natural and under 60 seconds. For coding questions, explain the approach, provide Go code, and include complexity."}
                                     value={jobDescription}
                                     onChange={(e) => { setupEdited.current = true; setJobDescription(e.target.value); setError(null); }}
@@ -469,11 +470,6 @@ export default function NewInterviewPage() {
                                                 <h4 className={cn("font-bold text-sm sm:text-base", selectedModel === model.id ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400")}>
                                                     {model.name}
                                                 </h4>
-                                                {model.paid && (
-                                                    <span className="ml-2 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[9px] font-black tracking-wider text-red-600 dark:text-red-400">
-                                                        PREMIUM AI
-                                                    </span>
-                                                )}
                                                 {selectedModel === model.id && (
                                                     <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]"></div>
                                                 )}
@@ -494,7 +490,6 @@ export default function NewInterviewPage() {
                                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
                                     <p className="font-semibold">Selected: {currentModelData.name}</p>
                                     <p className="mt-2">This model will answer questions during your desktop session. Review your setup, then open the session guide to continue.</p>
-                                    {currentModelData.paid && <p className="mt-2 text-xs">Included with eligible AllyX sessions; no separate AI account is required.</p>}
                                 </div>
 
                                 {/* Static Start Interview Button */}

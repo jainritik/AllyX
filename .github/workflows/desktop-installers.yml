@@ -66,7 +66,11 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          ALLYX_ADHOC_SIGN: "true"
         run: ${{ matrix.command }}
+      - name: Verify ad-hoc Mac application signature
+        if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64' }}
+        run: codesign --verify --deep --strict --verbose=2 "dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/AllyX.app"
       - name: Verify Apple signature and notarization
         if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64'
         run: |
@@ -113,7 +117,7 @@ jobs:
           else
             version=$(node -p "require('./package.json').version")
             tag="allyx-v${version}-unsigned"
-            notes=$'Unsigned early-access installers for direct testing.\n\nmacOS Gatekeeper and Windows SmartScreen may show an unknown-publisher warning. Verify the included SHA-256 checksum before installing. These files will be replaced by signed and notarized installers before the full public release.'
+            notes=$'Early-access installers for direct testing.\n\nThe macOS application bundle includes an ad-hoc integrity signature but is not Apple-notarized. Gatekeeper may still block the first launch. After moving AllyX to Applications, run `xattr -dr com.apple.quarantine /Applications/AllyX.app`, then right-click AllyX and choose Open. Windows SmartScreen may show an unknown-publisher warning. Verify the included SHA-256 checksum before installing.'
             if gh release view "$tag" >/dev/null 2>&1; then
               gh release upload "$tag" "${assets[@]}" --clobber
               gh release edit "$tag" --prerelease --title "AllyX ${version} unsigned" --notes "$notes"
