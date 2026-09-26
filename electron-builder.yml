@@ -1,7 +1,6 @@
 appId: com.allyx.ai
 productName: AllyX
 copyright: Copyright (c) 2024 AllyX
-afterSign: scripts/after-sign.mjs
 
 directories:
   output: dist
@@ -38,7 +37,7 @@ nsis:
 mac:
   target:
     - dmg
-  icon: electron/assets/icon.icns
+  icon: electron/assets/icon.png
   artifactName: AllyX-${version}-${arch}.${ext}
   category: public.app-category.productivity
   extendInfo:

@@ -45,11 +45,9 @@ export default function DownloadPage() {
                         : <p className="mt-5 text-sm font-medium text-sky-700 dark:text-cyan-300">Installer available at launch</p>}
                 </div>)}
             </div>
-            <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-                <p className="font-semibold">First launch on macOS</p>
-                <p className="mt-1">The current Mac build is integrity-signed but is not yet Apple-notarized. If macOS says AllyX is damaged, move AllyX to Applications, open Terminal, and run:</p>
-                <code className="mt-3 block overflow-x-auto rounded-lg bg-black/90 px-4 py-3 font-mono text-xs text-white">xattr -dr com.apple.quarantine /Applications/AllyX.app</code>
-                <p className="mt-2">Then right-click AllyX in Applications and choose <strong>Open</strong>. Only use installers downloaded from this official page.</p>
+            <div className="mt-8 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100">
+                <p className="font-semibold">Opening AllyX on macOS</p>
+                <p className="mt-1">Move AllyX to Applications before opening it. On the first launch, macOS may ask you to confirm that you want to open the downloaded application.</p>
             </div>
             <p className="mt-10 text-sm text-gray-500">Phones and tablets can access account pages, billing, and history. Starting a live interview session requires the installed Mac or Windows app.</p>
         </main>
