@@ -66,7 +66,11 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          ALLYX_ADHOC_SIGN: ${{ matrix.artifact != 'windows-x64' && 'true' || 'false' }}
         run: ${{ matrix.command }}
+      - name: Verify unsigned macOS bundle integrity
+        if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64' }}
+        run: codesign --verify --deep --strict --verbose=2 "dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/AllyX.app"
       - name: Verify Apple signature and notarization
         if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64'
         run: |
@@ -113,7 +117,7 @@ jobs:
           else
             version=$(node -p "require('./package.json').version")
             tag="allyx-v${version}-unsigned"
-            notes=$'Unsigned installers built with the same packaging method as the previously working desktop release. macOS or Windows may still show an unknown-publisher warning on some computers.'
+            notes=$'Unsigned testing installers. macOS bundles include a complete local integrity signature to prevent damaged-app errors, but macOS or Windows may still show an unknown-publisher warning.'
             if gh release view "$tag" >/dev/null 2>&1; then
               gh release upload "$tag" "${assets[@]}" --clobber
               gh release edit "$tag" --prerelease --title "AllyX ${version} unsigned" --notes "$notes"

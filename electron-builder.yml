@@ -1,6 +1,7 @@
 appId: com.allyx.ai
 productName: AllyX
 copyright: Copyright (c) 2024 AllyX
+afterSign: scripts/after-sign.mjs
 
 directories:
   output: dist
