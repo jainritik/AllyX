@@ -19,12 +19,6 @@ export const metadata: Metadata = {
     template: "%s | AllyX"
   },
   description: "AllyX is a desktop AI interview assistant for macOS and Windows with live transcription, contextual answer suggestions, text and code capture, and saved session history.",
-  keywords: [
-    "AllyX", "AllyX AI", "AllyX Interview Assistant", "Mock Interview Assistant", "Live Transcription",
-    "Interview Simulation", "Mock Interview Copilot", "AI Interview Notes", "Real-time AI Assistant",
-    "Training Assistant", "Interview Practice", "Job Seeker Assistant", "AI Coach",
-    "محاكاة مقابلات", "تفريغ صوتي مباشر", "تدريب انترفيو", "ذكاء اصطناعي", "مساعد شخصي"
-  ],
   authors: [{ name: "AllyX Team", url: "https://allyx.vercel.app" }],
   creator: "AllyX",
   publisher: "AllyX",
@@ -66,9 +60,6 @@ export const metadata: Metadata = {
     title: "AllyX - Real-Time AI Interview Assistant",
     description: "A desktop interview assistant for live transcription, contextual suggestions, and technical questions.",
     images: ["/allyx-social-banner.png"],
-  },
-  alternates: {
-    canonical: "https://allyx.vercel.app",
   },
   verification: {
     google: "googleac3039da11f6677e",
@@ -159,7 +150,14 @@ export default async function RootLayout({
               "@type": "Organization",
               "name": "AllyX",
               "url": "https://allyx.vercel.app",
-              "logo": "https://allyx.vercel.app/allyx-logo.png"
+              "logo": "https://allyx.vercel.app/allyx-logo.png",
+              "email": "kitirjain@gmail.com",
+              "contactPoint": {
+                "@type": "ContactPoint",
+                "contactType": "customer support",
+                "email": "kitirjain@gmail.com",
+                "telephone": "+91-8377038800"
+              }
             })
           }}
         />

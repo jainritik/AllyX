@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { supportContact } from "@/lib/support-contact";
+
+export const metadata: Metadata = {
+    title: "Terms of Service",
+    description: "Read the AllyX terms for accounts, interview credits, payments, refunds, acceptable use, and AI-generated output.",
+    alternates: { canonical: "/terms" },
+};
 
 export default function TermsOfServicePage() {
     return <div className="min-h-screen bg-gray-50 px-4 py-12 dark:bg-zinc-900"><div className="mx-auto max-w-3xl rounded-2xl bg-white p-8 shadow-sm dark:bg-zinc-800">

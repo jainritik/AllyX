@@ -54,6 +54,7 @@ const nextConfig: NextConfig = {
       { source: "/login", headers: privateRouteHeaders },
       { source: "/auth/:path*", headers: privateRouteHeaders },
       { source: "/dashboard/:path*", headers: privateRouteHeaders },
+      { source: "/desktop", headers: privateRouteHeaders },
       { source: "/interview/:path*", headers: privateRouteHeaders },
       { source: "/scanner-frame", headers: privateRouteHeaders },
     ];

@@ -3,8 +3,9 @@ import { Metadata } from "next";
 import { supportContact } from "@/lib/support-contact";
 
 export const metadata: Metadata = {
-    title: "Privacy Policy - AllyX",
-    description: "Privacy Policy for AllyX Interview Assistant. Learn how we collect, use, and protect your personal information.",
+    title: "Privacy Policy",
+    description: "Read how AllyX collects, uses, stores, and protects account, interview, payment, and support information.",
+    alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPolicyPage() {

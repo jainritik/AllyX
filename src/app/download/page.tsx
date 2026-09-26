@@ -1,7 +1,26 @@
+import type { Metadata } from 'next';
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 import { desktopDownloads } from '@/lib/download-links';
 import { DesktopAppNotice } from '@/components/desktop-app-notice';
+
+export const metadata: Metadata = {
+    title: 'Download AllyX for Mac and Windows',
+    description: 'Download the AllyX desktop AI interview assistant for Apple Silicon Mac, Intel Mac, or 64-bit Windows 10 and Windows 11.',
+    alternates: { canonical: '/download' },
+    openGraph: {
+        title: 'Download AllyX for Mac and Windows',
+        description: 'Choose the AllyX desktop installer for your Mac or Windows computer.',
+        url: '/download',
+        images: [{ url: '/allyx-social-banner.png', width: 1200, height: 630, alt: 'AllyX desktop interview assistant' }],
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'Download AllyX for Mac and Windows',
+        description: 'Choose the AllyX desktop installer for your Mac or Windows computer.',
+        images: ['/allyx-social-banner.png'],
+    },
+};
 
 const builds = [
     { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: desktopDownloads.macArm64 },

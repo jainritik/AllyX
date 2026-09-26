@@ -6,9 +6,15 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
 export const metadata: Metadata = {
-    title: "About AllyX - The Ultimate Interview Training Assistant",
-    description: "Discover AllyX, the next-gen interview simulation assistant. Features system audio capture, transcription overlay, and real-time AI context to help you master every interview.",
-    keywords: ["AllyX", "mock interview copilot", "AI training", "transcription overlay", "system audio capture"],
+    title: "About the AllyX AI Interview Assistant",
+    description: "Learn how AllyX combines live transcription, resume and role context, screen text capture, and a desktop overlay for interview preparation on Mac and Windows.",
+    alternates: { canonical: "/about" },
+    openGraph: {
+        title: "About the AllyX AI Interview Assistant",
+        description: "A practical desktop assistant for interview preparation on Mac and Windows.",
+        url: "/about",
+        images: [{ url: "/allyx-social-banner.png", width: 1200, height: 630, alt: "AllyX desktop interview assistant" }],
+    },
 };
 
 export default function AboutPage() {
@@ -31,15 +37,17 @@ export default function AboutPage() {
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                             </span>
-                            Revolutionizing Interview Training
+                            Desktop interview preparation assistant
                         </div>
 
                         <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-gray-900 dark:text-white mb-8 leading-[1.1]">
-                            The Future of <br className="hidden sm:block" />
-                            <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 via-green-500 to-teal-600 dark:from-emerald-400 dark:via-green-400 dark:to-teal-400">Interview Simulation</span>
+                            Interview context, <br className="hidden sm:block" />
+                            <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 via-green-500 to-teal-600 dark:from-emerald-400 dark:via-green-400 dark:to-teal-400">when you need it</span>
                         </h1>
 
-                        AllyX isn&apos;t just a transcription tool; it&apos;s your personal interview coach. Engineered for fresh graduates and job seekers to verify answers and master every mock interview.
+                        <p className="max-w-2xl text-lg leading-8 text-gray-600 dark:text-gray-300">
+                            AllyX is a desktop AI interview assistant for job seekers who want live transcription, relevant answer suggestions, and one place to prepare their resume and role context.
+                        </p>
                     </div>
                 </section>
 
@@ -53,10 +61,10 @@ export default function AboutPage() {
                             </h2>
                             <div className="space-y-6 text-gray-600 dark:text-gray-300 text-lg leading-relaxed">
                                 <p>
-                                    Most training tools rely on rigid generic questionnaires or bots that join calls awkwardly. <strong className="text-gray-900 dark:text-white">AllyX is different.</strong>
+                                    Many preparation tools use fixed question lists or meeting bots. <strong className="text-gray-900 dark:text-white">AllyX runs as a separate desktop app</strong> and does not join the meeting as a participant.
                                 </p>
                                 <p>
-                                    We built a native desktop application that captures <span className="text-emerald-600 dark:text-emerald-400 font-medium">System Audio</span> directly from the OS soundcard, ensuring absolute clarity and privacy while you simulate your interviews without needing any bots.
+                                    The app can transcribe supported microphone and desktop audio, combine it with your resume and target role, and show suggestions in a compact overlay. Audio support depends on the operating system, permissions, and selected source.
                                 </p>
                             </div>
                         </div>
@@ -70,7 +78,7 @@ export default function AboutPage() {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-gray-900 dark:text-white">Real-Time Intelligence</h3>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">Zero latency answers streaming.</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">Suggestions generated as the conversation develops.</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 p-4 bg-zinc-50/80 dark:bg-zinc-950/40 rounded-xl border border-zinc-100 dark:border-white/5">
@@ -88,7 +96,7 @@ export default function AboutPage() {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-gray-900 dark:text-white">System Audio Core</h3>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">Captures output directly from OS.</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">Supports available microphone and desktop audio sources.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -104,18 +112,18 @@ export default function AboutPage() {
                             Engineered for <span className="text-emerald-600 dark:text-emerald-400">Performance</span>
                         </h2>
                         <p className="text-gray-600 dark:text-gray-300 text-lg max-w-2xl mx-auto">
-                            A suite of powerful features designed to give you the confidence of an expert.
+                            Practical tools for preparing context, following questions, and reviewing a session.
                         </p>
                     </div>
 
                     <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
                         {[
-                            { icon: <Mic />, title: "Voice Capture", desc: "Advanced VAD (Voice Activity Detection) filters noise and captures key interview questions instantly." },
+                            { icon: <Mic />, title: "Voice Capture", desc: "Voice activity detection helps separate spoken questions from pauses before transcription." },
                             { icon: <Layers />, title: "Context Aware", desc: "Analyzes your uploaded CV and job descriptions to tailor answers specifically to your profile." },
-                            { icon: <Globe />, title: "Multi-Language", desc: "Native support for English, Arabic, Spanish, and 30+ other global languages." },
+                            { icon: <Globe />, title: "Flexible Language Input", desc: "Transcription and answer quality vary by the selected provider, model, accent, and language." },
                             { icon: <Zap />, title: "Fast Transcription", desc: "Converts supported microphone and desktop audio into text for answer generation." },
-                            { icon: <Shield />, title: "Privacy First", desc: "Your audio data is processed ephemerally and never stored on our servers." },
-                            { icon: <Cpu />, title: "Model Agnostic", desc: "Switch between Llama 3, GPT-4, and Qwen models on the fly for best results." }
+                            { icon: <Shield />, title: "Account Controls", desc: "Manage saved resumes, interview history, billing, and support from your AllyX account." },
+                            { icon: <Cpu />, title: "AI Model Choices", desc: "Choose supported GPT-OSS and Qwen models, with optional OpenAI models when configured." }
                         ].map((item, i) => (
                             <div key={i} className="group p-8 rounded-3xl bg-zinc-50/50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-white/10 hover:border-emerald-500/30 dark:hover:border-emerald-500/30 hover:shadow-lg dark:hover:bg-zinc-900 transition-all duration-300 backdrop-blur-sm">
                                 <div className="w-12 h-12 rounded-2xl bg-white dark:bg-black border border-gray-200 dark:border-white/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-6 group-hover:scale-110 transition-transform shadow-sm dark:shadow-emerald-900/20">
@@ -136,10 +144,10 @@ export default function AboutPage() {
 
                             <div className="relative z-10">
                                 <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
-                                    Ready to empower your workflow?
+                                    Ready to prepare your first session?
                                 </h2>
                                 <p className="text-lg text-gray-600 dark:text-gray-300 mb-10 max-w-xl mx-auto">
-                                    Join thousands of job seekers and fresh graduates using AllyX to elevate their interview skills.
+                                    Create an account, add your context, and use the 10-minute trial in the AllyX desktop app.
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                                     <Link href="/download">
@@ -147,9 +155,9 @@ export default function AboutPage() {
                                             Download for Windows
                                         </Button>
                                     </Link>
-                                    <Link href="/dashboard">
+                                    <Link href="/login">
                                         <Button variant="outline" className="h-14 px-8 rounded-full border-zinc-200 dark:border-white/20 bg-transparent hover:bg-zinc-100 dark:hover:bg-white/10 text-zinc-700 dark:text-white font-semibold text-lg backdrop-blur-sm transition-all hover:-translate-y-1">
-                                            Try Web Version
+                                            Create free account
                                         </Button>
                                     </Link>
                                 </div>

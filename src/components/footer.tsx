@@ -12,7 +12,9 @@ export function Footer() {
                 </div>
                 <nav aria-label="Footer" className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-slate-600 dark:text-slate-400">
                     <LandingSectionLink sectionId="features" className="hover:text-sky-600 dark:hover:text-cyan-300">Features</LandingSectionLink>
+                    <LandingSectionLink sectionId="how-it-works" className="hover:text-sky-600 dark:hover:text-cyan-300">How it works</LandingSectionLink>
                     <LandingSectionLink sectionId="pricing" className="hover:text-sky-600 dark:hover:text-cyan-300">Pricing</LandingSectionLink>
+                    <Link href="/about" className="hover:text-sky-600 dark:hover:text-cyan-300">About</Link>
                     <Link href="/download" className="hover:text-sky-600 dark:hover:text-cyan-300">Download</Link>
                     <Link href="/privacy" className="hover:text-sky-600 dark:hover:text-cyan-300">Privacy</Link>
                     <Link href="/terms" className="hover:text-sky-600 dark:hover:text-cyan-300">Terms</Link>

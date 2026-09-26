@@ -5,8 +5,9 @@ export default function robots(): MetadataRoute.Robots {
         rules: {
             userAgent: '*',
             allow: '/',
-            disallow: ['/api/', '/_next/', '/static/', '/auth/', '/dashboard/', '/interview', '/login', '/scanner-frame'],
+            disallow: ['/api/', '/auth/', '/dashboard/', '/desktop', '/interview', '/login', '/scanner-frame'],
         },
         sitemap: 'https://allyx.vercel.app/sitemap.xml',
+        host: 'https://allyx.vercel.app',
     };
 }

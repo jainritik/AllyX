@@ -79,11 +79,46 @@ function ProductPreview() {
 export default function Home() {
   const macUrl = desktopDownloads.macArm64;
   const windowsUrl = desktopDownloads.windowsX64;
-  const softwareSchema = { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "AllyX", applicationCategory: "BusinessApplication", operatingSystem: "macOS, Windows", description: metadata.description, url: "https://allyx.vercel.app/", offers: { "@type": "Offer", price: "0", priceCurrency: "INR", description: "One 10-minute account trial" } };
+  const softwareSchema = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "AllyX",
+    applicationCategory: "BusinessApplication",
+    applicationSubCategory: "Interview preparation software",
+    operatingSystem: "macOS, Windows 10, Windows 11",
+    softwareVersion: "1.3.5",
+    description: metadata.description,
+    url: "https://allyx.vercel.app/",
+    downloadUrl: "https://allyx.vercel.app/download",
+    image: "https://allyx.vercel.app/allyx-social-banner.png",
+    featureList: [
+      "Live transcription",
+      "Contextual answer suggestions",
+      "Screen text and code capture",
+      "Desktop overlay",
+      "Saved interview history",
+    ],
+    offers: [
+      { "@type": "Offer", name: "Free trial", price: "0", priceCurrency: "INR", description: "One 10-minute account trial" },
+      { "@type": "Offer", name: "Starter interview pack", price: "1000", priceCurrency: "INR", description: "Two interview credits" },
+      { "@type": "Offer", name: "Growth interview pack", price: "2000", priceCurrency: "INR", description: "Five interview credits" },
+      { "@type": "Offer", name: "Pro interview pack", price: "3500", priceCurrency: "INR", description: "Ten interview credits" },
+    ],
+  };
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map(([question, answer]) => ({
+      "@type": "Question",
+      name: question,
+      acceptedAnswer: { "@type": "Answer", text: answer },
+    })),
+  };
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f8fbff] text-slate-950 dark:bg-[#05070b] dark:text-white">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
       <Navbar />
       <main>
         <section className="relative isolate overflow-hidden px-4 pb-24 pt-36 sm:px-6 sm:pt-44">
@@ -91,7 +126,7 @@ export default function Home() {
           <div className="absolute inset-0 -z-10 hidden opacity-[.17] [background-image:linear-gradient(rgba(15,23,42,.13)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,.13)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:linear-gradient(to_bottom,black,transparent_72%)] sm:block" />
           <div className="mx-auto max-w-5xl text-center">
             <div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-sky-300/60 bg-white px-4 py-2 text-xs font-semibold text-sky-900 shadow-sm sm:bg-white/65 sm:backdrop-blur dark:border-cyan-300/20 dark:bg-slate-900 sm:dark:bg-white/5 dark:text-cyan-200"><Zap className="h-3.5 w-3.5 fill-current" />Desktop app for macOS and Windows</div>
-            <h1 className="text-balance text-5xl font-semibold leading-[.98] tracking-[-.055em] sm:text-7xl lg:text-[6.2rem]">Think clearly.<br /><span className="bg-gradient-to-r from-sky-600 via-cyan-500 to-violet-600 bg-clip-text text-transparent">Answer confidently.</span></h1>
+            <h1 className="text-balance text-5xl font-semibold leading-[.98] tracking-[-.055em] sm:text-7xl lg:text-[6.2rem]">Your AI interview assistant.<br /><span className="bg-gradient-to-r from-sky-600 via-cyan-500 to-violet-600 bg-clip-text text-transparent">Answer confidently.</span></h1>
             <p className="mx-auto mt-7 max-w-2xl text-pretty text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-xl sm:leading-8">A real-time AI interview assistant that listens, understands your context, and provides focused answer suggestions when you need them.</p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a href={macUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950"><Apple className="h-4 w-4" />Download for Mac</a>

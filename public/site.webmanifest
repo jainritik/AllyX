@@ -1,6 +1,11 @@
 {
     "name": "AllyX",
     "short_name": "AllyX",
+    "description": "Desktop AI interview assistant with live transcription, contextual answer suggestions, and screen text capture.",
+    "id": "/",
+    "scope": "/",
+    "lang": "en",
+    "categories": ["business", "productivity"],
     "icons": [
         {
             "src": "/allyx-logo.png",
