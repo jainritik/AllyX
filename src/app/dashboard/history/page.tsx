@@ -8,6 +8,7 @@ import { interviewService, Interview } from "@/lib/interview-service";
 import { cn } from "@/lib/utils";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import ReactMarkdown from "react-markdown";
 
 interface QAPair {
     question: string;
@@ -323,9 +324,9 @@ export default function InterviewHistoryPage() {
                                                             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 dark:bg-zinc-700 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300">
                                                                 A
                                                             </span>
-                                                            <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
-                                                                {qa.answer}
-                                                            </p>
+                                                            <div className="min-w-0 flex-1 overflow-x-auto text-gray-800 dark:text-gray-200 leading-relaxed [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-gray-950 [&_pre]:p-3 [&_pre]:text-gray-100 [&_code]:font-mono [&_p]:mb-2 [&_ul]:ml-5 [&_ul]:list-disc [&_ol]:ml-5 [&_ol]:list-decimal">
+                                                                <ReactMarkdown>{qa.answer}</ReactMarkdown>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -365,10 +366,9 @@ export default function InterviewHistoryPage() {
                                                 <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                                                     AI Context &amp; Answer Style
                                                 </h4>
-                                                <div className="p-3 bg-gray-50 dark:bg-zinc-900 rounded-lg max-h-32 overflow-y-auto">
-                                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                        {interview.analysis.job_description.slice(0, 500)}
-                                                        {interview.analysis.job_description.length > 500 && "..."}
+                                                <div className="p-3 bg-gray-50 dark:bg-zinc-900 rounded-lg max-h-64 overflow-y-auto">
+                                                    <p className="whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-400">
+                                                        {interview.analysis.job_description}
                                                     </p>
                                                 </div>
                                             </div>

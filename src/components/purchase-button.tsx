@@ -10,23 +10,31 @@ declare global {
     }
 }
 
+let checkoutPromise: Promise<void> | null = null;
+
 function loadCheckout() {
     if (window.Razorpay) return Promise.resolve();
-    return new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
-        if (existing) {
-            if (existing.dataset.loaded === "true") { resolve(); return; }
-            existing.addEventListener("load", () => resolve(), { once: true });
-            existing.addEventListener("error", () => reject(new Error("Could not load secure checkout.")), { once: true });
-            return;
-        }
+    if (checkoutPromise) return checkoutPromise;
+    checkoutPromise = new Promise<void>((resolve, reject) => {
+        document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]')?.remove();
         const script = document.createElement("script");
         script.src = "https://checkout.razorpay.com/v1/checkout.js";
         script.async = true;
-        script.onload = () => { script.dataset.loaded = "true"; resolve(); };
-        script.onerror = () => reject(new Error("Could not load secure checkout."));
+        const timeout = window.setTimeout(() => {
+            script.remove();
+            checkoutPromise = null;
+            reject(new Error("Secure checkout took too long to load. Check your connection and try again."));
+        }, 12_000);
+        script.onload = () => { window.clearTimeout(timeout); resolve(); };
+        script.onerror = () => {
+            window.clearTimeout(timeout);
+            script.remove();
+            checkoutPromise = null;
+            reject(new Error("Could not load secure checkout. Check your connection and try again."));
+        };
         document.head.appendChild(script);
     });
+    return checkoutPromise;
 }
 
 export function PurchaseButton({ planId, className, onSuccess, autoStart = false }: { planId: BillingPlanId; className?: string; onSuccess?: () => void; autoStart?: boolean }) {
@@ -42,7 +50,7 @@ export function PurchaseButton({ planId, className, onSuccess, autoStart = false
             if (!response.ok) continue;
             const account = await response.json() as { purchases?: Array<{ orderId?: string; status?: string; credits?: number }> };
             const purchase = account.purchases?.find(item => item.orderId === orderId);
-            if (purchase && ["paid", "refund_pending", "partially_refunded", "refunded", "disputed"].includes(purchase.status || "")) {
+            if (purchase && purchase.status !== "created") {
                 return purchase;
             }
         }
@@ -82,9 +90,14 @@ export function PurchaseButton({ planId, className, onSuccess, autoStart = false
                         router.refresh();
                     } catch (error) {
                         const reconciled = await reconcileOrder(order.orderId).catch(() => null);
-                        if (reconciled) {
-                            setMessage(`${reconciled.credits || order.credits || "Your"} interview credits were added successfully.`);
+                        if (reconciled?.status === "paid") {
+                            setMessage(`${reconciled.credits || order.credits} interview credits added successfully.`);
                             onSuccess?.();
+                            router.refresh();
+                        } else if (reconciled && ["authorized", "captured"].includes(reconciled.status || "")) {
+                            setMessage("Payment received and confirmation is still processing. Refresh Billing & Credits in a moment.");
+                        } else if (reconciled && ["refund_pending", "partially_refunded", "refunded", "disputed"].includes(reconciled.status || "")) {
+                            setMessage("This payment is under refund or dispute review. Your current credit balance is shown above.");
                             router.refresh();
                         } else {
                             setMessage(error instanceof Error ? `${error.message} Refresh Billing & Credits in a moment; captured payments are reconciled automatically.` : "Payment confirmation is pending. Refresh Billing & Credits in a moment.");

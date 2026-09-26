@@ -15,6 +15,7 @@ test("README lists every database script exactly once in deployment order", () =
         "supabase_billing_account_migration.sql",
         "supabase_session_recovery_migration.sql",
         "supabase_credit_reservation_migration.sql",
+        "supabase_interview_source_migration.sql",
         "supabase_payment_lifecycle_migration.sql",
         "supabase_payment_email_migration.sql",
         "supabase_billing_support_migration.sql",

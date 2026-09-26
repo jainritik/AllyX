@@ -46,8 +46,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     const resetAppData = async () => {
         const confirmed = await confirm({
             title: "Reset App Data",
-            message: "Are you sure? This will clear your local data (Resume, Interview settings). This cannot be undone.",
-            confirmText: "Reset Data",
+            message: "This clears the unfinished interview draft and temporary data on this device. Your saved resume, setup, credits, and history remain in your account.",
+            confirmText: "Clear Local Data",
             variant: "danger"
         });
         if (confirmed) {
@@ -114,10 +114,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             onClick={resetAppData}
                         >
                             <Trash2 size={16} />
-                            Reset App Data
+                            Clear Local Draft
                         </Button>
                         <p className="text-[10px] text-center mt-2 text-gray-400">
-                            Clears local interview context, draft, and settings
+                            Saved account data will load again after refresh
                         </p>
                     </div>
                 </div>

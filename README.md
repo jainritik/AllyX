@@ -86,14 +86,15 @@ Apply the SQL in this order through the Supabase SQL editor:
 5. `supabase_billing_account_migration.sql`
 6. `supabase_session_recovery_migration.sql`
 7. `supabase_credit_reservation_migration.sql`
-8. `supabase_payment_lifecycle_migration.sql`
-9. `supabase_payment_email_migration.sql`
-10. `supabase_billing_support_migration.sql`
-11. `supabase_bug_reports_migration.sql`
-12. `supabase_interview_setup_migration.sql`
-13. `supabase_error_monitoring_migration.sql`
+8. `supabase_interview_source_migration.sql`
+9. `supabase_payment_lifecycle_migration.sql`
+10. `supabase_payment_email_migration.sql`
+11. `supabase_billing_support_migration.sql`
+12. `supabase_bug_reports_migration.sql`
+13. `supabase_interview_setup_migration.sql`
+14. `supabase_error_monitoring_migration.sql`
 
-These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, interview credits, payment-email outbox, authenticated billing support, and private bug-report attachments. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
+These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, interview credits, explicit trial-or-credit selection, payment-email outbox, authenticated billing support, and private bug-report attachments. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
 
 For Razorpay, enable automatic capture and add the public HTTPS webhook `/api/billing/webhook` with `payment.authorized`, `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, `refund.failed`, and all `payment.dispute.*` lifecycle events. Use a separate webhook secret and store it as `RAZORPAY_WEBHOOK_SECRET`. Begin with Razorpay Test Mode keys and replace them with Live Mode keys only after end-to-end payment testing.
 
@@ -184,6 +185,7 @@ supabase_beta_migration.sql  Beta security, quota and consistency migration
 supabase_bug_reports_migration.sql  Bug reports, private attachments and email outbox
 supabase_interview_setup_migration.sql  Account-synced desktop and website interview setup
 supabase_error_monitoring_migration.sql  Aggregated privacy-filtered production error monitoring
+supabase_interview_source_migration.sql  Explicit trial-or-credit session selection
 ```
 
 ## Release boundaries

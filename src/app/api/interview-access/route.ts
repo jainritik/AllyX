@@ -26,7 +26,11 @@ export async function POST(request: NextRequest) {
     if (auth.error) return auth.error;
     const body = await request.json().catch(() => null);
     if (!validSessionId(body?.sessionId)) return NextResponse.json({ error: "Invalid interview session" }, { status: 400 });
-    const { data, error } = await auth.client.rpc("begin_interview_access", { requested_session_id: body.sessionId });
+    const source = ["auto", "trial", "credit"].includes(body?.source) ? body.source : "auto";
+    const { data, error } = await auth.client.rpc("begin_interview_access_v2", {
+        requested_session_id: body.sessionId,
+        requested_source: source,
+    });
     if (error) return NextResponse.json({ error: "Could not start the interview session" }, { status: 503 });
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }

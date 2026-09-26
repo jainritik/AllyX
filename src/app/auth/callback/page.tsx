@@ -19,7 +19,13 @@ export default function AuthCallbackPage() {
             return;
         }
         if (!pending.current) pending.current = (async () => {
-            const destination = await completeAuthCallback(new URL(window.location.href), supabase);
+            const destination = await Promise.race([
+                completeAuthCallback(new URL(window.location.href), supabase),
+                new Promise<never>((_, reject) => window.setTimeout(
+                    () => reject(new Error("Sign-in is taking too long. Check your connection and try again.")),
+                    15_000,
+                )),
+            ]);
             window.history.replaceState({}, '', '/auth/callback');
             setStatus("Login successful!");
             window.location.replace(destination);

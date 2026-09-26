@@ -7,12 +7,12 @@ export async function POST(request: NextRequest) {
     try {
         const access = await authorizeApi(request);
         if (access.error) return access.error;
-        if (Number(request.headers.get("content-length")) > 15_000_000) return NextResponse.json({ error: "Audio is too large" }, { status: 413 });
+        if (Number(request.headers.get("content-length")) > 4_200_000) return NextResponse.json({ error: "Audio is too large" }, { status: 413 });
         const formData = await request.formData();
         const file = formData.get("file");
 
-        if (!(file instanceof File) || file.size === 0 || file.size > 15_000_000 || !file.type.startsWith("audio/")) {
-            return NextResponse.json({ error: "A valid audio file under 15 MB is required" }, { status: 400 });
+        if (!(file instanceof File) || file.size === 0 || file.size > 4_000_000 || !file.type.startsWith("audio/")) {
+            return NextResponse.json({ error: "A valid audio file under 4 MB is required" }, { status: 400 });
         }
         const model = formData.get("model")?.toString() || "whisper-large-v3-turbo";
         if (!["whisper-large-v3-turbo", "whisper-large-v3"].includes(model)) return NextResponse.json({ error: "Unsupported transcription model" }, { status: 400 });

@@ -11,13 +11,13 @@ export interface InterviewContext {
     savedAt: number;
 }
 
-export function saveInterviewContext(context: Omit<InterviewContext, "savedAt">): InterviewContext {
+export function saveInterviewContext(context: Omit<InterviewContext, "savedAt"> & { savedAt?: number }): InterviewContext {
     if (!context.accountId) throw new Error("Your account session is not ready. Reload and try again.");
     if (context.jd.trim().length <= 10 || context.resume.trim().length <= 10) {
         throw new Error("Add a job description and resume before starting.");
     }
 
-    const saved = { ...context, savedAt: Date.now() };
+    const saved: InterviewContext = { ...context, savedAt: context.savedAt ?? Date.now() };
     const serialized = JSON.stringify(saved);
     localStorage.setItem(INTERVIEW_CONTEXT_KEY, serialized);
     if (localStorage.getItem(INTERVIEW_CONTEXT_KEY) !== serialized) {
@@ -53,12 +53,11 @@ export async function loadInterviewContext(accountId: string): Promise<Interview
         model: data.model,
         savedAt: new Date(data.updated_at).getTime(),
     };
-    saveInterviewContext(context);
-    return context;
+    return saveInterviewContext(context);
 }
 
 export async function persistInterviewContext(context: Omit<InterviewContext, "savedAt">): Promise<InterviewContext> {
-    const local = saveInterviewContext(context);
+    saveInterviewContext(context);
     const { data, error } = await supabase
         .from("interview_setups")
         .upsert({
@@ -73,7 +72,7 @@ export async function persistInterviewContext(context: Omit<InterviewContext, "s
         .select("updated_at")
         .single();
     if (error) throw error;
-    return { ...local, savedAt: new Date(data.updated_at).getTime() };
+    return saveInterviewContext({ ...context, savedAt: new Date(data.updated_at).getTime() });
 }
 
 export function saveResumeHandoff(accountId: string, resume: string) {

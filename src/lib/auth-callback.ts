@@ -10,7 +10,7 @@ export async function completeAuthCallback(url: URL, client: SupabaseClient): Pr
     const tokenHash = hash.get('token_hash') || params.get('token_hash');
     const type = hash.get('type') || params.get('type');
     if (params.get('recovery') === '1' && !params.get('code') && !hash.get('access_token') && !tokenHash) {
-        throw new Error('No valid session found. Request a new password-reset email.');
+        throw new Error('No valid session was found. Return to sign in and request a new one-time code or link.');
     }
     if (tokenHash) {
         if (type !== 'email' && type !== 'recovery') throw new Error('Invalid email link. Request a new email.');
@@ -18,7 +18,7 @@ export async function completeAuthCallback(url: URL, client: SupabaseClient): Pr
         if (error) throw new Error(authErrorMessage(error));
     } else if (params.get('code')) {
         const { error } = await client.auth.exchangeCodeForSession(params.get('code')!);
-        if (error) throw new Error("This link could not finish sign-in here. If you confirmed your email in another browser, return to the app and sign in with your password. For a password reset, request a new link in your regular browser and open it there.");
+        if (error) throw new Error("This link could not finish sign-in here. Return to AllyX and request a new one-time code or sign in with Google.");
     } else if (hash.get('access_token')) {
         const { error } = await client.auth.setSession({
             access_token: hash.get('access_token')!,

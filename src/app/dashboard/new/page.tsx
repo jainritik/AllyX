@@ -471,7 +471,7 @@ export default function NewInterviewPage() {
                                                 </h4>
                                                 {model.paid && (
                                                     <span className="ml-2 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[9px] font-black tracking-wider text-red-600 dark:text-red-400">
-                                                        PAID
+                                                        PREMIUM AI
                                                     </span>
                                                 )}
                                                 {selectedModel === model.id && (
@@ -494,6 +494,7 @@ export default function NewInterviewPage() {
                                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
                                     <p className="font-semibold">Selected: {currentModelData.name}</p>
                                     <p className="mt-2">This model will answer questions during your desktop session. Review your setup, then open the session guide to continue.</p>
+                                    {currentModelData.paid && <p className="mt-2 text-xs">Included with eligible AllyX sessions; no separate AI account is required.</p>}
                                 </div>
 
                                 {/* Static Start Interview Button */}

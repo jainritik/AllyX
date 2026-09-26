@@ -34,8 +34,8 @@ function isRateLimited(key: string) {
 
 export async function POST(request: NextRequest) {
     const contentLength = Number(request.headers.get("content-length") || 0);
-    if (contentLength > 11 * 1024 * 1024) {
-        return NextResponse.json({ error: "The report and attachment must be 10 MB or smaller." }, { status: 413 });
+    if (contentLength > 4_200_000) {
+        return NextResponse.json({ error: "The report and attachment must be 4 MB or smaller." }, { status: 413 });
     }
     if (isRateLimited(clientKey(request))) {
         return NextResponse.json({ error: "Too many reports were submitted. Please wait before trying again." }, { status: 429 });
@@ -65,8 +65,8 @@ export async function POST(request: NextRequest) {
     const uploaded = form.get("attachment");
     let attachment: { filename: string; content: Buffer; contentType: string } | undefined;
     if (uploaded instanceof File && uploaded.size > 0) {
-        if (uploaded.size > 10 * 1024 * 1024 || !allowedTypes.has(uploaded.type)) {
-            return NextResponse.json({ error: "Attach a supported image or video up to 10 MB." }, { status: 400 });
+        if (uploaded.size > 4 * 1024 * 1024 || !allowedTypes.has(uploaded.type)) {
+            return NextResponse.json({ error: "Attach a supported image or video up to 4 MB." }, { status: 400 });
         }
         attachment = {
             filename: uploaded.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(-120) || "attachment",

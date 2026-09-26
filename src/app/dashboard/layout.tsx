@@ -123,14 +123,14 @@ export default function DashboardLayout({
     useEffect(() => {
         const checkAuth = async () => {
             try {
-                const { data, error } = await supabase.auth.getUser();
+                const { data, error } = await supabase.auth.getSession();
                 if (error) {
                     if (error.name === 'AuthSessionMissingError' || error.status === 401 || error.status === 403) {
                         router.replace("/login");
                     } else { setAuthError(true); }
                     return;
                 }
-                if (!data.user) { router.replace("/login"); return; }
+                if (!data.session?.user) { router.replace("/login"); return; }
                 setIsAuthChecking(false);
             } catch { setAuthError(true); }
         };

@@ -25,8 +25,8 @@ export default function LoginPage() {
 
     useEffect(() => {
         setIsDesktop(Boolean(window.electronAPI?.isElectron));
-        void supabase.auth.getUser().then(({ data, error: authError }) => {
-            if (!authError && data.user) window.location.replace(destination());
+        void supabase.auth.getSession().then(({ data }) => {
+            if (data.session?.user) window.location.replace(destination());
             else setChecking(false);
         }).catch(() => setChecking(false));
     }, []);
@@ -105,7 +105,7 @@ export default function LoginPage() {
                     <form onSubmit={sendCode} className="mt-7">
                         <label htmlFor="login-email" className="text-sm font-semibold">Email address</label>
                         <div className="relative mt-2"><Mail className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" /><input id="login-email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" className="h-12 w-full rounded-xl border border-gray-300 bg-transparent pl-12 pr-4 outline-none focus:border-emerald-600 dark:border-zinc-700" /></div>
-                        <Button disabled={busy} className="mt-4 h-12 w-full rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700">{busy && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Continue with email</Button>
+                        <Button disabled={busy || resendSeconds > 0} className="mt-4 h-12 w-full rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700">{busy && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}{resendSeconds ? `Send another code in ${resendSeconds}s` : "Continue with email"}</Button>
                     </form>
                     <button type="button" onClick={() => { setStep("choice"); setError(""); }} className="mt-5 w-full text-sm text-gray-500 hover:underline">Back to sign-in options</button>
                 </> : <form onSubmit={confirmCode} className="mt-7">

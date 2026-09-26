@@ -83,6 +83,7 @@ export default function InterviewPage() {
     const draftHydratedRef = useRef(false);
     const sessionIdRef = useRef("");
     const fullTranscriptRef = useRef("");
+    const historySavedRef = useRef(false);
 
     // API Key no longer needed - using server-side Groq
     const [showSettings, setShowSettings] = useState(false);
@@ -387,6 +388,8 @@ export default function InterviewPage() {
         }
 
         let requestTimeout: ReturnType<typeof setTimeout> | null = null;
+        let streamedText = "";
+        const answerPrefix = continuation ? `${aiResponse}\n\n` : "";
         try {
             const controller = new AbortController();
             answerAbortRef.current = controller;
@@ -474,10 +477,8 @@ export default function InterviewPage() {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = "";
-            let text = "";
             let finishReason = "";
             let lastOverlayUpdate = 0;
-            const prefix = continuation ? `${aiResponse}\n\n` : "";
             while (true) {
                 const { value, done } = await reader.read();
                 buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
@@ -490,12 +491,12 @@ export default function InterviewPage() {
                         if (payload === "[DONE]") continue;
                         try {
                             const eventData = JSON.parse(payload);
-                            text += eventData.content || "";
+                            streamedText += eventData.content || "";
                             if (eventData.finishReason) finishReason = eventData.finishReason;
                         } catch { /* Ignore malformed event. */ }
                     }
-                    if (text) {
-                        const liveAnswer = `${prefix}${text}`;
+                    if (streamedText) {
+                        const liveAnswer = `${answerPrefix}${streamedText}`;
                         setAiResponse(liveAnswer);
                         const now = Date.now();
                         if (now - lastOverlayUpdate > 80) {
@@ -506,16 +507,16 @@ export default function InterviewPage() {
                 }
                 if (done) break;
             }
-            if (!text.trim()) throw new Error("Empty response from AI.");
+            if (!streamedText.trim()) throw new Error("Empty response from AI.");
             if (sessionEndingRef.current) return;
 
-            const completeAnswer = `${prefix}${text}`;
+            const completeAnswer = `${answerPrefix}${streamedText}`;
             setAiResponse(completeAnswer);
             const effectiveModel = response.headers.get("X-ALLYX-Model") || interviewContext.model;
             setAnswerModel(effectiveModel);
             setAnswerTruncated(finishReason === "length");
             const fallbackMessage = effectiveModel !== interviewContext.model
-                ? `Paid model unavailable. Answered by ${effectiveModel} fallback.`
+                ? `Answered by ${effectiveModel} because the selected model was unavailable.`
                 : "";
             window.electronAPI?.sendOverlayStatus?.(
                 finishReason === "length" ? "The answer reached its limit. Press Continue to finish it." : fallbackMessage,
@@ -528,10 +529,10 @@ export default function InterviewPage() {
             }
             // Track Q&A pairs for saving to history - save question and answer together
             setAllQAPairs(prev => {
-                if (!continuation || prev.length === 0) return [...prev, { question: currentTranscript.trim(), answer: text }];
+                if (!continuation || prev.length === 0) return [...prev, { question: currentTranscript.trim(), answer: streamedText }];
                 const updated = [...prev];
                 const last = updated[updated.length - 1];
-                updated[updated.length - 1] = { ...last, answer: `${last.answer}\n\n${text}` };
+                updated[updated.length - 1] = { ...last, answer: `${last.answer}\n\n${streamedText}` };
                 return updated;
             });
             if (!continuation) pendingQuestionRef.current = "";
@@ -568,13 +569,27 @@ export default function InterviewPage() {
             } else {
                 errorMessage = err.message;
             }
-            if (!continuation) {
+            if (streamedText.trim()) {
+                const interruptedAnswer = `${answerPrefix}${streamedText}`;
+                setAiResponse(interruptedAnswer);
+                setAnswerTruncated(true);
+                setAllQAPairs(prev => {
+                    if (!continuation || prev.length === 0) return [...prev, { question: currentTranscript.trim(), answer: streamedText }];
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    updated[updated.length - 1] = { ...last, answer: `${last.answer}\n\n${streamedText}` };
+                    return updated;
+                });
+                if (!continuation) pendingQuestionRef.current = "";
+                window.electronAPI?.sendAnswer?.(interruptedAnswer);
+                window.electronAPI?.sendOverlayStatus?.("The connection stopped before the answer finished. Press Continue to resume it.", "error", "continue");
+            } else if (!continuation) {
                 setAiResponse(`**Error:** ${errorMessage}`);
                 setAnswerTruncated(false);
             }
             setError(errorMessage);
-            window.electronAPI?.sendOverlayStatus?.(errorMessage, "error");
-            if (consumesLiveTranscript && !continuation) {
+            if (!streamedText.trim()) window.electronAPI?.sendOverlayStatus?.(errorMessage, "error");
+            if (consumesLiveTranscript && !continuation && !streamedText.trim()) {
                 setTranscript(liveText => {
                     const newSpeech = liveText.trim();
                     return newSpeech ? `${currentTranscript} ${newSpeech}`.slice(-MAX_TRANSCRIPT_LENGTH) : currentTranscript;
@@ -1575,12 +1590,19 @@ export default function InterviewPage() {
         ].filter(Boolean).join(" ");
         // Only save if there's meaningful content
         if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
-            await interviewAccess.finish(sessionIdRef.current).catch(console.error);
-            sessionStorage.removeItem("allyx_access_session");
-            localStorage.removeItem('interview_draft');
-            isSavingRef.current = false;
-            setIsSaving(false);
-            router.push("/dashboard");
+            try {
+                await interviewAccess.finish(sessionIdRef.current);
+                sessionStorage.removeItem("allyx_access_session");
+                localStorage.removeItem('interview_draft');
+                router.push("/dashboard");
+            } catch (finishError) {
+                console.error("Failed to close interview:", finishError);
+                sessionEndingRef.current = false;
+                setError("Could not close this interview. Check your connection and press End Interview to retry.");
+            } finally {
+                isSavingRef.current = false;
+                setIsSaving(false);
+            }
             return;
         }
 
@@ -1598,29 +1620,34 @@ export default function InterviewPage() {
                 remainingTranscript ? `Transcript:\n${remainingTranscript}` : '',
             ].filter(Boolean).join('\n\n---\n\n');
 
-            await interviewService.saveInterview(
-                title,
-                formattedTranscript,
-                {
-                    job_description: interviewContext.jd,
-                    interview_type: interviewContext.type,
-                    language: interviewContext.lang,
-                    ai_responses: allQAPairs.map(qa => qa.answer),
-                    duration_minutes: durationMinutes,
-                    questions: allQAPairs.map(qa => qa.question),
-                    model_used: answerModel || interviewContext.model
-                },
-                sessionIdRef.current || undefined
-            );
-            showToast("Meeting saved to history", "success");
-            await interviewAccess.finish(sessionIdRef.current).catch(console.error);
+            if (!historySavedRef.current) {
+                await interviewService.saveInterview(
+                    title,
+                    formattedTranscript,
+                    {
+                        job_description: interviewContext.jd,
+                        interview_type: interviewContext.type,
+                        language: interviewContext.lang,
+                        ai_responses: allQAPairs.map(qa => qa.answer),
+                        duration_minutes: durationMinutes,
+                        questions: allQAPairs.map(qa => qa.question),
+                        model_used: answerModel || interviewContext.model
+                    },
+                    sessionIdRef.current || undefined
+                );
+                historySavedRef.current = true;
+                showToast("Meeting saved to history", "success");
+            }
+            await interviewAccess.finish(sessionIdRef.current);
             sessionStorage.removeItem("allyx_access_session");
             localStorage.removeItem('interview_draft');
             router.push("/dashboard");
         } catch (error) {
             console.error("Failed to save interview:", error);
             sessionEndingRef.current = false;
-            setError("Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.");
+            setError(historySavedRef.current
+                ? "Your interview was saved, but the session could not be closed. Check your connection and press End Interview to retry."
+                : "Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.");
         } finally {
             setIsSaving(false);
             isSavingRef.current = false;

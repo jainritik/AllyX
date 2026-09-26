@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     try {
         const access = await authorizeApi(req);
         if (access.error) return access.error;
-        if (Number(req.headers.get("content-length")) > 5_500_000) return NextResponse.json({ error: "File is too large" }, { status: 413 });
+        if (Number(req.headers.get("content-length")) > 4_200_000) return NextResponse.json({ error: "File is too large" }, { status: 413 });
         const formData = await req.formData();
         const file = formData.get("file");
 
@@ -26,10 +26,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Only PDF and TXT files are allowed." }, { status: 400 });
         }
 
-        // Security: Limit file size to 5MB
-        const MAX_SIZE = 5 * 1024 * 1024;
+        // Stay below the hosting platform's request-body limit, including multipart overhead.
+        const MAX_SIZE = 4 * 1024 * 1024;
         if (file.size > MAX_SIZE) {
-            return NextResponse.json({ error: "File size must be less than 5MB" }, { status: 400 });
+            return NextResponse.json({ error: "File size must be 4 MB or smaller" }, { status: 400 });
         }
 
         const arrayBuffer = await file.arrayBuffer();

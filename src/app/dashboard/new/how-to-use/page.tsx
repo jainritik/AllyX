@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { loadInterviewContext } from "@/lib/interview-context";
 import { useAuth } from "@/lib/auth";
-import { interviewAccess } from "@/lib/interview-access";
+import { interviewAccess, type InterviewAccess } from "@/lib/interview-access";
 
 export default function HowToUsePage() {
     const router = useRouter();
@@ -25,8 +25,9 @@ export default function HowToUsePage() {
     const [isElectron, setIsElectron] = useState(false);
     const [setupReady, setSetupReady] = useState(false);
     const [setupError, setSetupError] = useState("");
+    const [accessError, setAccessError] = useState("");
     const [isStarting, setIsStarting] = useState(false);
-    const [hasActiveSession, setHasActiveSession] = useState(false);
+    const [accessStatus, setAccessStatus] = useState<InterviewAccess | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -49,9 +50,12 @@ export default function HowToUsePage() {
     useEffect(() => {
         if (!accountId) return;
         let cancelled = false;
+        setAccessError("");
         void interviewAccess.status().then(access => {
-            if (!cancelled) setHasActiveSession(Boolean(access.allowed && access.sessionId));
-        }).catch(() => { /* The start action will surface access errors. */ });
+            if (!cancelled) setAccessStatus(access);
+        }).catch(error => {
+            if (!cancelled) setAccessError(error instanceof Error ? error.message : "Interview access could not be checked. Try again.");
+        });
         return () => { cancelled = true; };
     }, [accountId]);
 
@@ -102,7 +106,7 @@ export default function HowToUsePage() {
         }
     ];
 
-    const handleStart = async () => {
+    const handleStart = async (source: "auto" | "trial" | "credit" = "auto") => {
         if (isStarting) return;
         if (!window.electronAPI?.isElectron) {
             router.push("/download");
@@ -134,7 +138,7 @@ export default function HowToUsePage() {
                 : crypto.randomUUID();
             const access = currentAccess.allowed && currentAccess.sessionId
                 ? currentAccess
-                : await interviewAccess.start(sessionId);
+                : await interviewAccess.start(sessionId, source);
             if (!access.allowed) {
                 setSetupError(access.reason || "Your free trial has ended. Choose an interview pack to continue.");
                 return;
@@ -205,14 +209,33 @@ export default function HowToUsePage() {
                     className="flex w-full max-w-xl flex-col items-center gap-6"
                 >
                     {setupError && <p role="alert" className="max-w-xl text-center text-red-600 dark:text-red-400">{setupError}</p>}
-                    <Button
-                        onClick={handleStart}
-                        disabled={isElectron && (!setupReady || isStarting)}
-                        className="w-full min-w-0 h-auto min-h-16 whitespace-normal px-5 py-4 text-base sm:text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
-                    >
-                        {isStarting ? "Opening securely…" : !isElectron ? "Download the desktop app" : hasActiveSession ? "Resume Active Interview" : "Got it, Start Interview!"}
-                        <ArrowRight className="ml-2 shrink-0 group-hover:translate-x-1 transition-transform" />
-                    </Button>
+                    {accessError && <p role="alert" className="max-w-xl text-center text-red-600 dark:text-red-400">{accessError}</p>}
+                    {!isElectron ? <Button
+                        onClick={() => void handleStart()}
+                        className="w-full min-w-0 h-auto min-h-16 whitespace-normal px-5 py-4 text-base sm:text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 group"
+                    >Download the desktop app<ArrowRight className="ml-2 shrink-0 group-hover:translate-x-1 transition-transform" /></Button>
+                    : accessStatus?.allowed && accessStatus.sessionId ? <Button
+                        onClick={() => void handleStart()}
+                        disabled={!setupReady || isStarting}
+                        className="w-full min-w-0 h-auto min-h-16 whitespace-normal px-5 py-4 text-base sm:text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 group"
+                    >{isStarting ? "Opening securely…" : "Resume active interview"}<ArrowRight className="ml-2 shrink-0" /></Button>
+                    : <div className="grid w-full gap-3 sm:grid-cols-2">
+                        {!accessStatus && <Button disabled className="h-auto min-h-16 rounded-2xl bg-gray-700 px-4 py-4 text-base font-bold text-white sm:col-span-2">Checking interview access…</Button>}
+                        {accessStatus?.trialAvailable && <Button
+                            onClick={() => void handleStart("trial")}
+                            disabled={!setupReady || isStarting}
+                            className="h-auto min-h-16 whitespace-normal rounded-2xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-4 text-base font-bold text-white"
+                        >{isStarting ? "Opening…" : "Start free 10-minute trial"}</Button>}
+                        {(accessStatus?.creditsRemaining || 0) > 0 && <Button
+                            onClick={() => void handleStart("credit")}
+                            disabled={!setupReady || isStarting}
+                            className="h-auto min-h-16 whitespace-normal rounded-2xl bg-gray-900 px-4 py-4 text-base font-bold text-white dark:bg-white dark:text-black"
+                        >{isStarting ? "Opening…" : `Use 1 interview credit (${accessStatus?.creditsRemaining} left)`}</Button>}
+                        {!accessStatus?.trialAvailable && (accessStatus?.creditsRemaining || 0) === 0 && <Button
+                            onClick={() => router.push("/dashboard/billing")}
+                            className="h-auto min-h-16 whitespace-normal rounded-2xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-4 text-base font-bold text-white sm:col-span-2"
+                        >Choose an interview pack<ArrowRight className="ml-2 shrink-0" /></Button>}
+                    </div>}
 
                     {!setupReady && <Button variant="outline" onClick={() => router.push("/dashboard/new")}>Return to setup</Button>}
                     {!isElectron && <p className="text-center text-sm text-gray-500">Live sessions require the installed Mac or Windows app. Sign in there to use your saved setup.</p>}
