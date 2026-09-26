@@ -15,7 +15,7 @@ export function Footer() {
                     <Link href="/download" className="hover:text-sky-600 dark:hover:text-cyan-300">Download</Link>
                     <Link href="/privacy" className="hover:text-sky-600 dark:hover:text-cyan-300">Privacy</Link>
                     <Link href="/terms" className="hover:text-sky-600 dark:hover:text-cyan-300">Terms</Link>
-                    <Link href="/dashboard/support/report-bug" className="hover:text-sky-600 dark:hover:text-cyan-300">Report a bug</Link>
+                    <Link href="/support/report-bug" className="hover:text-sky-600 dark:hover:text-cyan-300">Report a bug</Link>
                     <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="hover:text-sky-600 dark:hover:text-cyan-300">WhatsApp support</a>
                     <a href={supportContact.emailComposeUrl} target="_blank" rel="noreferrer" aria-label={`Email AllyX support at ${supportContact.email}`} title={supportContact.email} className="hover:text-sky-600 dark:hover:text-cyan-300">Email support</a>
                 </nav>

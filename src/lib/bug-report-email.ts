@@ -35,6 +35,53 @@ function escapeHtml(value: string) {
     })[character] || character);
 }
 
+export async function sendPublicBugReportEmail(report: {
+    name: string;
+    email: string;
+    phone: string;
+    title: string;
+    description: string;
+    page: string;
+    attachment?: { filename: string; content: Buffer; contentType: string };
+}) {
+    const config = configuration();
+    const transporter = nodemailer.createTransport({
+        host: config.host,
+        port: config.port,
+        secure: config.port === 465,
+        auth: { user: config.user, pass: config.pass },
+    });
+    const contact = [report.email, report.phone].filter(Boolean).join(" · ");
+    await transporter.sendMail({
+        from: config.fromEmail,
+        to: config.toEmail,
+        replyTo: report.email,
+        subject: `[AllyX public bug] ${report.title}`,
+        text: [
+            `Bug report: ${report.title}`,
+            `Reporter: ${report.name}`,
+            `Contact: ${contact}`,
+            `Affected page: ${report.page || "Not supplied"}`,
+            "Account: Signed out or not identified",
+            "",
+            report.description,
+        ].join("\n"),
+        html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#172033">
+            <h1 style="font-size:24px">${escapeHtml(report.title)}</h1>
+            <p><strong>Reporter:</strong> ${escapeHtml(report.name)}</p>
+            <p><strong>Contact:</strong> ${escapeHtml(contact)}</p>
+            <p><strong>Affected page:</strong> ${escapeHtml(report.page || "Not supplied")}</p>
+            <p><strong>Account:</strong> Signed out or not identified</p>
+            <div style="white-space:pre-wrap;background:#f8fafc;padding:16px;border-radius:10px">${escapeHtml(report.description)}</div>
+        </div>`,
+        attachments: report.attachment ? [{
+            filename: report.attachment.filename,
+            content: report.attachment.content,
+            contentType: report.attachment.contentType,
+        }] : undefined,
+    });
+}
+
 export async function sendBugReportEmail(reportId: string) {
     const admin = billingAdminClient();
     const { data, error } = await admin.rpc("claim_bug_report_email", { requested_report_id: reportId });

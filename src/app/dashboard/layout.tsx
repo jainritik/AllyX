@@ -47,7 +47,7 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
                     Billing & Credits
                 </Button>
             </Link>
-            <Link href="/dashboard/support/report-bug" onClick={() => setMobileMenuOpen(false)}>
+            <Link href="/support/report-bug" onClick={() => setMobileMenuOpen(false)}>
                 <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
                     <Bug size={20} />
                     Report a Bug

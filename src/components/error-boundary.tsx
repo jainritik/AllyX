@@ -60,7 +60,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                             Reload Page
                         </button>
                         <a
-                            href="/dashboard/support/report-bug"
+                            href="/support/report-bug"
                             className="mt-4 block text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
                         >
                             Report this problem
