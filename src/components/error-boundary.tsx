@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { reportClientError } from "@/lib/client-error-monitor";
 
 interface ErrorBoundaryProps {
     children: React.ReactNode;
@@ -22,8 +23,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        // Log error to console (in production, send to error tracking service)
         console.error("Error Boundary caught an error:", error, errorInfo);
+        reportClientError(error, errorInfo.componentStack || undefined);
     }
 
     handleReset = () => {

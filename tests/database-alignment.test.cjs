@@ -20,6 +20,7 @@ test("README lists every database script exactly once in deployment order", () =
         "supabase_billing_support_migration.sql",
         "supabase_bug_reports_migration.sql",
         "supabase_interview_setup_migration.sql",
+        "supabase_error_monitoring_migration.sql",
     ];
     const actualFiles = fs.readdirSync(root).filter(name => /^supabase.*\.sql$/.test(name)).sort();
     assert.deepEqual([...expected].sort(), actualFiles);
@@ -54,4 +55,14 @@ test("bug reports are account scoped and attachments remain private", () => {
     assert.match(sql, /revoke all on public\.bug_reports from anon, authenticated/);
     assert.match(sql, /grant execute on function public\.claim_bug_report_email\(uuid\) to service_role/);
     assert.doesNotMatch(sql, /grant execute on function public\.claim_bug_report_email\(uuid\) to authenticated/);
+});
+
+test("production error monitoring is aggregate-only and service-role protected", () => {
+    const sql = read("supabase_error_monitoring_migration.sql");
+    assert.match(sql, /revoke all on public\.client_error_events from anon, authenticated/);
+    assert.match(sql, /grant execute on function public\.record_client_error\([^)]+\) to service_role/);
+    assert.doesNotMatch(sql, /\n\s+(?:user_id|email|ip_address|transcript|resume|question|request_body|cookie)\s/i);
+    const route = read("src/app/api/monitoring/client-error/route.ts");
+    assert.match(route, /split\(\/\[\?\#\]\//);
+    assert.doesNotMatch(route, /headers\(\).*user-agent|x-forwarded-for|request\.cookies/i);
 });

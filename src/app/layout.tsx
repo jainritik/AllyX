@@ -4,6 +4,7 @@ import "./globals.css";
 import ErrorBoundary from "@/components/error-boundary";
 import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { DesktopNavBar } from "@/components/desktop-nav";
+import { ProductionErrorMonitor } from "@/components/production-error-monitor";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://allyx.vercel.app"),
@@ -169,6 +170,7 @@ export default async function RootLayout({
         className={`antialiased ${isScanner ? 'bg-transparent overflow-hidden' : ''}`}
         suppressHydrationWarning
       >
+        <ProductionErrorMonitor />
         {!isHideNav && <DesktopNavBar />}
         <ErrorBoundary>
           <ConfirmDialogProvider>

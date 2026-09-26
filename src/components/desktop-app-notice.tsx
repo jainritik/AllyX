@@ -10,8 +10,8 @@ export function DesktopAppNotice({ compact = false, showDownload = true }: { com
     const device = useSyncExternalStore<Device>(
         () => () => undefined,
         () => {
+            if (window.electronAPI?.isElectron) return "desktop-app";
             const agent = navigator.userAgent;
-            if (/Electron/i.test(agent)) return "desktop-app";
             return /Android|iPhone|iPad|iPod|Mobile/i.test(agent) ? "mobile" : "browser";
         },
         () => "checking",
