@@ -9,7 +9,6 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { SUPPORTED_LANGUAGES } from "@/lib/languages";
 import { resumeService, Resume } from "@/lib/resume-service";
-import { ModelChat } from "@/components/dashboard/model-chat";
 import { motion } from "framer-motion";
 import { consumeResumeHandoff, loadInterviewContext, persistInterviewContext, readInterviewContext } from "@/lib/interview-context";
 import { useAuth } from "@/lib/auth";
@@ -98,6 +97,7 @@ export default function NewInterviewPage() {
     const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
     const [isLoading, setIsLoading] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const setupEdited = useRef(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [savedResumes, setSavedResumes] = useState<Resume[]>([]);
@@ -109,6 +109,7 @@ export default function NewInterviewPage() {
     // Load saved resumes
     useEffect(() => {
         if (!accountId) return;
+        let cancelled = false;
         let initialResume = "";
         let handoff: string | null = null;
         try {
@@ -129,7 +130,8 @@ export default function NewInterviewPage() {
         const loadResumes = async () => {
             try {
                 const syncedContext = await loadInterviewContext(accountId);
-                if (!handoff && syncedContext) {
+                if (cancelled) return;
+                if (!setupEdited.current && !handoff && syncedContext) {
                     initialResume = syncedContext.resume;
                     setResume(syncedContext.resume);
                     setJobDescription(syncedContext.jd);
@@ -138,7 +140,9 @@ export default function NewInterviewPage() {
                     setSelectedModel(availableModel(syncedContext.model));
                 }
                 const data = await resumeService.getUserResumes();
+                if (cancelled) return;
                 setSavedResumes(data);
+                if (setupEdited.current) return;
                 const matchingResume = data.find(item => item.content === initialResume);
                 if (matchingResume) setSelectedResumeId(matchingResume.id);
                 else if (!initialResume && data[0]) {
@@ -147,10 +151,12 @@ export default function NewInterviewPage() {
                     setSuccessMessage(`Using your most recent saved resume: ${data[0].name}.`);
                 }
             } catch {
+                if (cancelled) return;
                 setError("Saved resumes could not be loaded. You can paste a resume or retry after checking your connection.");
             }
         };
         void loadResumes();
+        return () => { cancelled = true; };
     }, [accountId]);
 
     const contextReady = jobDescription.trim().length >= MIN_SETUP_CHARACTERS;
@@ -160,6 +166,7 @@ export default function NewInterviewPage() {
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        setupEdited.current = true;
 
         const formData = new FormData();
         formData.append("file", file);
@@ -176,6 +183,10 @@ export default function NewInterviewPage() {
 
             if (!res.ok) throw new Error(data.error || "Failed to parse PDF");
 
+            if (typeof data.text !== "string" || data.text.trim().length < MIN_SETUP_CHARACTERS) {
+                throw new Error("This file has too little readable text. Paste your resume text below or choose another file.");
+            }
+            setSelectedResumeId("");
             setResume(data.text);
 
             try {
@@ -202,6 +213,8 @@ export default function NewInterviewPage() {
     };
 
     const handleStart = async () => {
+        if (isLoading || isUploading) return;
+        setError(null);
         setStartAttempted(true);
         if (!isValid) {
             const missing = [!resumeReady && "a resume", !contextReady && "AI context and answer style"].filter(Boolean).join(" and ");
@@ -230,9 +243,7 @@ export default function NewInterviewPage() {
             return;
         }
 
-        setTimeout(() => {
-            router.push("/dashboard/new/how-to-use");
-        }, 800);
+        router.push("/dashboard/new/how-to-use");
     };
 
     const currentModelData = AI_MODELS.find(m => m.id === selectedModel) || AI_MODELS[0];
@@ -274,7 +285,7 @@ export default function NewInterviewPage() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[calc(100vh-250px)]">
                     {/* Left Column: Configuration (8 cols) */}
-                    <div className="lg:col-span-7 flex flex-col gap-8 h-full">
+                    <div className="lg:col-span-7 min-w-0 flex flex-col gap-8 h-full">
 
                         {/* Role and answer preferences card */}
                         <motion.div
@@ -285,7 +296,7 @@ export default function NewInterviewPage() {
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
                             <div className="relative bg-white dark:bg-[#151515] rounded-[22px] p-6 sm:p-10 flex-1 flex flex-col">
-                                <div className="flex items-center justify-between mb-6 sm:mb-8">
+                                <div className="flex flex-wrap items-start justify-between gap-3 mb-6 sm:mb-8">
                                     <div className="flex items-center gap-4 sm:gap-5">
                                         <div className="p-3 sm:p-4 bg-emerald-100 dark:bg-emerald-900/40 rounded-xl sm:rounded-2xl text-emerald-700 dark:text-emerald-400">
                                             <BriefcaseIcon />
@@ -299,10 +310,11 @@ export default function NewInterviewPage() {
                                 </div>
                                 <textarea
                                     ref={contextRef}
+                                    aria-label="AI context and answer style"
                                     className="w-full flex-1 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all min-h-[180px] sm:min-h-[220px] leading-relaxed"
                                     placeholder={"Example:\nSenior Go Backend Engineer role requiring microservices, PostgreSQL and AWS.\n\nAnswer as the candidate in first person. Keep conceptual answers natural and under 60 seconds. For coding questions, explain the approach, provide Go code, and include complexity."}
                                     value={jobDescription}
-                                    onChange={(e) => { setJobDescription(e.target.value); setError(null); }}
+                                    onChange={(e) => { setupEdited.current = true; setJobDescription(e.target.value); setError(null); }}
                                 />
                                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><span className={contextReady ? "text-emerald-600 dark:text-emerald-400" : startAttempted ? "font-semibold text-amber-700 dark:text-amber-300" : "text-gray-500"}>{contextReady ? "✓ AI instructions ready" : `Add at least ${MIN_SETUP_CHARACTERS} characters so the AI has enough context.`}</span><span className="text-gray-400">{jobDescription.trim().length} characters</span></div>
                             </div>
@@ -313,14 +325,14 @@ export default function NewInterviewPage() {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.4, delay: 0.1 }}
-                            className="bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-3xl p-6 sm:p-10 relative overflow-hidden shadow-lg dark:shadow-none flex-1 flex flex-col"
+                            className="bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-3xl p-4 sm:p-6 xl:p-10 relative overflow-hidden shadow-lg dark:shadow-none flex-1 flex flex-col"
                         >
                             <div className="flex flex-col gap-6 mb-8">
                                 <div className="flex items-center gap-4 sm:gap-5">
                                     <div className="p-3 sm:p-4 bg-emerald-100 dark:bg-emerald-900/40 rounded-xl sm:rounded-2xl text-emerald-700 dark:text-emerald-400">
                                         <ResumeIcon />
                                     </div>
-                                    <div className="flex-1">
+                                    <div className="min-w-0 flex-1">
                                         <h3 className="font-bold text-lg sm:text-2xl text-gray-900 dark:text-white">Resume</h3>
                                         <p className="text-sm sm:text-base text-gray-500">Add your CV for tailored context and better results.</p>
                                     </div>
@@ -334,7 +346,7 @@ export default function NewInterviewPage() {
                                     <select
                                         className="h-11 sm:h-12 px-4 w-full sm:w-56 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-600 dark:text-gray-300 focus:outline-none focus:border-emerald-500/50 truncate order-2"
                                         value={selectedResumeId}
-                                        onChange={(e) => {
+                                        onChange={(e) => { setupEdited.current = true;
                                             const r = savedResumes.find(sr => sr.id === e.target.value);
                                             if (r) {
                                                 setSelectedResumeId(r.id);
@@ -351,10 +363,11 @@ export default function NewInterviewPage() {
                             </div>
                             <textarea
                                 ref={resumeRef}
+                                aria-label="Resume text"
                                 className="w-full flex-1 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 sm:p-6 text-base sm:text-lg text-gray-900 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all min-h-[180px] sm:min-h-[220px]"
                                 placeholder="Paste resume text or upload PDF..."
                                 value={resume}
-                                onChange={(e) => { setResume(e.target.value); setSelectedResumeId(""); setError(null); }}
+                                onChange={(e) => { setupEdited.current = true; setResume(e.target.value); setSelectedResumeId(""); setError(null); }}
                             />
                             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><span className={resumeReady ? "text-emerald-600 dark:text-emerald-400" : startAttempted ? "font-semibold text-amber-700 dark:text-amber-300" : "text-gray-500"}>{resumeReady ? "✓ Resume ready" : `Upload, select, or paste at least ${MIN_SETUP_CHARACTERS} characters.`}</span><span className="text-gray-400">{resume.trim().length} characters</span></div>
                             {successMessage && (
@@ -379,7 +392,7 @@ export default function NewInterviewPage() {
                                 <select
                                     className="w-full bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl p-3 sm:p-4 text-sm sm:text-base text-gray-900 dark:text-white focus:outline-none focus:border-emerald-500/50"
                                     value={interviewType}
-                                    onChange={(e) => setInterviewType(e.target.value)}
+                                    onChange={(e) => { setupEdited.current = true; setInterviewType(e.target.value); }}
                                 >
                                     <option>Technical</option>
                                     <option>System Design</option>
@@ -394,7 +407,7 @@ export default function NewInterviewPage() {
                                 <select
                                     className="w-full bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl p-3 sm:p-4 text-sm sm:text-base text-gray-900 dark:text-white focus:outline-none focus:border-emerald-500/50"
                                     value={language}
-                                    onChange={(e) => setLanguage(e.target.value)}
+                                    onChange={(e) => { setupEdited.current = true; setLanguage(e.target.value); }}
                                 >
                                     {SUPPORTED_LANGUAGES.map(lang => (
                                         <option key={lang.code} value={lang.code}>{lang.native}</option>
@@ -407,14 +420,14 @@ export default function NewInterviewPage() {
 
 
                     {/* Right Column: Model Selection & Chat (5 cols) */}
-                    <div className="lg:col-span-5 relative flex flex-col h-full">
+                    <div className="lg:col-span-5 min-w-0 relative flex flex-col h-full">
 
                         {/* Model Selection Card */}
                         <motion.div
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.5 }}
-                            className="bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-3xl p-6 sm:p-10 shadow-lg dark:shadow-none flex-grow flex flex-col h-full"
+                            className="bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-3xl p-4 sm:p-6 xl:p-10 shadow-lg dark:shadow-none flex-grow flex flex-col h-full"
                         >
                             {/* AI Model Header with AI.jpg */}
                             <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -430,11 +443,13 @@ export default function NewInterviewPage() {
                             {/* Models List */}
                             <div className="space-y-3 sm:space-y-4 mb-8">
                                 {AI_MODELS.map((model) => (
-                                    <div
+                                    <button
+                                        type="button"
+                                        aria-pressed={selectedModel === model.id}
                                         key={model.id}
-                                        onClick={() => setSelectedModel(model.id)}
+                                        onClick={() => { setupEdited.current = true; setSelectedModel(model.id); }}
                                         className={cn(
-                                            "relative p-3.5 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 sm:gap-5 group/item",
+                                            "w-full text-left focus-visible:outline-2 focus-visible:outline-emerald-500 relative p-3.5 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 sm:gap-5 group/item",
                                             selectedModel === model.id
                                                 ? "bg-white dark:bg-white/5 border-emerald-500 shadow-sm"
                                                 : "bg-gray-50 dark:bg-black/20 border-transparent hover:bg-gray-100 dark:hover:bg-white/5"
@@ -449,8 +464,8 @@ export default function NewInterviewPage() {
                                                 className={cn("w-full h-full object-contain", model.logo.includes('openai') && "dark:invert")}
                                             />
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2 mb-0.5 sm:mb-1">
                                                 <h4 className={cn("font-bold text-sm sm:text-base", selectedModel === model.id ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400")}>
                                                     {model.name}
                                                 </h4>
@@ -465,31 +480,20 @@ export default function NewInterviewPage() {
                                             </div>
                                             <p className="text-[10px] sm:text-sm text-gray-400 dark:text-gray-500">{model.description}</p>
                                         </div>
-                                    </div>
+                                    </button>
                                 ))}
                             </div>
 
-                            {/* Chat Preview */}
+                            {/* Selected model information */}
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 transition={{ duration: 0.5, delay: 0.2 }}
                                 className="flex-1 flex flex-col"
                             >
-                                <div className="flex items-center justify-between mb-4 px-2">
-                                    <h3 className="text-base font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-3">
-                                        <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center">
-                                            <Image src="/AI2.png" alt="AI" width={24} height={24} className="w-full h-full object-cover" />
-                                        </div>
-                                        Test Drive Model
-                                    </h3>
-                                </div>
-                                <div className="flex-1 min-h-[400px] mb-6">
-                                    <ModelChat
-                                        modelId={selectedModel}
-                                        modelName={currentModelData.name}
-                                        modelLogo={currentModelData.logo}
-                                    />
+                                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+                                    <p className="font-semibold">Selected: {currentModelData.name}</p>
+                                    <p className="mt-2">This model will answer questions during your desktop session. Review your setup, then open the session guide to continue.</p>
                                 </div>
 
                                 {/* Static Start Interview Button */}
@@ -502,23 +506,23 @@ export default function NewInterviewPage() {
                                     )}
                                     <Button
                                         onClick={handleStart}
-                                        disabled={isLoading}
+                                        disabled={isLoading || isUploading}
                                         className={cn(
-                                            "w-full h-14 sm:h-16 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 shadow-xl",
+                                            "w-full min-w-0 h-auto min-h-14 whitespace-normal px-4 py-4 text-base sm:text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl",
                                             isValid
                                                 ? "bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white shadow-emerald-500/25 hover:shadow-emerald-500/35 hover:-translate-y-0.5 active:translate-y-0"
                                                 : "bg-amber-500 text-slate-950 shadow-amber-500/20 hover:bg-amber-400"
                                         )}
                                     >
-                                        {isLoading ? (
+                                        {isLoading || isUploading ? (
                                             <span className="flex items-center justify-center gap-3">
                                                 <Loader2 size={20} className="animate-spin sm:size-[24px]" />
-                                                Preparing...
+                                                {isUploading ? "Reading resume…" : "Saving setup…"}
                                             </span>
                                         ) : (
                                             <span className="flex items-center justify-center gap-3">
-                                                {isValid ? "Start Interview" : "Check Setup & Start"}
-                                                <ArrowLeft className="rotate-180 sm:size-[24px]" size={20} />
+                                                {isValid ? "Continue" : "Review setup"}
+                                                <ArrowLeft className="shrink-0 rotate-180 sm:size-[24px]" size={20} />
                                             </span>
                                         )}
                                     </Button>

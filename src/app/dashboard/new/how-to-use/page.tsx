@@ -11,7 +11,6 @@ import {
     Sparkles,
     ArrowRight,
     CheckCircle2,
-    Video,
     Info
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -93,14 +92,6 @@ export default function HowToUsePage() {
             bg: "bg-lime-500/10",
             border: "border-lime-500/20"
         },
-        ...(isElectron ? [] : [{
-            title: "Practice Camera",
-            description: "The camera is available here for training purposes. In the desktop app, focus on the interview platform's camera.",
-            icon: <Video className="w-8 h-8" />,
-            color: "from-emerald-400 to-teal-400",
-            bg: "bg-emerald-400/10",
-            border: "border-emerald-400/20"
-        }]),
         {
             title: "End Session",
             description: "Always use the End Interview button to safely clean up and save your session data.",
@@ -112,8 +103,13 @@ export default function HowToUsePage() {
     ];
 
     const handleStart = async () => {
+        if (isStarting) return;
         if (!window.electronAPI?.isElectron) {
-            setSetupError("Live interview sessions work only in the AllyX desktop app. Browser screen sharing can show this page to other participants. Download AllyX for Mac or Windows, sign in, and your saved setup will be ready there.");
+            router.push("/download");
+            return;
+        }
+        if (!setupReady) {
+            setSetupError("Complete your resume and AI instructions in setup before starting.");
             return;
         }
         try {
@@ -206,20 +202,20 @@ export default function HowToUsePage() {
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.6 }}
-                    className="flex flex-col items-center gap-6"
+                    className="flex w-full max-w-xl flex-col items-center gap-6"
                 >
                     {setupError && <p role="alert" className="max-w-xl text-center text-red-600 dark:text-red-400">{setupError}</p>}
                     <Button
                         onClick={handleStart}
-                        disabled={!setupReady || isStarting}
-                        className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
+                        disabled={isElectron && (!setupReady || isStarting)}
+                        className="w-full min-w-0 h-auto min-h-16 whitespace-normal px-5 py-4 text-base sm:text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white rounded-2xl shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 group"
                     >
-                        {isStarting ? "Opening securely…" : !isElectron ? "Open in AllyX desktop app" : hasActiveSession ? "Resume Active Interview" : "Got it, Start Interview!"}
-                        <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
+                        {isStarting ? "Opening securely…" : !isElectron ? "Download the desktop app" : hasActiveSession ? "Resume Active Interview" : "Got it, Start Interview!"}
+                        <ArrowRight className="ml-2 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </Button>
 
                     {!setupReady && <Button variant="outline" onClick={() => router.push("/dashboard/new")}>Return to setup</Button>}
-                    {!isElectron && <Button variant="outline" onClick={() => router.push("/download")}>Download AllyX for Mac or Windows</Button>}
+                    {!isElectron && <p className="text-center text-sm text-gray-500">Live sessions require the installed Mac or Windows app. Sign in there to use your saved setup.</p>}
                     {setupReady && <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
                         <CheckCircle2 size={18} />
                         <span>Interview context ready</span>
