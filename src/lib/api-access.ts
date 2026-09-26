@@ -76,7 +76,7 @@ export async function commitApiQuota(request: NextRequest, reservationId: string
 }
 
 export const OPENAI_MODELS = ["gpt-5.4-mini"] as const;
-export const GROQ_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-120b"] as const;
+export const GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"] as const;
 export const ALLOWED_MODELS = [...GROQ_MODELS, ...OPENAI_MODELS] as const;
 
 export function isOpenAiModel(model: string) {

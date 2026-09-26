@@ -43,26 +43,17 @@ const GlobeIcon = () => (
 // Available AI Models with brand logo images
 const AI_MODELS = [
     {
-        id: "llama-3.1-8b-instant",
-        name: "Llama 3.1 8B",
+        id: "openai/gpt-oss-20b",
+        name: "GPT-OSS 20B",
         description: "Fastest, concise answers",
-        logo: "/meta.png",
+        logo: "/openai-logo.png",
         gradient: "from-blue-500/20 to-cyan-500/20",
         border: "group-hover:border-blue-500/50",
         paid: false,
     },
     {
-        id: "llama-3.3-70b-versatile",
-        name: "Llama 3.3 70B",
-        description: "Detailed general answers",
-        logo: "/meta.png",
-        gradient: "from-purple-500/20 to-pink-500/20",
-        border: "group-hover:border-purple-500/50",
-        paid: false,
-    },
-    {
-        id: "qwen/qwen3-32b",
-        name: "Qwen 32B",
+        id: "qwen/qwen3.8-27b",
+        name: "Qwen 3.8 27B",
         description: "Strong multilingual support",
         logo: "/qwen.png",
         gradient: "from-indigo-500/20 to-violet-500/20",
@@ -89,6 +80,9 @@ const AI_MODELS = [
     },
 ];
 
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
+const availableModel = (model: string | undefined) => AI_MODELS.some(item => item.id === model) ? model! : DEFAULT_MODEL;
+
 const MIN_SETUP_CHARACTERS = 11;
 
 // ParticleWave removed to improve mobile performance/clarity
@@ -101,7 +95,7 @@ export default function NewInterviewPage() {
     const [resume, setResume] = useState("");
     const [interviewType, setInterviewType] = useState("Technical");
     const [language, setLanguage] = useState("en-US");
-    const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
+    const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
     const [isLoading, setIsLoading] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -126,10 +120,10 @@ export default function NewInterviewPage() {
                 setJobDescription(context.jd);
                 setInterviewType(context.type);
                 setLanguage(context.lang);
-                setSelectedModel(context.model);
+                setSelectedModel(availableModel(context.model));
             } else {
                 const savedModel = localStorage.getItem("selected_ai_model");
-                if (savedModel) setSelectedModel(savedModel);
+                if (savedModel) setSelectedModel(availableModel(savedModel));
             }
         } catch { setError("Saved interview setup could not be read. You can enter it again below."); }
         const loadResumes = async () => {
@@ -141,7 +135,7 @@ export default function NewInterviewPage() {
                     setJobDescription(syncedContext.jd);
                     setInterviewType(syncedContext.type);
                     setLanguage(syncedContext.lang);
-                    setSelectedModel(syncedContext.model);
+                    setSelectedModel(availableModel(syncedContext.model));
                 }
                 const data = await resumeService.getUserResumes();
                 setSavedResumes(data);

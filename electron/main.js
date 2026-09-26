@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, clipboard, session, desktopCapturer, globalShortcut, dialog, shell, systemPreferences } = require('electron');
 const path = require('path');
 const os = require('os');
+const fs = require('fs/promises');
 const { createCapturePrivacy } = require('./capture-privacy');
 const { allowAppNavigation } = require('./navigation-policy');
 const { shouldPreventWindowClose } = require('./window-lifecycle');
@@ -59,6 +60,7 @@ let isInterviewRendererReady = false;
 const isDev = !app.isPackaged;
 const APP_URL = process.env.ALLYX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://allyx.vercel.app');
 const APP_ORIGIN = new URL(APP_URL).origin;
+const COMPATIBILITY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 let isQuitting = false;
 
 function isTrustedPage(event, channel) {
@@ -311,13 +313,60 @@ function isVersionAtLeast(actual, required) {
     return true;
 }
 
-async function loadAppContent() {
-    if (!mainAppWindow) return;
-    if (app.isPackaged) {
+function validCompatibility(value) {
+    return value && typeof value === 'object'
+        && /^\d+\.\d+\.\d+$/.test(value.minimumDesktopVersion)
+        && typeof value.rendererVersion === 'string'
+        && value.rendererVersion.length <= 40;
+}
+
+const compatibilityCachePath = () => path.join(app.getPath('userData'), 'desktop-compatibility.json');
+
+async function writeCompatibilityCache(compatibility) {
+    try {
+        await fs.writeFile(compatibilityCachePath(), JSON.stringify({ ...compatibility, cachedAt: Date.now() }), { mode: 0o600 });
+    } catch (error) {
+        console.warn('[App] Could not cache compatibility response:', error.message);
+    }
+}
+
+async function readCompatibilityCache() {
+    try {
+        const cached = JSON.parse(await fs.readFile(compatibilityCachePath(), 'utf8'));
+        if (!validCompatibility(cached) || !Number.isFinite(cached.cachedAt)) return null;
+        if (Date.now() - cached.cachedAt > COMPATIBILITY_CACHE_MAX_AGE_MS) return null;
+        return cached;
+    } catch { return null; }
+}
+
+async function fetchCompatibilityWithRetry() {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             const response = await fetch(`${APP_ORIGIN}/api/desktop-compat`, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
             if (!response.ok) throw new Error(`Compatibility check failed (${response.status})`);
             const compatibility = await response.json();
+            if (!validCompatibility(compatibility)) throw new Error('Compatibility response was invalid');
+            await writeCompatibilityCache(compatibility);
+            return { compatibility, cached: false };
+        } catch (error) {
+            lastError = error;
+            if (attempt < 3) await new Promise(resolve => setTimeout(resolve, attempt * 500));
+        }
+    }
+    const compatibility = await readCompatibilityCache();
+    if (compatibility) {
+        console.warn('[App] Compatibility service unavailable; using the last verified response.');
+        return { compatibility, cached: true };
+    }
+    throw lastError || new Error('Compatibility service unavailable');
+}
+
+async function loadAppContent() {
+    if (!mainAppWindow) return;
+    if (app.isPackaged) {
+        try {
+            const { compatibility } = await fetchCompatibilityWithRetry();
             if (!isVersionAtLeast(app.getVersion(), compatibility.minimumDesktopVersion)) {
                 dialog.showErrorBox('AllyX update required', `This web release needs desktop version ${compatibility.minimumDesktopVersion} or newer. Please install the current desktop build.`);
                 return;

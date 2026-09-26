@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BillingPlanId } from "@/lib/billing-plans";
 
@@ -29,10 +29,11 @@ function loadCheckout() {
     });
 }
 
-export function PurchaseButton({ planId, className, onSuccess }: { planId: BillingPlanId; className?: string; onSuccess?: () => void }) {
+export function PurchaseButton({ planId, className, onSuccess, autoStart = false }: { planId: BillingPlanId; className?: string; onSuccess?: () => void; autoStart?: boolean }) {
     const router = useRouter();
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState("");
+    const autoStartHandled = useRef(false);
 
     const reconcileOrder = async (orderId: string) => {
         for (let attempt = 0; attempt < 5; attempt++) {
@@ -54,7 +55,11 @@ export function PurchaseButton({ planId, className, onSuccess }: { planId: Billi
             const orderResponse = await fetch("/api/billing/order", {
                 method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }),
             });
-            if (orderResponse.status === 401) { router.push(`/login?from=${encodeURIComponent("/#pricing")}`); return; }
+            if (orderResponse.status === 401) {
+                const returnPath = `/dashboard/billing?plan=${encodeURIComponent(planId)}`;
+                router.push(`/login?from=${encodeURIComponent(returnPath)}`);
+                return;
+            }
             const order = await orderResponse.json();
             if (!orderResponse.ok) throw new Error(order.error || "Could not start checkout.");
             await loadCheckout();
@@ -94,6 +99,15 @@ export function PurchaseButton({ planId, className, onSuccess }: { planId: Billi
             setBusy(false);
         }
     };
+
+    useEffect(() => {
+        if (!autoStart || autoStartHandled.current) return;
+        autoStartHandled.current = true;
+        window.history.replaceState(null, "", "/dashboard/billing");
+        void purchase();
+        // The selected plan is immutable for this mounted purchase button.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoStart]);
 
     return <div className="mt-auto">
         <button type="button" onClick={purchase} disabled={busy} className={className}>{busy ? "Opening checkout…" : "Buy pack"}</button>

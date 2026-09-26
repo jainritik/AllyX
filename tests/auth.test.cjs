@@ -102,6 +102,7 @@ test('return URLs preserve an internal destination and reject external/malformed
     const { safeReturnPath } = load('src/lib/auth-navigation.ts');
     assert.equal(safeReturnPath('/interview?mode=practice'), '/interview?mode=practice');
     assert.equal(safeReturnPath('/dashboard/new'), '/dashboard/new');
+    assert.equal(safeReturnPath('/dashboard/billing?plan=starter'), '/dashboard/billing?plan=starter');
     for (const path of [null, '//evil.example', '/\\evil.example', 'https://evil.example', '/login', '/dashboard/../../login', '/dashboard\n']) {
         assert.equal(safeReturnPath(path), '/dashboard');
     }

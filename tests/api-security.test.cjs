@@ -13,14 +13,14 @@ function load(file, mocks = {}, fetchMock = global.fetch) {
 }
 
 const paths = { generate: 'src/app/api/generate/route.ts', stream: 'src/app/api/generate-stream/route.ts' };
-const request = (model = 'llama-3.1-8b-instant') => new NextRequest('https://allyx.invalid/api/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'x-allyx-session-id': '11111111-1111-4111-8111-111111111111' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hello' }] }) });
+const request = (model = 'openai/gpt-oss-120b') => new NextRequest('https://allyx.invalid/api/generate', { method: 'POST', headers: { 'content-type': 'application/json', 'x-allyx-session-id': '11111111-1111-4111-8111-111111111111' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hello' }] }) });
 
 test('anonymous callers never reach paid generation provider', async () => {
     let providerCalls = 0;
     for (const path of Object.values(paths)) {
         const route = load(path, { '@/lib/api-access': {
-            ALLOWED_MODELS: ['llama-3.1-8b-instant'],
-            GROQ_MODELS: ['llama-3.1-8b-instant'],
+            ALLOWED_MODELS: ['openai/gpt-oss-120b'],
+            GROQ_MODELS: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
             isOpenAiModel: () => false,
             authorizeApi: async () => ({ error: Response.json({ error: 'Please sign in again' }, { status: 401 }) }),
         } }, async () => { providerCalls++; return new Response(''); });
@@ -33,8 +33,13 @@ test('anonymous callers never reach paid generation provider', async () => {
 test('generation rejects unsupported models and oversized prompts', () => {
     const { parseGenerationBody } = load('src/lib/api-access.ts');
     assert.equal(parseGenerationBody({ model: 'attacker/model', prompt: 'hello' }), null);
-    assert.equal(parseGenerationBody({ model: 'llama-3.1-8b-instant', prompt: 'a'.repeat(12001) }), null);
-    assert.equal(parseGenerationBody({ model: 'llama-3.1-8b-instant', prompt: 'hello' }).messages[0].content, 'hello');
+    for (const retired of ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'qwen/qwen3-32b']) {
+        assert.equal(parseGenerationBody({ model: retired, prompt: 'hello' }), null);
+    }
+    assert.equal(parseGenerationBody({ model: 'openai/gpt-oss-120b', prompt: 'a'.repeat(12001) }), null);
+    assert.equal(parseGenerationBody({ model: 'openai/gpt-oss-120b', prompt: 'hello' }).messages[0].content, 'hello');
+    assert.equal(parseGenerationBody({ model: 'openai/gpt-oss-20b', prompt: 'hello' }).model, 'openai/gpt-oss-20b');
+    assert.equal(parseGenerationBody({ model: 'qwen/qwen3.8-27b', prompt: 'hello' }).model, 'qwen/qwen3.8-27b');
     assert.equal(parseGenerationBody({ model: 'gpt-5.4-mini', prompt: 'hello' }).model, 'gpt-5.4-mini');
 });
 
@@ -104,7 +109,7 @@ test('streaming parser preserves SSE events split across bytes', async () => {
         for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
         controller.close();
     } });
-    const route = load(paths.stream, { '@/lib/api-access': { authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }), refundApiQuota: async () => {}, commitApiQuota: async () => {}, isOpenAiModel: api.isOpenAiModel, parseGenerationBody: api.parseGenerationBody } }, async () => new Response(provider, { status: 200 }));
+    const route = load(paths.stream, { '@/lib/api-access': { authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }), refundApiQuota: async () => {}, commitApiQuota: async () => {}, isOpenAiModel: api.isOpenAiModel, parseGenerationBody: api.parseGenerationBody, GROQ_MODELS: api.GROQ_MODELS } }, async () => new Response(provider, { status: 200 }));
     process.env.GROQ_API_KEY = 'mock-only';
     try {
         const response = await route.POST(request());
@@ -128,6 +133,7 @@ test('streaming content without a provider finish event is committed and offered
         commitApiQuota: async () => { commits++; },
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
+        GROQ_MODELS: api.GROQ_MODELS,
     } }, async () => new Response(provider, { status: 200 }));
     process.env.GROQ_API_KEY = 'mock-only';
     try {
@@ -179,6 +185,7 @@ test('OpenAI model uses the OpenAI endpoint with direct-answer settings', async 
         commitApiQuota: async () => {},
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
+        GROQ_MODELS: api.GROQ_MODELS,
     } }, async (url, init) => {
         calledUrl = url;
         calledBody = JSON.parse(init.body);
@@ -204,6 +211,7 @@ test('paid OpenAI failure falls back to free Groq and reports the effective mode
         commitApiQuota: async () => {},
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
+        GROQ_MODELS: api.GROQ_MODELS,
     } }, async (url, init) => {
         calls.push({ url, body: JSON.parse(init.body) });
         if (url.includes('openai.com')) return new Response('quota exceeded', { status: 429 });
@@ -240,6 +248,7 @@ test('failed provider requests reserve then refund generation quota', async () =
         commitApiQuota: async () => {},
         isOpenAiModel: api.isOpenAiModel,
         parseGenerationBody: api.parseGenerationBody,
+        GROQ_MODELS: api.GROQ_MODELS,
     } }, async () => new Response('provider failure', { status: 503 }));
     process.env.GROQ_API_KEY = 'mock-free';
     try {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { authorizeApi, commitApiQuota, isOpenAiModel, parseGenerationBody, refundApiQuota } from "@/lib/api-access";
+import { GROQ_MODELS, authorizeApi, commitApiQuota, isOpenAiModel, parseGenerationBody, refundApiQuota } from "@/lib/api-access";
 
 export const runtime = "nodejs";
 
@@ -45,39 +45,34 @@ export async function POST(request: NextRequest) {
         };
 
         const requestedOpenAi = isOpenAiModel(model);
+        const candidates = requestedOpenAi
+            ? [model, "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+            : [model, ...GROQ_MODELS.filter(candidate => candidate !== model)];
         let effectiveModel = model;
         let response: Response | null = null;
-        try {
-            response = await callProvider(model, requestedOpenAi);
-        } catch (error) {
-            if (!requestedOpenAi) {
-                await refundApiQuota(request, reservationId);
-                shouldRefund = false;
-                throw error;
-            }
-            console.warn("[Stream API] OpenAI request failed; falling back to Groq.");
-        }
-        if (requestedOpenAi && (!response || !response.ok)) {
-            if (response) console.warn(`[Stream API] OpenAI ${response.status}; falling back to Groq.`);
-            effectiveModel = "openai/gpt-oss-120b";
+        let lastStatus = 503;
+        for (const candidate of [...new Set(candidates)]) {
+            effectiveModel = candidate;
+            const candidateUsesOpenAi = isOpenAiModel(candidate);
             try {
-                response = await callProvider(effectiveModel, false);
+                const candidateResponse = await callProvider(candidate, candidateUsesOpenAi);
+                if (candidateResponse?.ok) {
+                    response = candidateResponse;
+                    break;
+                }
+                if (candidateResponse) {
+                    lastStatus = candidateResponse.status;
+                    console.warn(`[Stream API] ${candidate} returned ${candidateResponse.status}; trying fallback.`);
+                    await candidateResponse.body?.cancel().catch(() => undefined);
+                }
             } catch (error) {
-                await refundApiQuota(request, reservationId);
-                shouldRefund = false;
-                throw error;
+                console.warn(`[Stream API] ${candidate} failed; trying fallback.`, error instanceof Error ? error.message : error);
             }
         }
         if (!response) {
             await refundApiQuota(request, reservationId);
             shouldRefund = false;
-            return Response.json({ error: "AI server configuration missing" }, { status: 500 });
-        }
-        if (!response.ok) {
-            console.error("[Stream API] Provider Error:", await response.text());
-            await refundApiQuota(request, reservationId);
-            shouldRefund = false;
-            return Response.json({ error: "AI temporarily unavailable" }, { status: response.status });
+            return Response.json({ error: "AI temporarily unavailable" }, { status: lastStatus >= 400 && lastStatus < 600 ? lastStatus : 503 });
         }
 
         const encoder = new TextEncoder();

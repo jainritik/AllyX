@@ -1,9 +1,18 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { apiClient } from "@/lib/api-access";
 import { billingAdminClient } from "@/lib/razorpay-server";
+import { sendProductionErrorAlert } from "@/lib/production-error-alert";
 
 const RELEASE = "1.3.5";
+const alertAttempts: number[] = [];
+
+function canSendAlert() {
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    while (alertAttempts[0] && alertAttempts[0] < cutoff) alertAttempts.shift();
+    if (alertAttempts.length >= 5) return false;
+    alertAttempts.push(Date.now());
+    return true;
+}
 
 function clean(value: unknown, limit: number) {
     if (typeof value !== "string") return "";
@@ -16,10 +25,14 @@ function clean(value: unknown, limit: number) {
 }
 
 export async function POST(request: NextRequest) {
-    const client = apiClient(request);
-    if (!client) return NextResponse.json({ accepted: false }, { status: 503 });
-    const { data, error } = await client.auth.getUser();
-    if (error || !data.user) return NextResponse.json({ accepted: false }, { status: 401 });
+    const origin = request.headers.get("origin");
+    if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ accepted: false }, { status: 403 });
+    if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+        return NextResponse.json({ accepted: false }, { status: 415 });
+    }
+    if (Number(request.headers.get("content-length")) > 6000) {
+        return NextResponse.json({ accepted: false }, { status: 413 });
+    }
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     const name = clean(body?.name || "Error", 80) || "Error";
     const message = clean(body?.message, 300);
@@ -42,6 +55,19 @@ export async function POST(request: NextRequest) {
     if (insertError) {
         console.error("[Client monitoring]", insertError.code);
         return NextResponse.json({ accepted: false }, { status: 503 });
+    }
+    const { data: event, error: eventError } = await admin.from("client_error_events")
+        .select("occurrences")
+        .eq("signature", signature)
+        .maybeSingle();
+    if (eventError) console.error("[Client monitoring alert lookup]", eventError.code);
+    const occurrences = Number(event?.occurrences || 0);
+    const shouldAlert = !eventError && occurrences > 0
+        && (occurrences === 1 || occurrences === 10 || occurrences === 50 || occurrences % 100 === 0);
+    if (shouldAlert && canSendAlert()) {
+        await sendProductionErrorAlert({
+            signature, name, message, stack, route, release: RELEASE, runtime, occurrences,
+        }).catch(alertError => console.error("[Client monitoring alert]", alertError instanceof Error ? alertError.message : alertError));
     }
     return NextResponse.json({ accepted: true }, { headers: { "Cache-Control": "no-store" } });
 }

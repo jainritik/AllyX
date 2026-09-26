@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
         const modelsToTry = usesOpenAi
             ? [model, "openai/gpt-oss-120b"]
             : [model, ...GROQ_FALLBACK_MODELS.filter(m => m !== model)];
-        const uniqueModels = [...new Set(modelsToTry)].slice(0, 2);
+        const uniqueModels = [...new Set(modelsToTry)].slice(0, 3);
 
         let lastError: Error | null = null;
 
@@ -112,11 +112,9 @@ export async function POST(request: NextRequest) {
                 console.warn(`[API Generate] ${isOpenAiModel(targetModel) ? "OpenAI" : "Groq"} ${targetModel} failed:`, err.message);
                 lastError = err;
 
-                // If rate limited or quota exceeded, try next model
-                if (isOpenAiModel(targetModel) || err.message.includes("429") || err.message.includes("quota") || err.message.includes("503")) {
-                    continue;
-                }
-                break;
+                // Provider errors, retired models and account limits all move to
+                // the next supported model without consuming another app quota.
+                continue;
             }
         }
 
