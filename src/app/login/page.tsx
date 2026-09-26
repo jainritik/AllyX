@@ -1,548 +1,122 @@
 "use client";
 
-import { useState, useEffect } from "react";
-// import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, Sparkles, RefreshCw, Zap, Shield, Trophy } from "lucide-react";
-import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
-import { authCallbackUrl, safeReturnPath } from "@/lib/auth-navigation";
-import { generateStrongPassword } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowLeft, Mail, RefreshCw, Shield, Trophy, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import { safeReturnPath } from "@/lib/auth-navigation";
 import { authErrorMessage } from "@/lib/auth-errors";
 
 export default function LoginPage() {
-    // const router = useRouter();
-    const { signIn, signUp, verifyOtp, signInWithGoogle } = useAuth();
-
-    // UI State
-    const [isLoading, setIsLoading] = useState(false);
-    const [isCheckingSession, setIsCheckingSession] = useState(true);
-    const [mode, setMode] = useState<"signin" | "signup" | "verify">("signin");
-    const [showPassword, setShowPassword] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState<string | null>(null);
-    const [isDesktop, setIsDesktop] = useState(false);
-    const otpEnabled = process.env.NEXT_PUBLIC_EMAIL_OTP_ENABLED === "true";
-    useEffect(() => { setIsDesktop(Boolean(window.electronAPI)); }, []);
-
-    // Form Data
-    const [formData, setFormData] = useState({
-        name: "",
-        email: "",
-        password: "",
-        otp: ""
-    });
-
-    // Password strength calculation
-    const getPasswordStrength = (password: string): { level: number; text: string; color: string } => {
-        if (!password) return { level: 0, text: "", color: "" };
-        let score = 0;
-        if (password.length >= 8) score++;
-        if (password.length >= 12) score++;
-        if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-        if (/\d/.test(password)) score++;
-        if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) score++;
-
-        if (score <= 1) return { level: 1, text: "Weak", color: "bg-red-500" };
-        if (score <= 2) return { level: 2, text: "Fair", color: "bg-orange-500" };
-        if (score <= 3) return { level: 3, text: "Good", color: "bg-yellow-500" };
-        if (score <= 4) return { level: 4, text: "Strong", color: "bg-green-500" };
-        return { level: 5, text: "Very Strong", color: "bg-emerald-600" };
-    };
-
-    const passwordStrength = getPasswordStrength(formData.password);
-
+    const { sendEmailOtp, verifyOtp, signInWithGoogle } = useAuth();
+    const [step, setStep] = useState<"email" | "otp">("email");
+    const [email, setEmail] = useState("");
+    const [otp, setOtp] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [checking, setChecking] = useState(true);
+    const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
     const [resendSeconds, setResendSeconds] = useState(0);
-    const returnToApp = () => window.location.assign(safeReturnPath(new URLSearchParams(window.location.search).get("from")));
+    const [isDesktop, setIsDesktop] = useState(false);
+    const googleEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
+    const destination = () => safeReturnPath(new URLSearchParams(window.location.search).get("from"));
+
+    useEffect(() => {
+        setIsDesktop(Boolean(window.electronAPI?.isElectron));
+        void supabase.auth.getUser().then(({ data, error: authError }) => {
+            if (!authError && data.user) window.location.replace(destination());
+            else setChecking(false);
+        }).catch(() => setChecking(false));
+    }, []);
 
     useEffect(() => {
         if (!resendSeconds) return;
-        const timer = setTimeout(() => setResendSeconds(value => value - 1), 1000);
-        return () => clearTimeout(timer);
+        const timer = window.setTimeout(() => setResendSeconds(value => value - 1), 1000);
+        return () => window.clearTimeout(timer);
     }, [resendSeconds]);
 
-    // Auto-clear error on mode switch
-    useEffect(() => {
-        setError(null);
-    }, [mode]);
-
-    // Check if user is already authenticated (for OAuth redirect)
-    useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                setIsCheckingSession(true);
-                const { data, error } = await supabase.auth.getUser();
-                if (!error && data.user) {
-                    window.location.replace(safeReturnPath(new URLSearchParams(window.location.search).get("from")));
-                } else {
-                    setIsCheckingSession(false);
-                }
-            } catch (e) {
-                console.error("Auth check error:", e);
-                setIsCheckingSession(false);
-            }
-        };
-        checkAuth();
-    }, []);
-
-
-    const validateEmail = (email: string): boolean => {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
-    };
-
-    const handleAuth = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (isLoading) return;
-        setIsLoading(true);
-        setError(null);
-        setSuccess(null);
-
-        // Email validation
-        if (mode !== "verify" && !validateEmail(formData.email.trim())) {
-            setError("Please enter a valid email address");
-            setIsLoading(false);
-            return;
-        }
-
+    async function sendCode(event?: FormEvent) {
+        event?.preventDefault();
+        if (busy || resendSeconds > 0) return;
+        setBusy(true); setError(""); setNotice("");
         try {
-            if (mode === "signup") {
-                try {
-                    const result = await signUp(formData.email, formData.password, formData.name);
-                    if (result.session) { returnToApp(); return; }
-                    setSuccess("Signup request accepted. If this address needs confirmation, check your email. If you already have an account, sign in instead; signup may not send another email.");
-                    setResendSeconds(60);
-                    setMode("verify");
-                } catch (err: unknown) {
-                    const error = err as Error;
-                    setError(authErrorMessage(error));
-                }
-            } else if (mode === "verify") {
-                // Should not reach here typically due to separate handler
-            } else {
-                try {
-                    await signIn(formData.email, formData.password);
-                    returnToApp();
-                } catch (err: unknown) {
-                    const error = err as Error & { code?: string };
-                    if (error.code === 'email_not_confirmed') {
-                        setMode("verify");
-                        setError(null);
-                        setSuccess("Confirm your email before signing in. You can request a new confirmation email below.");
-                    } else { setError(authErrorMessage(error)); }
-                }
-            }
-        } catch (err: unknown) {
-            const error = err as Error;
-            console.error("Auth error:", error);
-            setError("An unexpected error occurred.");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleResendCode = async () => {
-        if (isLoading || resendSeconds > 0) return;
-        setIsLoading(true);
-        setError(null);
-        setSuccess(null);
-        try {
-            const { error } = await supabase.auth.resend({
-                type: "signup", email: formData.email.trim(),
-                options: { emailRedirectTo: authCallbackUrl() },
-            });
-            if (error) throw error;
-            setResendSeconds(60);
-            setSuccess("Confirmation requested. An email is sent only for an eligible, unconfirmed account. Already confirmed? Sign in instead.");
-        } catch (err: unknown) {
-            const error = err as Error;
-            setResendSeconds(60);
-            setError(authErrorMessage(error));
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleVerifySubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (isLoading || !otpEnabled) return;
-        setIsLoading(true);
-        setError(null);
-        try {
-            await verifyOtp(formData.email, formData.otp);
-            returnToApp();
-        } catch (err: unknown) {
-            const error = err as Error;
-            setError(authErrorMessage(error));
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const generatePassword = () => {
-        const newPass = generateStrongPassword(16);
-        setFormData(prev => ({ ...prev, password: newPass }));
-        setShowPassword(true);
-    };
-
-    if (isCheckingSession) {
-        return (
-            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-white dark:bg-zinc-950">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex flex-col items-center gap-6"
-                >
-                    <div className="relative w-20 h-20">
-                        <Image src="/allyx-logo.png" alt="AllyX" fill className="object-contain animate-pulse" />
-                    </div>
-                    <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400 font-medium">
-                        <RefreshCw className="animate-spin" size={20} />
-                        <span>Verifying Session...</span>
-                    </div>
-                </motion.div>
-            </div>
-        );
+            await sendEmailOtp(email);
+            setStep("otp"); setResendSeconds(60);
+            setNotice(`We sent a one-time code to ${email.trim().toLowerCase()}.`);
+        } catch (sendError) { setError(authErrorMessage(sendError)); }
+        finally { setBusy(false); }
     }
 
-    return (
-        <div className="min-h-screen w-full grid md:grid-cols-2">
+    async function confirmCode(event: FormEvent) {
+        event.preventDefault();
+        if (busy) return;
+        setBusy(true); setError("");
+        try {
+            await verifyOtp(email, otp);
+            window.location.replace(destination());
+        } catch (verifyError) { setError(authErrorMessage(verifyError)); }
+        finally { setBusy(false); }
+    }
 
-            {/* Left Side - Brand/Marketing Area (Green/Teal Theme) */}
-            <div className="hidden md:flex flex-col justify-between bg-zinc-950 relative overflow-hidden p-8 lg:p-12 text-white">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-950 to-teal-950 z-0" />
-                {/* Decorative circles */}
-                <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl opacity-50" />
-                <div className="absolute bottom-[-10%] left-[-10%] w-96 h-96 bg-teal-500/10 rounded-full blur-3xl opacity-50" />
+    async function continueWithGoogle() {
+        setBusy(true); setError("");
+        try { await signInWithGoogle(); }
+        catch (googleError) { setError(authErrorMessage(googleError)); setBusy(false); }
+    }
 
-                <div className="relative z-10">
-                    {/* Updated Logo Section */}
-                    <div className="flex items-center">
-                        <Image
-                            src="/allyx-logo.png"
-                            alt="AllyX Logo"
-                            width={87}
-                            height={87}
-                            className="object-contain w-16 h-16 md:w-[87px] md:h-[87px]"
-                        />
-                    </div>
-                </div>
+    if (checking) return <div className="flex min-h-screen items-center justify-center bg-white dark:bg-zinc-950"><RefreshCw className="h-8 w-8 animate-spin text-emerald-600" /><span className="ml-3 text-sm text-gray-500">Checking your session…</span></div>;
 
-                <div className="relative z-10 max-w-xl">
-                    <h2 className="text-5xl font-extrabold mb-8 leading-[1.1] tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-emerald-200">
-                        Prepare and practice with <br /> real-time AI notes.
-                    </h2>
-                    <div className="space-y-6">
-                        <div className="flex items-start gap-4">
-                            <div className="p-2 bg-emerald-500/10 rounded-lg">
-                                <Zap className="text-emerald-400" size={24} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-white">Live transcription</h3>
-                                <p className="text-gray-400 leading-relaxed">Capture speech when you enable the microphone or desktop audio controls.</p>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-4">
-                            <div className="p-2 bg-emerald-500/10 rounded-lg">
-                                <Trophy className="text-emerald-400" size={24} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-white">Practice with context</h3>
-                                <p className="text-gray-400 leading-relaxed">Ask the AI for explanations using the role and resume context you provide.</p>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-4">
-                            <div className="p-2 bg-emerald-500/10 rounded-lg">
-                                <Shield className="text-emerald-400" size={24} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-white">Your session history</h3>
-                                <p className="text-gray-400 leading-relaxed">Review saved transcripts and responses from your account.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="relative z-10 flex items-center gap-6 text-sm text-gray-500 font-medium">
-                    <span>© 2026 AllyX</span>
-                    <span className="w-1 h-1 rounded-full bg-gray-700"></span>
-                    <Link href="/privacy">Privacy Policy</Link>
-                    <span className="w-1 h-1 rounded-full bg-gray-700"></span>
-                    <Link href="/terms">Terms of Service</Link>
+    return <div className="grid min-h-screen w-full md:grid-cols-2">
+        <section className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-950 to-teal-950 p-8 text-white md:flex md:flex-col md:justify-between lg:p-12">
+            <div className="absolute right-[-10%] top-[-10%] h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
+            <Link href="/" className="relative z-10 inline-flex w-fit items-center"><Image src="/allyx-logo.png" alt="AllyX" width={87} height={87} className="h-20 w-20 object-contain" /></Link>
+            <div className="relative z-10 max-w-xl">
+                <h2 className="text-5xl font-extrabold leading-tight tracking-tight">Prepare and practice with real-time AI notes.</h2>
+                <div className="mt-9 space-y-6">
+                    <div className="flex gap-4"><Zap className="mt-1 shrink-0 text-emerald-400" /><div><h3 className="font-bold">Live transcription</h3><p className="mt-1 text-gray-400">Capture speech when you enable microphone or desktop audio.</p></div></div>
+                    <div className="flex gap-4"><Trophy className="mt-1 shrink-0 text-emerald-400" /><div><h3 className="font-bold">Answers with your context</h3><p className="mt-1 text-gray-400">Use your resume, target role, and preferred answer style.</p></div></div>
+                    <div className="flex gap-4"><Shield className="mt-1 shrink-0 text-emerald-400" /><div><h3 className="font-bold">One secure account</h3><p className="mt-1 text-gray-400">Access your setup, credits, and session history from one place.</p></div></div>
                 </div>
             </div>
+            <div className="relative z-10 flex gap-5 text-sm text-gray-400"><span>© 2026 AllyX</span><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
+        </section>
 
-            {/* Right Side - Clean Login Form (Light Theme) */}
-            <div className="flex items-center justify-center p-8 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white">
-                <div className="w-full max-w-sm space-y-8">
+        <main className="flex items-center justify-center bg-white p-6 text-gray-950 dark:bg-zinc-950 dark:text-white sm:p-10">
+            <div className="w-full max-w-sm">
+                <Link href="/" className="mb-8 inline-flex items-center text-sm text-gray-500 hover:text-gray-950 dark:hover:text-white"><ArrowLeft className="mr-2 h-4 w-4" />Back to AllyX</Link>
+                <div className="mb-7 md:hidden"><Image src="/allyx-logo.png" alt="AllyX" width={64} height={64} className="h-14 w-14 object-contain" /></div>
+                <h1 className="text-3xl font-bold tracking-tight">{step === "email" ? "Sign in or create an account" : "Enter your code"}</h1>
+                <p className="mt-3 text-sm leading-6 text-gray-500">{step === "email" ? "No password required. New email addresses automatically create an account." : <>We sent a one-time code to <strong className="text-gray-800 dark:text-gray-200">{email}</strong>.</>}</p>
 
-                    {/* Header Mobile Brand (visible only on small) */}
-                    <div className="md:hidden text-center mb-6">
-                        <div className="relative w-14 h-14 mx-auto mb-3 overflow-hidden rounded-lg">
-                            <Image
-                                src="/allyx-logo.png"
-                                alt="AllyX Logo"
-                                fill
-                                className="object-cover"
-                            />
-                        </div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">AllyX</h2>
-                    </div>
+                {error && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
+                {notice && <p role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">{notice}</p>}
 
-                    <div className="text-center">
-                        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                            {mode === "signin" ? "Welcome back" : mode === "signup" ? "Get started free" : "Check your email"}
-                        </h1>
-                        <p className="text-sm text-gray-500 mt-3">
-                            {mode === "signin"
-                                ? "Enter your email to sign in to your accounts"
-                                : mode === "signup"
-                                    ? "Create your account in seconds. No credit card required."
-                                    : `Check ${formData.email} for the confirmation email`}
-                        </p>
-                    </div>
-
-                    <AnimatePresence mode="wait">
-                        {error && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="p-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3"
-                            >
-                                <div className="w-1 h-1 rounded-full bg-red-600" />
-                                {error}
-                            </motion.div>
-                        )}
-                        {success && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="p-4 text-sm text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center gap-3"
-                            >
-                                <div className="w-1 h-1 rounded-full bg-emerald-600" />
-                                {success}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    <form onSubmit={mode === 'verify' ? handleVerifySubmit : handleAuth} className="space-y-5">
-                        <fieldset disabled={isLoading} className="space-y-5">
-
-                        {mode === 'signup' && (
-                            <div className="space-y-2">
-                                <label htmlFor="signup-name" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                    Full Name
-                                </label>
-                                <input
-                                    type="text"
-                                    id="signup-name"
-                                    autoComplete="name"
-                                    placeholder="Your full name"
-                                    className="flex h-11 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    required
-                                />
-                            </div>
-                        )}
-
-                        {mode !== 'verify' && (
-                            <div className="space-y-2">
-                                <label htmlFor="login-email" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                    Email
-                                </label>
-                                <input
-                                    type="email"
-                                    id="login-email"
-                                    autoComplete="email"
-                                    placeholder="you@example.com"
-                                    className="flex h-11 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    required
-                                />
-                            </div>
-                        )}
-
-                        {mode !== 'verify' && (
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <label htmlFor="login-password" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                        Password
-                                    </label>
-                                    {mode === 'signup' && (
-                                        <button
-                                            type="button"
-                                            onClick={generatePassword}
-                                            className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1.5 transition-colors"
-                                        >
-                                            <Sparkles size={14} /> Generate Strong
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="relative">
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        id="login-password"
-                                        autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                                        placeholder="••••••••"
-                                        className="flex h-11 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-10 font-mono transition-all"
-                                        value={formData.password}
-                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                        required
-                                        minLength={mode === 'signup' ? 8 : undefined}
-                                    />
-                                    <button
-                                        type="button"
-                                        aria-label={showPassword ? "Hide password" : "Show password"}
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 transition-colors"
-                                    >
-                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
-                                </div>
-
-                                {/* Password Strength Indicator - only show on signup */}
-                                {mode === 'signup' && formData.password && (
-                                    <div className="space-y-1 mt-2">
-                                        <div className="flex gap-1">
-                                            {[1, 2, 3, 4, 5].map((i) => (
-                                                <div
-                                                    key={i}
-                                                    className={`h-1 flex-1 rounded-full transition-all ${i <= passwordStrength.level ? passwordStrength.color : 'bg-gray-200'
-                                                        }`}
-                                                />
-                                            ))}
-                                        </div>
-                                        <p className={`text-xs ${passwordStrength.color.replace('bg-', 'text-')}`}>
-                                            {passwordStrength.text}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {mode === 'verify' && (
-                            <div className="space-y-4">
-                                {otpEnabled && <div className="space-y-2">
-                                    <label htmlFor="verify-code" className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                        Code (if included in your email)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="verify-code"
-                                        autoComplete="one-time-code"
-                                        placeholder="12345678"
-                                        maxLength={8}
-                                        inputMode="numeric"
-                                        pattern="[0-9]{6,8}"
-                                        className="flex h-12 w-full rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-4 py-3 text-sm text-gray-900 dark:text-white ring-offset-white dark:ring-offset-zinc-900 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-center tracking-[0.5em] font-mono text-xl transition-all"
-                                        value={formData.otp}
-                                        onChange={(e) => setFormData({ ...formData, otp: e.target.value.replace(/\D/g, '').slice(0, 8) })}
-                                        required
-                                    />
-                                </div>}
-                                <p className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                    Open the confirmation link sent to <span className="font-medium text-gray-900 dark:text-white">{formData.email}</span>. <br />Then return here and sign in. Check your spam folder if it hasn&apos;t arrived.
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={handleResendCode}
-                                    disabled={isLoading || resendSeconds > 0}
-                                    className="w-full text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center justify-center gap-2 py-2 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                                >
-                                    <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-                                    {resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend confirmation email"}
-                                </button>
-                            </div>
-                        )}
-
-                        <Button
-                            type={mode === 'verify' && !otpEnabled ? 'button' : 'submit'}
-                            onClick={mode === 'verify' && !otpEnabled ? () => { setMode('signin'); setSuccess("After confirming your email, sign in with your password."); } : undefined}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11 font-semibold rounded-xl shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all text-base"
-                            disabled={isLoading}
-                        >
-                            {isLoading ? (
-                                <RefreshCw className="animate-spin mr-2 h-4 w-4" />
-                            ) : (
-                                mode === 'signin' ? "Sign In" : mode === 'signup' ? "Create Account" : otpEnabled ? "Verify Code" : "I confirmed my email — sign in"
-                            )}
+                {step === "email" ? <>
+                    {googleEnabled && !isDesktop && <>
+                        <Button type="button" variant="outline" disabled={busy} onClick={continueWithGoogle} className="mt-7 h-12 w-full rounded-xl text-base">
+                            <svg className="mr-3 h-5 w-5" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09A6.5 6.5 0 0 1 5.49 12c0-.73.13-1.43.35-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.56 10.56 0 0 0 12 1C7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
+                            Continue with Google
                         </Button>
-
-                        {mode !== 'verify' && process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === 'true' && !isDesktop && (
-                            <>
-                                <div className="relative my-4">
-                                    <div className="absolute inset-0 flex items-center">
-                                        <span className="w-full border-t border-gray-200" />
-                                    </div>
-                                    <div className="relative flex justify-center text-xs uppercase">
-                                        <span className="bg-white dark:bg-zinc-900 px-2 text-gray-400">Or continue with</span>
-                                    </div>
-                                </div>
-
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="w-full h-11 rounded-xl border-gray-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-800 dark:text-gray-100 font-medium flex items-center justify-center gap-3"
-                                    onClick={async () => {
-                                        try {
-                                            await signInWithGoogle();
-                                        } catch (err: unknown) {
-                                            const error = err as Error;
-                                            setError(error.message || "Google sign-in failed");
-                                        }
-                                    }}
-                                    disabled={isLoading}
-                                >
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                                    </svg>
-                                    Continue with Google
-                                </Button>
-                            </>
-                        )}
-                        </fieldset>
+                        <div className="my-6 flex items-center gap-3 text-xs uppercase text-gray-400"><span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />or use email<span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" /></div>
+                    </>}
+                    <form onSubmit={sendCode} className={googleEnabled && !isDesktop ? "" : "mt-7"}>
+                        <label htmlFor="login-email" className="text-sm font-semibold">Email address</label>
+                        <div className="relative mt-2"><Mail className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" /><input id="login-email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" className="h-12 w-full rounded-xl border border-gray-300 bg-transparent pl-12 pr-4 outline-none focus:border-emerald-600 dark:border-zinc-700" /></div>
+                        <Button disabled={busy} className="mt-4 h-12 w-full rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700">{busy && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Continue with email</Button>
                     </form>
+                    {isDesktop && googleEnabled && <p className="mt-4 text-center text-xs text-gray-500">Google sign-in is available on the AllyX website. Email code sign-in works here in the desktop app.</p>}
+                </> : <form onSubmit={confirmCode} className="mt-7">
+                    <label htmlFor="otp" className="text-sm font-semibold">One-time code</label>
+                    <input id="otp" type="text" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={8} pattern="[0-9]{6,8}" value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="123456" className="mt-2 h-14 w-full rounded-xl border border-gray-300 bg-transparent px-4 text-center font-mono text-2xl tracking-[.4em] outline-none focus:border-emerald-600 dark:border-zinc-700" />
+                    <Button disabled={busy || otp.length < 6} className="mt-4 h-12 w-full rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700">{busy && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}Verify and continue</Button>
+                    <div className="mt-5 flex items-center justify-between text-sm"><button type="button" onClick={() => { setStep("email"); setOtp(""); setNotice(""); setError(""); }} className="text-gray-500 hover:underline">Change email</button><button type="button" disabled={busy || resendSeconds > 0} onClick={() => void sendCode()} className="font-semibold text-emerald-700 disabled:text-gray-400 dark:text-emerald-400">{resendSeconds ? `Resend in ${resendSeconds}s` : "Resend code"}</button></div>
+                </form>}
 
-                    <div className="text-center text-sm text-gray-500">
-                        {mode === 'signin' && <Link href="/auth/forgot-password" className="block mb-4 text-emerald-600 underline">Forgot password?</Link>}
-                        {mode === 'signin' ? (
-                            <>
-                                Don&apos;t have an account?{" "}
-                                <button disabled={isLoading} onClick={() => { setMode('signup'); setSuccess(null); }} className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-all">
-                                    Sign up
-                                </button>
-                            </>
-                        ) : mode === 'signup' ? (
-                            <>
-                                Already have an account?{" "}
-                                <button disabled={isLoading} onClick={() => { setMode('signin'); setSuccess(null); }} className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-all">
-                                    Sign in
-                                </button>
-                            </>
-                        ) : (
-                            <div className="space-y-3">
-                                {otpEnabled && <button disabled={isLoading} onClick={() => { setMode('signin'); setSuccess("After confirming your email, sign in with your password."); }} className="block w-full text-emerald-600 underline">
-                                    I confirmed my email — sign in
-                                </button>}
-                                <button disabled={isLoading} onClick={() => { setMode('signup'); setSuccess(null); }} className="text-gray-500 underline">
-                                    Change email address
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-
-
-                </div>
+                <p className="mt-8 text-center text-xs leading-5 text-gray-500">By continuing, you agree to the AllyX <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy Policy</Link>.</p>
             </div>
-        </div>
-    );
+        </main>
+    </div>;
 }

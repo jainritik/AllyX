@@ -9,6 +9,7 @@ interface AuthState {
     signIn: (email: string, password: string) => Promise<{ session: Session }>;
     signUp: (email: string, password: string, fullName?: string) => Promise<{ session: Session | null }>;
     verifyOtp: (email: string, token: string) => Promise<unknown>;
+    sendEmailOtp: (email: string) => Promise<void>;
     signInWithGoogle: () => Promise<void>;
     signOut: () => Promise<void>;
     checkSession: () => Promise<void>;
@@ -65,6 +66,15 @@ export const useAuth = create<AuthState>((set) => ({
         if (error) throw error;
         if (!data.session) throw new Error('Verification did not create a session. Please sign in.');
         return data;
+    },
+    sendEmailOtp: async (email) => {
+        const normalized = email.trim().toLowerCase();
+        if (!normalized) throw new Error('Email is required.');
+        const { error } = await supabase.auth.signInWithOtp({
+            email: normalized,
+            options: { shouldCreateUser: true, emailRedirectTo: authCallbackUrl() },
+        });
+        if (error) throw error;
     },
     signInWithGoogle: async () => {
         const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: authCallbackUrl() } });

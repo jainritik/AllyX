@@ -56,6 +56,15 @@ test('signup rejects blank names and weak passwords before calling the provider'
     await assert.rejects(() => auth.signUp('test@example.com', 'example-password', '  '), /Full name/);
 });
 
+test('email OTP signs in existing users and creates new users without a password', async () => {
+    let request;
+    const auth = authWith({ signInWithOtp: async args => { request = args; return { error: null }; } });
+    await auth.sendEmailOtp(' NewUser@Example.com ');
+    assert.equal(request.email, 'newuser@example.com');
+    assert.equal(request.options.shouldCreateUser, true);
+    assert.match(request.options.emailRedirectTo, /\/auth\/callback/);
+});
+
 test('wrong password and unconfirmed account preserve provider errors for the correct UI state', async () => {
     for (const code of ['invalid_credentials', 'email_not_confirmed']) {
         const error = { code };

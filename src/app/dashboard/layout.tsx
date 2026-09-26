@@ -4,7 +4,7 @@ import { signOutAndClear } from "@/lib/auth";
 
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Video, FileText, LogOut, Clock, Loader2, CreditCard, Bug } from "lucide-react";
+import { LayoutDashboard, Video, FileText, LogOut, Clock, Loader2, CreditCard, Bug, Gift } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -71,6 +71,42 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
             </div>
         </>
     );
+}
+
+type PlanSummary = {
+    creditsRemaining: number;
+    trialStatus: "available" | "active" | "used";
+};
+
+function PlanCard() {
+    const [plan, setPlan] = useState<PlanSummary | null>(null);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        fetch("/api/billing/account", { cache: "no-store", signal: controller.signal })
+            .then(response => response.ok ? response.json() : null)
+            .then(payload => { if (payload) setPlan(payload as PlanSummary); })
+            .catch(() => undefined);
+        return () => controller.abort();
+    }, []);
+
+    const hasCredits = (plan?.creditsRemaining || 0) > 0;
+    const title = hasCredits ? "Interview credits" : "Free Plan";
+    const detail = hasCredits
+        ? `${plan?.creditsRemaining} interview credit${plan?.creditsRemaining === 1 ? "" : "s"} available.`
+        : plan?.trialStatus === "used"
+            ? "Your free session has been used. Buy credits to continue."
+            : plan?.trialStatus === "active"
+                ? "Your 10-minute free session is active."
+                : "Start a 10-minute free session or buy credits for full interviews.";
+
+    return <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-950">
+        <div className="flex items-center gap-2 font-semibold text-gray-950 dark:text-white"><Gift className="h-5 w-5 text-emerald-600" />{title}</div>
+        <p className="mt-3 text-sm leading-5 text-gray-500 dark:text-gray-400">{detail}</p>
+        <Link href="/dashboard/billing" className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
+            {hasCredits ? "Manage credits" : "Upgrade"}
+        </Link>
+    </div>;
 }
 
 export default function DashboardLayout({
@@ -143,6 +179,7 @@ export default function DashboardLayout({
                         <nav className="space-y-2">
                             <NavItems setMobileMenuOpen={setMobileMenuOpen} />
                         </nav>
+                        <PlanCard />
                     </div>
                 </aside>
 
