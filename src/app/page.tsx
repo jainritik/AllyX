@@ -40,7 +40,7 @@ const faqs = [
   ["Can I run an interview session on my phone or in a browser?", "No. Phones and browsers can be used for account setup, billing, and history. Live listening, screen capture, and the answer overlay require the AllyX desktop app on a supported Mac or Windows computer."],
   ["Can I try it before purchasing?", "Each account includes one trial of up to 10 minutes. Interview packs provide additional full interview sessions."],
   ["Does it work with technical interviews?", "Yes. You can paste questions and code, capture text from the screen, and provide resume and role context for more relevant answers."],
-  ["Will the pricing change?", "Interview packs do not expire after a single session starts; one completed interview uses one interview credit."],
+  ["Will my interview credits expire?", "Purchased interview credits remain in your account until you use them. Each interview uses one credit, and paid interview sessions do not have a fixed time limit."],
 ];
 
 function ProductPreview() {
