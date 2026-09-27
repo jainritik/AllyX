@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSystemAudioSource: () => ipcRenderer.invoke('get-system-audio-source'),
     startSystemAudioCapture: () => ipcRenderer.invoke('start-system-audio-capture'),
     stopSystemAudioCapture: () => ipcRenderer.invoke('stop-system-audio-capture'),
+    relaunchApp: () => ipcRenderer.send('relaunch-app'),
     onStopAudioSource: (callback) => {
         const wrapper = () => callback();
         ipcRenderer.on('stop-audio-source', wrapper);

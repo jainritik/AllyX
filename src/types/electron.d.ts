@@ -23,8 +23,9 @@ export interface ElectronAPI {
     setInterviewReady: (ready: boolean) => void;
     sendRecordingState: (state: { listening: boolean; meetingAudio: boolean; finalizing: boolean }) => void;
     // Audio
-    startSystemAudioCapture: () => Promise<{ success: boolean; sourceId?: string; error?: string }>;
+    startSystemAudioCapture: () => Promise<{ success: boolean; sourceId?: string; error?: string; permissionStatus?: string; restartRequired?: boolean }>;
     stopSystemAudioCapture: () => Promise<{ success: boolean }>;
+    relaunchApp: () => void;
     onStopAudioSource: (callback: () => void) => () => void;
     onAudioSourceReady: (callback: (sourceId: string) => void) => (() => void);
     // Events

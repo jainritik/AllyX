@@ -113,6 +113,7 @@ export default function InterviewPage() {
     const [interviewStartTime, setInterviewStartTime] = useState<Date>(new Date());
     const [manualQuestion, setManualQuestion] = useState(""); // Manual input for coding questions
     const [isScreenAudioActive, setIsScreenAudioActive] = useState(false);
+    const [capturePermissionNeedsRestart, setCapturePermissionNeedsRestart] = useState(false);
     const [isScreenCapturing, setIsScreenCapturing] = useState(false);
     const screenStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -730,10 +731,12 @@ export default function InterviewPage() {
         const result = await window.electronAPI?.startSystemAudioCapture();
         if (!result?.success || !result.sourceId) {
             const message = result?.error || "Meeting audio could not be started. Microphone listening is still available.";
+            setCapturePermissionNeedsRestart(Boolean(result?.restartRequired));
             setError(message);
             window.electronAPI?.sendOverlayStatus?.(message, "error");
             return false;
         }
+        setCapturePermissionNeedsRestart(false);
         return connectScreenAudio(result.sourceId);
     }, [connectScreenAudio, isElectron]);
 
@@ -1694,7 +1697,17 @@ export default function InterviewPage() {
                 <div className="fixed left-4 right-4 top-24 z-50 mx-auto flex max-w-2xl items-start gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-red-800 shadow-lg dark:border-red-800 dark:bg-red-950 dark:text-red-200">
                     <AlertCircle size={20} />
                     <span>{error}</span>
-                    <Button aria-label="Dismiss message" title="Dismiss" variant="ghost" size="sm" onClick={() => setError(null)} className="ml-auto h-7 w-7 shrink-0 rounded-full p-0 hover:bg-red-200 dark:hover:bg-red-900">
+                    {capturePermissionNeedsRestart && isElectron && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => window.electronAPI?.relaunchApp()}
+                            className="ml-auto shrink-0 bg-red-700 text-white hover:bg-red-800"
+                        >
+                            Restart AllyX
+                        </Button>
+                    )}
+                    <Button aria-label="Dismiss message" title="Dismiss" variant="ghost" size="sm" onClick={() => { setError(null); setCapturePermissionNeedsRestart(false); }} className={`${capturePermissionNeedsRestart ? '' : 'ml-auto'} h-7 w-7 shrink-0 rounded-full p-0 hover:bg-red-200 dark:hover:bg-red-900`}>
                         ×
                     </Button>
                 </div>

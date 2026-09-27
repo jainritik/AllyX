@@ -588,13 +588,25 @@ function setupIpcHandlers() {
     handleTrusted('start-system-audio-capture', async () => {
         try {
             if (isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
-            const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+            if (process.platform === 'darwin') {
+                const permissionStatus = systemPreferences.getMediaAccessStatus('screen');
+                if (permissionStatus === 'denied' || permissionStatus === 'restricted') {
+                    return {
+                        success: false,
+                        permissionStatus,
+                        restartRequired: true,
+                        error: 'macOS has not applied Screen & System Audio access to this AllyX process. Enable AllyX in System Settings, then restart AllyX once.',
+                    };
+                }
+            }
+            // Meeting audio uses the entire display source. Asking for window sources as
+            // well expands the macOS capture request without improving audio capture.
+            const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
             if (sources.length > 0) {
-                // Try to find a screen source first, then fall back to window
                 const bestSource = sources.find(s => s.id.startsWith('screen')) || sources[0];
                 return { success: true, sourceId: bestSource.id };
             }
-            return { success: false, error: "No screen or window sources found." };
+            return { success: false, error: "No display source was available for meeting audio." };
         } catch (err) {
             return { success: false, error: err.message };
         }
@@ -603,6 +615,12 @@ function setupIpcHandlers() {
     handleTrusted('stop-system-audio-capture', async () => {
         mainAppWindow?.webContents.send('stop-audio-source');
         return { success: true };
+    });
+
+    onTrusted('relaunch-app', () => {
+        isQuitting = true;
+        app.relaunch();
+        app.quit();
     });
 
     onTrusted('transcript-update', (event, text) => floatingIconWindow?.webContents.send('transcript', text));
