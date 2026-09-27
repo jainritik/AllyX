@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 // Bump minimumDesktopVersion when a renderer release requires a new native bridge.
 export function GET() {
-    return NextResponse.json({ rendererVersion: "1.3.8", minimumDesktopVersion: "1.3.5" }, {
+    return NextResponse.json({ rendererVersion: "1.3.9", minimumDesktopVersion: "1.3.9" }, {
         headers: { "Cache-Control": "no-store" },
     });
 }

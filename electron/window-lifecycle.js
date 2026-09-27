@@ -2,4 +2,8 @@ function shouldPreventWindowClose(isQuitting) {
     return !isQuitting;
 }
 
-module.exports = { shouldPreventWindowClose };
+function shouldShowInterviewOverlay({ rendererReady, isInterviewPage, presentationSafeMode }) {
+    return Boolean(rendererReady && isInterviewPage && !presentationSafeMode);
+}
+
+module.exports = { shouldPreventWindowClose, shouldShowInterviewOverlay };

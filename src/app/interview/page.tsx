@@ -629,9 +629,9 @@ export default function InterviewPage() {
     }), [answerTruncated, contextReady, getAiAnswer]);
 
     useEffect(() => {
-        window.electronAPI?.setInterviewReady?.(contextReady);
+        window.electronAPI?.setInterviewReady?.(contextReady && accessReady);
         return () => window.electronAPI?.setInterviewReady?.(false);
-    }, [contextReady]);
+    }, [accessReady, contextReady]);
 
     // Silence Detection for Auto-Answer
     useEffect(() => {

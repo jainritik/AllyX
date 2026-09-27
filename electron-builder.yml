@@ -38,7 +38,7 @@ nsis:
 mac:
   target:
     - dmg
-  icon: electron/assets/icon.png
+  icon: electron/assets/icon.icns
   artifactName: AllyX-${version}-${arch}.${ext}
   category: public.app-category.productivity
   extendInfo:

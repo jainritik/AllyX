@@ -4,7 +4,7 @@ const os = require('os');
 const fs = require('fs/promises');
 const { createCapturePrivacy } = require('./capture-privacy');
 const { allowAppNavigation } = require('./navigation-policy');
-const { shouldPreventWindowClose } = require('./window-lifecycle');
+const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
 const capturePrivacy = createCapturePrivacy({
@@ -111,7 +111,10 @@ function setPresentationSafeMode(active) {
     } else if (mainAppWindow && !mainAppWindow.isDestroyed()) {
         mainAppWindow.show();
         mainAppWindow.focus();
-        floatingIconWindow?.showInactive();
+        if (canShowInterviewOverlay() && (!floatingIconWindow || floatingIconWindow.isDestroyed())) {
+            createFloatingIcon();
+        }
+        if (canShowInterviewOverlay()) floatingIconWindow?.showInactive();
         isAppVisible = true;
     }
 
@@ -121,7 +124,7 @@ function setPresentationSafeMode(active) {
 
 // --- STEALTH SCANNER FRAME ---
 function createScannerFrame() {
-    if (isPresentationSafeMode) return;
+    if (isPresentationSafeMode || !isInterviewRendererReady || !isInterviewSessionPage()) return;
     // v19.0 FIX: Remove listeners from old window before destroying to prevent race condition "closed" signals
     if (scannerFrameWindow) {
         try {
@@ -191,6 +194,9 @@ function broadcastScannerState(active) {
 }
 
 function createFloatingIcon() {
+    if (!canShowInterviewOverlay()) return null;
+    if (floatingIconWindow && !floatingIconWindow.isDestroyed()) return floatingIconWindow;
+
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width } = primaryDisplay.workAreaSize;
     const centerX = Math.round((width / 2) - 28);
@@ -222,11 +228,18 @@ function createFloatingIcon() {
     if (process.platform === 'win32') {
         floatingIconWindow.setAlwaysOnTop(true, 'screen-saver', 10);
     }
+    floatingIconWindow.setIgnoreMouseEvents(!isOverlayInteractive, { forward: true });
+    floatingIconWindow.setFocusable(isOverlayInteractive);
 
     floatingIconWindow.loadFile(path.join(__dirname, 'overlay.html'));
     floatingIconWindow.once('ready-to-show', () => {
-        if (!isPresentationSafeMode) floatingIconWindow?.show();
+        if (canShowInterviewOverlay()) floatingIconWindow?.showInactive();
     });
+    floatingIconWindow.on('closed', () => {
+        floatingIconWindow = null;
+        updateTrayMenu();
+    });
+    return floatingIconWindow;
 }
 
 function setOverlayInteractive(active) {
@@ -235,7 +248,7 @@ function setOverlayInteractive(active) {
     floatingIconWindow.setIgnoreMouseEvents(!isOverlayInteractive, { forward: true });
     floatingIconWindow.setFocusable(isOverlayInteractive);
     floatingIconWindow.webContents.send('overlay-interaction-changed', isOverlayInteractive);
-    if (isOverlayInteractive && !isPresentationSafeMode) {
+    if (isOverlayInteractive && canShowInterviewOverlay()) {
         floatingIconWindow.showInactive();
     }
     return isOverlayInteractive;
@@ -291,11 +304,17 @@ function createMainAppWindow() {
     // Notify renderer if page fails to load
     mainAppWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
         console.error(`[App] Load fail: ${errorDescription} (${errorCode})`);
+        closeInterviewWindows();
         mainAppWindow.webContents.send('load-error', errorDescription);
     });
     mainAppWindow.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) isInterviewRendererReady = false;
+        if (isMainFrame && !isInPlace) closeInterviewWindows();
     });
+    mainAppWindow.webContents.on('did-navigate', (event, url) => syncInterviewWindowLifecycle(url));
+    mainAppWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
+        if (isMainFrame) syncInterviewWindowLifecycle(url);
+    });
+    mainAppWindow.webContents.on('render-process-gone', () => closeInterviewWindows());
 
     loadAppContent();
     mainAppWindow.once('ready-to-show', () => {
@@ -403,6 +422,31 @@ function isInterviewSessionPage() {
     catch { return false; }
 }
 
+function canShowInterviewOverlay() {
+    return shouldShowInterviewOverlay({
+        rendererReady: isInterviewRendererReady,
+        isInterviewPage: isInterviewSessionPage(),
+        presentationSafeMode: isPresentationSafeMode,
+    });
+}
+
+function closeInterviewWindows() {
+    isInterviewRendererReady = false;
+    closeScannerFrame();
+    if (floatingIconWindow && !floatingIconWindow.isDestroyed()) {
+        floatingIconWindow.destroy();
+    }
+    floatingIconWindow = null;
+    updateTrayMenu();
+}
+
+function syncInterviewWindowLifecycle(url) {
+    try {
+        if (new URL(url).pathname === '/interview') return;
+    } catch { /* Treat invalid or empty navigation targets as outside the interview. */ }
+    closeInterviewWindows();
+}
+
 function setupIpcHandlers() {
     const onTrusted = (channel, handler) => ipcMain.on(channel, (event, ...args) => {
         if (!isTrustedPage(event, channel)) return;
@@ -435,7 +479,7 @@ function setupIpcHandlers() {
             }
             return { active: false };
         } else {
-            if (!isInterviewSessionPage()) return { active: false, error: 'Start an interview session in the main window first.' };
+            if (!isInterviewSessionPage() || !isInterviewRendererReady) return { active: false, error: 'Wait for the interview session to finish loading.' };
             createScannerFrame();
             return { active: true };
         }
@@ -566,6 +610,12 @@ function setupIpcHandlers() {
     });
     onTrusted('interview-ready', (event, ready) => {
         isInterviewRendererReady = Boolean(ready) && isInterviewSessionPage();
+        if (!isInterviewRendererReady) {
+            closeInterviewWindows();
+            return;
+        }
+        createFloatingIcon();
+        updateTrayMenu();
     });
     onTrusted('resize-overlay', (event, { width, height }) => {
         if (!Number.isFinite(width) || !Number.isFinite(height)) return;
@@ -618,11 +668,11 @@ function updateTrayMenu() {
             click: () => setPresentationSafeMode(!isPresentationSafeMode)
         },
         { label: 'Open Assistant', enabled: !isPresentationSafeMode, click: () => toggleApp() },
-        { label: 'Show Answer Overlay', enabled: !isPresentationSafeMode, click: () => floatingIconWindow?.showInactive() },
+        { label: 'Show Answer Overlay', enabled: canShowInterviewOverlay(), click: () => floatingIconWindow?.showInactive() },
         {
             label: isOverlayInteractive ? 'Make Overlay Click-through' : 'Make Overlay Interactive',
             accelerator: 'CommandOrControl+Shift+O',
-            enabled: !isPresentationSafeMode,
+            enabled: canShowInterviewOverlay(),
             click: () => setOverlayInteractive(!isOverlayInteractive)
         },
         { type: 'separator' },
@@ -654,7 +704,6 @@ async function initialize() {
     appSession.setPermissionCheckHandler((wc, permission) => allowedPermission(wc, permission));
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
-    createFloatingIcon();
     createMainAppWindow();
     createTray();
     setupIpcHandlers();
@@ -662,7 +711,7 @@ async function initialize() {
         setPresentationSafeMode(!isPresentationSafeMode);
     });
     globalShortcut.register('CommandOrControl+Shift+O', () => {
-        if (!isPresentationSafeMode) setOverlayInteractive(!isOverlayInteractive);
+        if (canShowInterviewOverlay()) setOverlayInteractive(!isOverlayInteractive);
     });
 
 
