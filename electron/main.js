@@ -7,7 +7,7 @@ const { allowAppNavigation } = require('./navigation-policy');
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
-const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
+const { isAllowedMainWindowMediaPermission, shouldAttemptScreenCapturePermission } = require('./media-permission-policy');
 const capturePrivacy = createCapturePrivacy({
     platform: process.platform,
     release: os.release(),
@@ -57,6 +57,7 @@ let isScannerFrameOpen = false;
 let isPresentationSafeMode = false;
 let isOverlayInteractive = true;
 let isInterviewRendererReady = false;
+let screenPermissionRequestAttempted = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -507,9 +508,10 @@ function setupIpcHandlers() {
             if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
             if (process.platform === 'darwin') {
                 const permission = systemPreferences.getMediaAccessStatus('screen');
-                if (permission === 'denied' || permission === 'restricted') {
+                if (!shouldAttemptScreenCapturePermission(permission, screenPermissionRequestAttempted)) {
                     return { success: false, error: 'Allow AllyX in System Settings → Privacy & Security → Screen & System Audio Recording, then restart AllyX.' };
                 }
+                if (permission !== 'granted') screenPermissionRequestAttempted = true;
             }
             const display = screen.getDisplayMatching(bounds);
             calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
@@ -591,7 +593,7 @@ function setupIpcHandlers() {
             if (isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (process.platform === 'darwin') {
                 const permissionStatus = systemPreferences.getMediaAccessStatus('screen');
-                if (permissionStatus === 'denied' || permissionStatus === 'restricted') {
+                if (!shouldAttemptScreenCapturePermission(permissionStatus, screenPermissionRequestAttempted)) {
                     return {
                         success: false,
                         permissionStatus,
@@ -599,6 +601,10 @@ function setupIpcHandlers() {
                         error: 'macOS has not applied Screen & System Audio access to this AllyX process. Enable AllyX in System Settings, then restart AllyX once.',
                     };
                 }
+                // After a stale permission record is cleared, macOS may report
+                // `denied` until one capture attempt registers the current app
+                // identity. Permit that bootstrap attempt once per app launch.
+                if (permissionStatus !== 'granted') screenPermissionRequestAttempted = true;
             }
             // Meeting audio uses the entire display source. Asking for window sources as
             // well expands the macOS capture request without improving audio capture.
