@@ -56,6 +56,11 @@ let isScannerFrameOpen = false;
 let isPresentationSafeMode = false;
 let isOverlayInteractive = true;
 let isInterviewRendererReady = false;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+    app.quit();
+}
 
 const isDev = !app.isPackaged;
 const APP_URL = process.env.ALLYX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://allyx.vercel.app');
@@ -751,7 +756,18 @@ async function initialize() {
 
 }
 
-app.whenReady().then(initialize);
+if (hasSingleInstanceLock) {
+    app.on('second-instance', () => showApp());
+    app.whenReady().then(initialize);
+}
+app.on('activate', () => {
+    if (!app.isReady() || isQuitting || isPresentationSafeMode) return;
+    if (!mainAppWindow || mainAppWindow.isDestroyed()) {
+        createMainAppWindow();
+    } else {
+        showApp();
+    }
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => {
     isQuitting = true;
