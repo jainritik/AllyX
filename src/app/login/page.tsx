@@ -25,10 +25,19 @@ export default function LoginPage() {
 
     useEffect(() => {
         setIsDesktop(Boolean(window.electronAPI?.isElectron));
+        let active = true;
+        const timeout = window.setTimeout(() => {
+            if (active) setChecking(false);
+        }, 3500);
         void supabase.auth.getSession().then(({ data }) => {
+            if (!active) return;
+            window.clearTimeout(timeout);
             if (data.session?.user) window.location.replace(destination());
             else setChecking(false);
-        }).catch(() => setChecking(false));
+        }).catch(() => {
+            if (active) setChecking(false);
+        });
+        return () => { active = false; window.clearTimeout(timeout); };
     }, []);
 
     useEffect(() => {
@@ -94,13 +103,13 @@ export default function LoginPage() {
                 {notice && <p role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">{notice}</p>}
 
                 {step === "choice" ? <div className="mt-7 space-y-4">
-                    {!isDesktop && <Button type="button" disabled={busy} onClick={continueWithGoogle} className="h-14 w-full rounded-2xl bg-[#171719] text-base font-semibold text-white shadow-sm hover:bg-black">
+                    <Button type="button" disabled={busy} onClick={continueWithGoogle} className="h-14 w-full rounded-2xl bg-[#171719] text-base font-semibold text-white shadow-sm hover:bg-black">
                             <svg className="mr-3 h-5 w-5" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09A6.5 6.5 0 0 1 5.49 12c0-.73.13-1.43.35-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.78.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.56 10.56 0 0 0 12 1C7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
                             Continue with Google
-                    </Button>}
-                    {!isDesktop && <div className="flex items-center gap-3 text-xs uppercase text-gray-400"><span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />or<span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" /></div>}
+                    </Button>
+                    <div className="flex items-center gap-3 text-xs uppercase text-gray-400"><span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />or<span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" /></div>
                     <Button type="button" variant="outline" onClick={() => setStep("email")} className="h-14 w-full rounded-2xl border-gray-300 bg-white text-base font-semibold text-gray-950 shadow-sm hover:bg-gray-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">Continue with Email</Button>
-                    {isDesktop && <p className="text-center text-xs text-gray-500">Google sign-in opens on the AllyX website. Use your email code in the desktop app.</p>}
+                    {isDesktop && <p className="text-center text-xs leading-5 text-gray-500">Google sign-in and email codes both create or open the same AllyX account.</p>}
                 </div> : step === "email" ? <>
                     <form onSubmit={sendCode} className="mt-7">
                         <label htmlFor="login-email" className="text-sm font-semibold">Email address</label>

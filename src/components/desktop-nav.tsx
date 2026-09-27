@@ -64,6 +64,10 @@ export function DesktopNavBar() {
         window.electronAPI?.hideApp();
     };
 
+    const handleQuit = () => {
+        window.electronAPI?.quitApp();
+    };
+
     const handlePresentationSafeMode = () => {
         window.electronAPI?.setPresentationSafeMode(true);
     };
@@ -148,6 +152,12 @@ export function DesktopNavBar() {
                                         Hide App
                                     </button>
                                     <button
+                                        onClick={handleQuit}
+                                        className="w-full px-3 py-2 text-left text-sm font-semibold text-red-400 hover:bg-zinc-800 transition-colors"
+                                    >
+                                        Quit AllyX
+                                    </button>
+                                    <button
                                         onClick={handleSignOut}
                                         className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-800 transition-colors"
                                     >
@@ -166,6 +176,15 @@ export function DesktopNavBar() {
                         Sign In
                     </button>
                 )}
+                <button
+                    onClick={handleQuit}
+                    className="ml-1 flex h-8 w-8 items-center justify-center rounded-md bg-red-500/80 text-lg font-bold leading-none text-white transition-colors hover:bg-red-500"
+                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                    title="Quit AllyX"
+                    aria-label="Quit AllyX"
+                >
+                    ×
+                </button>
             </div>
 
             {/* Click outside to close dropdown */}

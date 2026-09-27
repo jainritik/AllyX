@@ -12,6 +12,8 @@ const OVERLAY_CHANNELS = new Set([
     'get-overlay-state',
     'submit-overlay-question',
     'continue-overlay-answer',
+    'toggle-overlay-listening',
+    'end-overlay-interview',
     'toggle-scanner-frame',
 ]);
 

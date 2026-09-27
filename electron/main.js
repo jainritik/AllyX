@@ -283,7 +283,11 @@ function createMainAppWindow() {
             partition: 'persist:main'
         }
     });
-    allowAppNavigation(mainAppWindow, APP_ORIGIN, url => shell.openExternal(url));
+    allowAppNavigation(mainAppWindow, APP_ORIGIN, url => shell.openExternal(url), [
+        'https://eslcatxyhshjlgukkfhc.supabase.co',
+        'https://accounts.google.com',
+        'https://accounts.googleusercontent.com',
+    ]);
 
     const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     mainAppWindow.webContents.setUserAgent(userAgent);
@@ -441,10 +445,16 @@ function closeInterviewWindows() {
 }
 
 function syncInterviewWindowLifecycle(url) {
+    const wasInterviewReady = isInterviewRendererReady;
     try {
         if (new URL(url).pathname === '/interview') return;
     } catch { /* Treat invalid or empty navigation targets as outside the interview. */ }
     closeInterviewWindows();
+    if (wasInterviewReady && !isPresentationSafeMode && mainAppWindow && !mainAppWindow.isDestroyed()) {
+        mainAppWindow.show();
+        mainAppWindow.focus();
+        isAppVisible = true;
+    }
 }
 
 function setupIpcHandlers() {
@@ -577,7 +587,6 @@ function setupIpcHandlers() {
             if (sources.length > 0) {
                 // Try to find a screen source first, then fall back to window
                 const bestSource = sources.find(s => s.id.startsWith('screen')) || sources[0];
-                mainAppWindow?.webContents.send('audio-source-ready', bestSource.id);
                 return { success: true, sourceId: bestSource.id };
             }
             return { success: false, error: "No screen or window sources found." };
@@ -615,6 +624,10 @@ function setupIpcHandlers() {
             return;
         }
         createFloatingIcon();
+        if (mainAppWindow && !mainAppWindow.isDestroyed()) {
+            mainAppWindow.hide();
+            isAppVisible = false;
+        }
         updateTrayMenu();
     });
     onTrusted('resize-overlay', (event, { width, height }) => {
@@ -641,6 +654,27 @@ function setupIpcHandlers() {
         }
         mainAppWindow.webContents.send('overlay-continue-answer');
         return { success: true };
+    });
+    handleTrusted('toggle-overlay-listening', async () => {
+        if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewSessionPage() || !isInterviewRendererReady) {
+            return { success: false, error: 'Start an interview session first.' };
+        }
+        mainAppWindow.webContents.send('overlay-toggle-listening');
+        return { success: true };
+    });
+    handleTrusted('end-overlay-interview', async () => {
+        if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewSessionPage() || !isInterviewRendererReady) {
+            return { success: false, error: 'No active interview session was found.' };
+        }
+        mainAppWindow.webContents.send('overlay-end-interview');
+        return { success: true };
+    });
+    onTrusted('recording-state-update', (event, state) => {
+        floatingIconWindow?.webContents.send('recording-state', {
+            listening: Boolean(state?.listening),
+            meetingAudio: Boolean(state?.meetingAudio),
+            finalizing: Boolean(state?.finalizing),
+        });
     });
 
     // Updater IPCs

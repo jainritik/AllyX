@@ -112,7 +112,9 @@ The development shell loads `http://localhost:3000`. Authentication, Groq calls,
 
 ## Desktop overlay
 
-Generated questions and answers are forwarded from the interview page to a separate transparent Electron window. A new answer opens the overlay automatically.
+During an active interview, the main setup window hides and the transparent overlay becomes the single working surface. The overlay starts/stops listening, shows live questions and streamed answers, accepts pasted questions or code, opens OCR capture, and ends the interview. Ending returns to the dashboard, whose red × and account menu both provide **Quit AllyX**.
+
+**Start listening** requests both sources together: the microphone captures the candidate and meeting audio captures the interviewer/application sound. Meeting audio requires the macOS **Screen & System Audio Recording** permission. If that source is unavailable, microphone capture continues and the overlay reports which source is missing.
 
 | Control | macOS | Windows |
 | --- | --- | --- |
@@ -126,6 +128,8 @@ Use the overlay header to:
 - Switch between expanded and compact layouts.
 - Hide only the overlay.
 - Change opacity and answer text size.
+- Start or stop microphone plus meeting-audio listening.
+- End and save the interview.
 
 In click-through mode, mouse input goes to the editor or application below the overlay. Use the keyboard shortcut to make the overlay interactive again.
 

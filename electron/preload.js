@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     submitOverlayQuestion: (question) => ipcRenderer.invoke('submit-overlay-question', question),
     continueOverlayAnswer: () => ipcRenderer.invoke('continue-overlay-answer'),
+    toggleOverlayListening: () => ipcRenderer.invoke('toggle-overlay-listening'),
+    endOverlayInterview: () => ipcRenderer.invoke('end-overlay-interview'),
+    sendRecordingState: (state) => ipcRenderer.send('recording-state-update', state),
     onOverlayManualQuestion: (callback) => {
         const wrapper = (event, question) => callback(question);
         ipcRenderer.on('overlay-manual-question', wrapper);
@@ -56,6 +59,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const wrapper = () => callback();
         ipcRenderer.on('overlay-continue-answer', wrapper);
         return () => ipcRenderer.removeListener('overlay-continue-answer', wrapper);
+    },
+    onOverlayToggleListening: (callback) => {
+        const wrapper = () => callback();
+        ipcRenderer.on('overlay-toggle-listening', wrapper);
+        return () => ipcRenderer.removeListener('overlay-toggle-listening', wrapper);
+    },
+    onOverlayEndInterview: (callback) => {
+        const wrapper = () => callback();
+        ipcRenderer.on('overlay-end-interview', wrapper);
+        return () => ipcRenderer.removeListener('overlay-end-interview', wrapper);
+    },
+    onRecordingState: (callback) => {
+        const wrapper = (event, state) => callback(state);
+        ipcRenderer.on('recording-state', wrapper);
+        return () => ipcRenderer.removeListener('recording-state', wrapper);
     },
 
     // Compatibility shims for the currently deployed renderer. The owner-

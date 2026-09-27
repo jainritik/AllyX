@@ -21,6 +21,7 @@ export interface ElectronAPI {
     sendCapturedText: (text: string) => void;
     sendOverlayStatus: (message: string, tone: "progress" | "success" | "error", action?: "continue") => void;
     setInterviewReady: (ready: boolean) => void;
+    sendRecordingState: (state: { listening: boolean; meetingAudio: boolean; finalizing: boolean }) => void;
     // Audio
     startSystemAudioCapture: () => Promise<{ success: boolean; sourceId?: string; error?: string }>;
     stopSystemAudioCapture: () => Promise<{ success: boolean }>;
@@ -38,8 +39,13 @@ export interface ElectronAPI {
     onOverlayInteractionChange: (callback: (interactive: boolean) => void) => () => void;
     submitOverlayQuestion: (question: string) => Promise<{ success: boolean; error?: string }>;
     continueOverlayAnswer: () => Promise<{ success: boolean; error?: string }>;
+    toggleOverlayListening: () => Promise<{ success: boolean; error?: string }>;
+    endOverlayInterview: () => Promise<{ success: boolean; error?: string }>;
     onOverlayManualQuestion: (callback: (question: string) => void) => () => void;
     onOverlayContinueAnswer: (callback: () => void) => () => void;
+    onOverlayToggleListening: (callback: () => void) => () => void;
+    onOverlayEndInterview: (callback: () => void) => () => void;
+    onRecordingState: (callback: (state: { listening: boolean; meetingAudio: boolean; finalizing: boolean }) => void) => () => void;
     downloadUpdate: () => void;
     installUpdate: () => void;
     onUpdateAvailable: (callback: (version: string) => void) => () => void;

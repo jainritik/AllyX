@@ -61,8 +61,8 @@ export default function HowToUsePage() {
 
     const instructions = [
         {
-            title: "Smart Mic Control",
-            description: "Listen when the interviewer asks, then STOP the mic when you start answering. This prevents the AI from hearing your own voice and getting confused.",
+            title: "One listening control",
+            description: "Start listening from the overlay. AllyX uses your microphone for your voice and meeting audio for the interviewer's voice. Stop listening while you answer if you do not want your response transcribed.",
             icon: <Mic className="w-8 h-8" />,
             color: "from-emerald-500 to-green-500",
             bg: "bg-emerald-500/10",
@@ -71,7 +71,7 @@ export default function HowToUsePage() {
         {
             title: isElectron ? "Meeting Audio" : "Interview Context",
             description: isElectron
-                ? "Listen to sound from your computer so the interviewer's voice can be transcribed clearly."
+                ? "Meeting audio requires Screen & System Audio permission on macOS. If it is unavailable, microphone listening still works and AllyX tells you which source is active."
                 : "The AI uses your role context, answer style, and resume to tailor its suggestions.",
             icon: isElectron ? <Monitor className="w-8 h-8" /> : <Info className="w-8 h-8" />,
             color: "from-teal-500 to-emerald-600",

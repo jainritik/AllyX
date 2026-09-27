@@ -80,10 +80,13 @@ export default function InterviewPage() {
     const recordingStartRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
+    const transcriptionQueueRef = useRef<Promise<void>>(Promise.resolve());
     const draftHydratedRef = useRef(false);
     const sessionIdRef = useRef("");
     const fullTranscriptRef = useRef("");
     const historySavedRef = useRef(false);
+    const toggleRecordingActionRef = useRef<() => void>(() => {});
+    const endInterviewActionRef = useRef<() => void>(() => {});
 
     // API Key no longer needed - using server-side Groq
     const [showSettings, setShowSettings] = useState(false);
@@ -116,6 +119,7 @@ export default function InterviewPage() {
     const analyserRef = useRef<AnalyserNode | null>(null);
     const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const screenSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+    const screenSourceIdRef = useRef<string | null>(null);
     const [isScannerActive, setIsScannerActive] = useState(false);
     const [hasMounted, setHasMounted] = useState(false);
     const [contextReady, setContextReady] = useState(false);
@@ -426,8 +430,10 @@ export default function InterviewPage() {
            - For technical or general questions, provide accurate, practical explanations.
         3. **DYNAMIC LENGTH (CRITICAL)**:
            - Adjust your length based on the question. 
-           - If the question is simple or introductory, be brief and punchy.
-           - If the question is technical, architectural, or complex, provide a detailed, logical, and well-structured explanation that demonstrates deep expertise.
+           - For a simple factual question, give a complete answer in roughly 3-6 spoken sentences.
+           - For technical questions, explain the approach, key trade-offs, edge cases, and a concrete example. Aim for a natural 60-90 second spoken answer unless the user requested another length.
+           - For coding questions, state the algorithm, provide correct readable code when useful, and finish with time/space complexity and edge cases.
+           - For architecture and system-design questions, clarify assumptions, describe components and data flow, then cover scaling, reliability, security, observability, and trade-offs.
         4. **INTERVIEW STRATEGY**: Focus on problem-solving, impact, and clarity. State uncertainty instead of fabricating facts.
         5. **LANGUAGE**: Strictly use ${interviewContext.lang}.
            - If 'ar-EG', use professional Egyptian Arabic (Ammiya) but keep technical terms in English where appropriate. Avoid overly formal Fusha.
@@ -647,7 +653,7 @@ export default function InterviewPage() {
                 }
                 console.log("Auto-answering after confirmed silence...");
                 getAiAnswer();
-            }, isElectron ? 1600 : 1800);
+            }, isElectron ? 3200 : 2200);
         };
         waitForCompleteQuestion();
 
@@ -663,6 +669,7 @@ export default function InterviewPage() {
             screenStreamRef.current.getTracks().forEach(t => t.stop());
             screenStreamRef.current = null;
         }
+        screenSourceIdRef.current = null;
         if (screenSourceRef.current) {
             screenSourceRef.current.disconnect();
             screenSourceRef.current = null;
@@ -673,89 +680,76 @@ export default function InterviewPage() {
 
     useEffect(() => window.electronAPI?.onStopAudioSource?.(() => stopScreenAudio()), [stopScreenAudio]);
 
+    const connectScreenAudio = useCallback(async (sourceId: string) => {
+        if (screenSourceIdRef.current === sourceId && screenStreamRef.current) return true;
+        const epoch = screenCaptureEpochRef.current;
+        try {
+            if (!navigator.mediaDevices?.getUserMedia) throw new Error("System audio capture is not supported.");
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    // @ts-expect-error Electron desktop-capture constraint
+                    mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId }
+                },
+                video: {
+                    // @ts-expect-error Electron desktop-capture constraint
+                    mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId }
+                }
+            });
+            if (epoch !== screenCaptureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
+                stream.getTracks().forEach(track => track.stop());
+                return false;
+            }
+            screenStreamRef.current?.getTracks().forEach(track => track.stop());
+            screenStreamRef.current = stream;
+            screenSourceIdRef.current = sourceId;
+            setIsScreenAudioActive(true);
+            if (audioContextRef.current && analyserRef.current) {
+                screenSourceRef.current?.disconnect();
+                const source = audioContextRef.current.createMediaStreamSource(stream);
+                source.connect(analyserRef.current);
+                screenSourceRef.current = source;
+            }
+            const endedTrack = stream.getVideoTracks()[0] || stream.getAudioTracks()[0];
+            if (endedTrack) endedTrack.onended = () => {
+                stopScreenAudio();
+                if (!sessionEndingRef.current) setError("Meeting audio stopped. Press Start listening to reconnect it.");
+            };
+            return true;
+        } catch (error) {
+            console.error("[Meeting Audio] Failed:", error);
+            setIsScreenAudioActive(false);
+            const message = "Microphone is available, but meeting audio needs Screen & System Audio permission in macOS Settings.";
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return false;
+        }
+    }, [stopScreenAudio]);
+
+    const startMeetingAudio = useCallback(async () => {
+        if (!isElectron || screenStreamRef.current) return Boolean(screenStreamRef.current);
+        const result = await window.electronAPI?.startSystemAudioCapture();
+        if (!result?.success || !result.sourceId) {
+            const message = result?.error || "Meeting audio could not be started. Microphone listening is still available.";
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return false;
+        }
+        return connectScreenAudio(result.sourceId);
+    }, [connectScreenAudio, isElectron]);
+
     const toggleScreenAudio = async () => {
         if (!isElectron) return;
-
         if (isScreenAudioActive) {
             stopScreenAudio();
-            window.electronAPI?.stopSystemAudioCapture();
+            await window.electronAPI?.stopSystemAudioCapture();
         } else {
-            console.log("[Screen Audio] Requesting capture...");
-            const result = await window.electronAPI?.startSystemAudioCapture();
-            console.log("[Screen Audio] Capture request result:", result);
-            if (result && !result.success) {
-                console.error("[Screen Audio] Capture request failed:", result.error);
-                setError(result.error || "Failed to start screen capture.");
-            }
+            await startMeetingAudio();
         }
     };
 
-    useEffect(() => {
-        if (!isElectron) return;
-
-        const cleanup = window.electronAPI?.onAudioSourceReady(async (sourceId: string) => {
-            console.log("[Screen Audio] Source ID received:", sourceId);
-            const epoch = screenCaptureEpochRef.current;
-            try {
-                if (!navigator.mediaDevices?.getUserMedia) {
-                    throw new Error("System audio capture not supported.");
-                }
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        // @ts-expect-error: mandatory is non-standard but required for Electron desktop capture
-                        mandatory: {
-                            chromeMediaSource: 'desktop',
-                            chromeMediaSourceId: sourceId
-                        }
-                    },
-                    video: {
-                        // @ts-expect-error: mandatory is non-standard but required for Electron desktop capture
-                        mandatory: {
-                            chromeMediaSource: 'desktop',
-                            chromeMediaSourceId: sourceId
-                        }
-                    }
-                });
-                if (epoch !== screenCaptureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
-                    stream.getTracks().forEach(track => track.stop());
-                    return;
-                }
-
-                screenStreamRef.current = stream;
-                setIsScreenAudioActive(true);
-
-                // If recording is already active, connect this new stream to existing context
-                if (isRecording && audioContextRef.current && analyserRef.current) {
-                    try {
-                        const screenSource = audioContextRef.current.createMediaStreamSource(stream);
-                        screenSource.connect(analyserRef.current);
-                        screenSourceRef.current = screenSource;
-                        console.log("[Screen Audio] Stream mixed into active recording");
-                    } catch (e: unknown) {
-                        console.error("[Screen Audio] Failed to mix stream:", e as Error);
-                    }
-                }
-
-                // Monitor for capture stop (user clicks "Stop Sharing" in OS)
-                const videoTrack = stream.getVideoTracks()[0];
-                if (videoTrack) videoTrack.onended = () => {
-                    console.log("[Screen Audio] Capture stopped by OS");
-                    stopScreenAudio();
-                    if (!sessionEndingRef.current) setError("System audio capture stopped. Press the System Audio button to reconnect it.");
-                };
-
-            } catch (err: unknown) {
-                console.error("[Screen Audio] Failed to get stream:", err as Error);
-                setIsScreenAudioActive(false);
-                setError("System audio capture failed (Permission or selection issue).");
-            }
-        });
-
-        return () => {
-            // onAudioSourceReady doesn't return a cleanup in some versions, check if it does
-            if (typeof cleanup === 'function') (cleanup as () => void)();
-        };
-    }, [isElectron, isRecording, stopScreenAudio]);
+    useEffect(() => window.electronAPI?.onAudioSourceReady?.((sourceId: string) => {
+        void connectScreenAudio(sourceId);
+    }), [connectScreenAudio]);
 
     // --- DESKTOP STT (Groq Whisper with Silence Detection) ---
     const activeStreamsRef = useRef<MediaStream[]>([]);
@@ -790,7 +784,7 @@ export default function InterviewPage() {
             console.log(`[Desktop STT] Sending audio with language: ${langCode}`);
 
             let response;
-            let retries = 0;
+            let retries = 2;
             let delay = 1000;
 
             while (retries >= 0) {
@@ -940,7 +934,7 @@ export default function InterviewPage() {
             micSourceRef.current = micSource;
 
             // 4. Connect Screen Audio (if already active)
-            if (isScreenAudioActive && screenStreamRef.current) {
+            if (screenStreamRef.current) {
                 try {
                     const screenSource = audioContext.createMediaStreamSource(screenStreamRef.current);
                     screenSource.connect(analyser);
@@ -954,8 +948,8 @@ export default function InterviewPage() {
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
             // VAD Parameters (Ultra-Low Latency Mode)
-            const SPEECH_THRESHOLD = 12;        // Increased sensitivity for system audio
-            const SILENCE_DURATION = 800;       // 0.8s silence = End of sentence (Fast & snappy)
+            const SPEECH_THRESHOLD = 6;         // Sensitive enough for quiet laptop microphones
+            const SILENCE_DURATION = 1300;      // Avoid splitting a question at a short speaking pause
             const MIN_SPEECH_DURATION = 500;    // Allow short sentences
             const MAX_RECORDING_TIME = 15000;   // Force send after 15s
 
@@ -1018,7 +1012,9 @@ export default function InterviewPage() {
                                 if (duration < MIN_SPEECH_DURATION || ownedChunks.length === 0) return;
                                 const fullAudio = new Blob(ownedChunks, { type: 'audio/webm' });
                                 console.log(`[VAD] Sending ${(fullAudio.size / 1024).toFixed(1)}KB...`);
-                                await processGroqAudio(fullAudio);
+                                transcriptionQueueRef.current = transcriptionQueueRef.current
+                                    .then(() => processGroqAudio(fullAudio));
+                                await transcriptionQueueRef.current;
                             } finally {
                                 try { micSource.disconnect(dest); } catch { /* already disconnected */ }
                                 try { screenSourceAtStart?.disconnect(dest); } catch { /* already disconnected */ }
@@ -1176,6 +1172,10 @@ export default function InterviewPage() {
             } finally {
                 setIsFinalizingCapture(false);
             }
+            if (isElectron) {
+                stopScreenAudio();
+                void window.electronAPI?.stopSystemAudioCapture().catch(console.error);
+            }
 
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             console.log("[Interview] Recording stopped");
@@ -1219,6 +1219,10 @@ export default function InterviewPage() {
 
             // STEP 2: Desktop Only - Start High-Quality mixed audio STT
             if (isElectron) {
+                // One Start action listens to both people: microphone for the candidate,
+                // meeting audio for the interviewer. If macOS blocks meeting audio, mic
+                // capture still starts and the overlay explains the missing permission.
+                await startMeetingAudio();
                 const started = await startDesktopSTT();
                 if (!started) return;
             }
@@ -1234,6 +1238,7 @@ export default function InterviewPage() {
             recordingStartRef.current = false;
         }
     };
+    toggleRecordingActionRef.current = () => { void toggleRecording(); };
 
     // Initialize Speech Recognition (website only)
     useEffect(() => {
@@ -1591,14 +1596,15 @@ export default function InterviewPage() {
         // Only save if there's meaningful content
         if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
             try {
-                await interviewAccess.finish(sessionIdRef.current);
+                try {
+                    await interviewAccess.finish(sessionIdRef.current);
+                } catch (finishError) {
+                    console.warn("Session close will retry from the dashboard:", finishError);
+                    localStorage.setItem("allyx_pending_finish", sessionIdRef.current);
+                }
                 sessionStorage.removeItem("allyx_access_session");
                 localStorage.removeItem('interview_draft');
                 router.push("/dashboard");
-            } catch (finishError) {
-                console.error("Failed to close interview:", finishError);
-                sessionEndingRef.current = false;
-                setError("Could not close this interview. Check your connection and press End Interview to retry.");
             } finally {
                 isSavingRef.current = false;
                 setIsSaving(false);
@@ -1638,21 +1644,43 @@ export default function InterviewPage() {
                 historySavedRef.current = true;
                 showToast("Meeting saved to history", "success");
             }
-            await interviewAccess.finish(sessionIdRef.current);
+            try {
+                await interviewAccess.finish(sessionIdRef.current);
+            } catch (finishError) {
+                console.warn("Session close will retry from the dashboard:", finishError);
+                localStorage.setItem("allyx_pending_finish", sessionIdRef.current);
+            }
             sessionStorage.removeItem("allyx_access_session");
             localStorage.removeItem('interview_draft');
             router.push("/dashboard");
         } catch (error) {
             console.error("Failed to save interview:", error);
             sessionEndingRef.current = false;
-            setError(historySavedRef.current
-                ? "Your interview was saved, but the session could not be closed. Check your connection and press End Interview to retry."
-                : "Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.");
+            const message = "Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.";
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
         } finally {
             setIsSaving(false);
             isSavingRef.current = false;
         }
     };
+    endInterviewActionRef.current = () => { void handleEndInterview(); };
+
+    useEffect(() => window.electronAPI?.onOverlayToggleListening?.(() => {
+        toggleRecordingActionRef.current();
+    }), []);
+
+    useEffect(() => window.electronAPI?.onOverlayEndInterview?.(() => {
+        endInterviewActionRef.current();
+    }), []);
+
+    useEffect(() => {
+        window.electronAPI?.sendRecordingState?.({
+            listening: isRecording,
+            meetingAudio: isScreenAudioActive,
+            finalizing: isFinalizingCapture || isSaving,
+        });
+    }, [isFinalizingCapture, isRecording, isSaving, isScreenAudioActive]);
 
     return (
         <div className="min-h-screen flex flex-col lg:flex-row gap-4 p-2 sm:p-4 pt-20 transition-colors duration-300 bg-gray-50 dark:bg-zinc-950 overflow-auto">
@@ -1663,11 +1691,11 @@ export default function InterviewPage() {
             )}
             {/* Error Banner */}
             {error && (
-                <div className="fixed top-24 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50 flex items-center gap-2 shadow-lg">
+                <div className="fixed left-4 right-4 top-24 z-50 mx-auto flex max-w-2xl items-start gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-red-800 shadow-lg dark:border-red-800 dark:bg-red-950 dark:text-red-200">
                     <AlertCircle size={20} />
                     <span>{error}</span>
-                    <Button variant="ghost" size="sm" onClick={() => setError(null)} className="ml-2 h-6 w-6 p-0 rounded-full hover:bg-red-200">
-                        X
+                    <Button aria-label="Dismiss message" title="Dismiss" variant="ghost" size="sm" onClick={() => setError(null)} className="ml-auto h-7 w-7 shrink-0 rounded-full p-0 hover:bg-red-200 dark:hover:bg-red-900">
+                        ×
                     </Button>
                 </div>
             )}

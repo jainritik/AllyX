@@ -1,6 +1,7 @@
-function allowAppNavigation(window, appOrigin, openExternal) {
+function allowAppNavigation(window, appOrigin, openExternal, additionalOrigins = []) {
+    const allowedOrigins = new Set([appOrigin, ...additionalOrigins]);
     const denyOtherOrigins = (details) => {
-        try { if (new URL(details.url).origin === appOrigin) return; } catch { /* deny */ }
+        try { if (allowedOrigins.has(new URL(details.url).origin)) return; } catch { /* deny */ }
         details.preventDefault();
     };
     window.webContents.on('will-frame-navigate', denyOtherOrigins);

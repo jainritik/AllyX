@@ -25,6 +25,7 @@ export default function DashboardPage() {
             try {
                 setIsLoading(true);
                 setError(null);
+                await interviewAccess.recoverPendingFinish().catch(() => false);
                 const interviews = await interviewService.getUserInterviews();
                 const access = await interviewAccess.status().catch(() => null);
                 setCreditsRemaining(access?.creditsRemaining ?? null);
