@@ -3,6 +3,7 @@ import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 import { desktopDownloads } from '@/lib/download-links';
 import { DesktopAppNotice } from '@/components/desktop-app-notice';
+import { MacFirstLaunchHelp } from '@/components/mac-first-launch-help';
 
 export const metadata: Metadata = {
     title: 'Download AllyX for Mac and Windows',
@@ -45,29 +46,7 @@ export default function DownloadPage() {
                         : <p className="mt-5 text-sm font-medium text-sky-700 dark:text-cyan-300">Installer available at launch</p>}
                 </div>)}
             </div>
-            <div className="mt-8 rounded-2xl border border-sky-200 bg-sky-50 p-6 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100">
-                <h2 className="text-lg font-semibold">Open AllyX on your Mac</h2>
-                <p className="mt-2 text-sm leading-6">AllyX is currently distributed outside the Mac App Store. Complete these steps once after downloading it:</p>
-                <ol className="mt-5 grid gap-4 text-sm leading-6 sm:grid-cols-2">
-                    <li className="rounded-xl bg-white/80 p-4 dark:bg-black/20">
-                        <p className="font-semibold">1. Install AllyX</p>
-                        <p className="mt-1">Open the downloaded DMG and drag AllyX into the Applications folder.</p>
-                    </li>
-                    <li className="rounded-xl bg-white/80 p-4 dark:bg-black/20">
-                        <p className="font-semibold">2. Try to open it</p>
-                        <p className="mt-1">Open AllyX from Applications. If macOS blocks it, select Done and continue below.</p>
-                    </li>
-                    <li className="rounded-xl bg-white/80 p-4 dark:bg-black/20">
-                        <p className="font-semibold">3. Allow AllyX</p>
-                        <p className="mt-1">Open System Settings → Privacy &amp; Security, scroll to Security, then select Open Anyway beside AllyX.</p>
-                    </li>
-                    <li className="rounded-xl bg-white/80 p-4 dark:bg-black/20">
-                        <p className="font-semibold">4. Confirm once</p>
-                        <p className="mt-1">Enter your Mac password if asked, then select Open. Future launches will open normally.</p>
-                    </li>
-                </ol>
-                <p className="mt-5 text-sm leading-6">Only allow the app you downloaded from this official AllyX page. See <a className="font-semibold underline underline-offset-2" href="https://support.apple.com/102445" target="_blank" rel="noreferrer">Apple&apos;s instructions for opening a blocked app</a>.</p>
-            </div>
+            <MacFirstLaunchHelp />
             <p className="mt-10 text-sm text-gray-500">Phones and tablets can access account pages, billing, and history. Starting a live interview session requires the installed Mac or Windows app.</p>
         </main>
         <Footer />
