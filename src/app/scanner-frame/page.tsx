@@ -10,6 +10,7 @@ export default function ScannerFrame() {
     const [isResizing, setIsResizing] = useState<ResizeDirection>(null);
     const [isMoving, setIsMoving] = useState(false);
     const [captureMessage, setCaptureMessage] = useState("Position this frame over text, then press Capture.");
+    const [captureFailed, setCaptureFailed] = useState(false);
     const initialPos = useRef({ x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 });
     const lastUpdate = useRef<number>(0);
 
@@ -26,6 +27,7 @@ export default function ScannerFrame() {
     const handleScan = async () => {
         if (isScanning) return;
         setIsScanning(true);
+        setCaptureFailed(false);
         setCaptureMessage("Capturing…");
         try {
             const bounds = {
@@ -36,10 +38,12 @@ export default function ScannerFrame() {
             };
             if (window.electronAPI) {
                 const result = await window.electronAPI.captureScannerArea(bounds);
-                setCaptureMessage(result.success ? "Captured. OCR is processing in the main session." : (result.error || "Capture failed."));
+                setCaptureFailed(!result.success);
+                setCaptureMessage(result.success ? "Captured. Reading the selected text…" : (result.error || "Capture failed. Try again."));
             }
         } catch (err) {
             console.error("Scan failed:", err);
+            setCaptureFailed(true);
             setCaptureMessage(err instanceof Error ? err.message : "Capture failed.");
         } finally {
             setTimeout(() => setIsScanning(false), 2000);
@@ -208,9 +212,9 @@ export default function ScannerFrame() {
                         </button>
                     </div>
 
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-40">
-                        <span className="max-w-[320px] text-center text-[8px] font-mono text-emerald-400 uppercase tracking-widest">{captureMessage}</span>
-                        <ChevronDown size={12} className="text-emerald-400 animate-bounce mt-1" />
+                    <div aria-live="polite" className={`absolute bottom-3 left-3 right-3 flex flex-col items-center rounded-lg px-3 py-2 ${captureFailed ? 'border border-red-400/70 bg-red-950/90' : 'bg-black/70'}`}>
+                        <span className={`max-w-full text-center text-[11px] font-semibold leading-4 ${captureFailed ? 'text-red-100' : 'text-emerald-200'}`}>{captureMessage}</span>
+                        {!captureFailed && <ChevronDown size={12} className="mt-1 animate-bounce text-emerald-400" />}
                     </div>
                 </div>
             </div>

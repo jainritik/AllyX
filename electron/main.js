@@ -7,6 +7,7 @@ const { allowAppNavigation } = require('./navigation-policy');
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
+const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 const capturePrivacy = createCapturePrivacy({
     platform: process.platform,
     release: os.release(),
@@ -754,7 +755,13 @@ async function initialize() {
     initPlatform();
     const appSession = session.fromPartition('persist:main');
     const allowedPermission = (wc, permission) => {
-        try { return wc === mainAppWindow?.webContents && new URL(wc.getURL()).origin === APP_ORIGIN && ['media', 'audioCapture', 'speech'].includes(permission); }
+        try {
+            return isAllowedMainWindowMediaPermission({
+                isMainWindow: wc === mainAppWindow?.webContents,
+                isTrustedOrigin: new URL(wc.getURL()).origin === APP_ORIGIN,
+                permission,
+            });
+        }
         catch { return false; }
     };
     appSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowedPermission(wc, permission)));
