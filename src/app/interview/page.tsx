@@ -730,8 +730,54 @@ export default function InterviewPage() {
         }
     }, [stopScreenAudio]);
 
+    const connectDisplayMediaAudio = useCallback(async () => {
+        if (!navigator.mediaDevices?.getDisplayMedia) return false;
+        const epoch = screenCaptureEpochRef.current;
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        if (epoch !== screenCaptureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
+            stream.getTracks().forEach(track => track.stop());
+            return false;
+        }
+        const audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack || audioTrack.readyState !== "live") {
+            stream.getTracks().forEach(track => track.stop());
+            throw new Error("No meeting audio was shared. Choose the display with system audio enabled, then try again.");
+        }
+        screenStreamRef.current?.getTracks().forEach(track => track.stop());
+        screenStreamRef.current = stream;
+        screenSourceIdRef.current = "display-media";
+        if (audioContextRef.current && analyserRef.current) {
+            screenSourceRef.current?.disconnect();
+            const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
+            source.connect(analyserRef.current);
+            screenSourceRef.current = source;
+        }
+        setIsScreenAudioActive(true);
+        audioTrack.onended = () => {
+            stopScreenAudio();
+            if (!sessionEndingRef.current) setError("Meeting audio stopped. Press Start listening to reconnect it.");
+        };
+        return true;
+    }, [stopScreenAudio]);
+
     const startMeetingAudio = useCallback(async () => {
         if (!isElectron || screenStreamRef.current) return Boolean(screenStreamRef.current);
+        try {
+            const connected = await connectDisplayMediaAudio();
+            if (connected) {
+                setCapturePermissionNeedsRestart(false);
+                return true;
+            }
+        } catch (error) {
+            console.error("[Meeting Audio] Display capture failed:", error);
+            const message = error instanceof Error && error.name === "NotAllowedError"
+                ? "Meeting audio sharing was cancelled. Start listening again and choose the interview display."
+                : error instanceof Error ? error.message : "Meeting audio could not be started. Microphone listening is still available.";
+            setIsScreenAudioActive(false);
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return false;
+        }
         const result = await window.electronAPI?.startSystemAudioCapture();
         if (!result?.success || !result.sourceId) {
             const message = result?.error || "Meeting audio could not be started. Microphone listening is still available.";
@@ -742,7 +788,7 @@ export default function InterviewPage() {
         }
         setCapturePermissionNeedsRestart(false);
         return connectScreenAudio(result.sourceId);
-    }, [connectScreenAudio, isElectron]);
+    }, [connectDisplayMediaAudio, connectScreenAudio, isElectron]);
 
     const toggleScreenAudio = async () => {
         if (!isElectron) return;

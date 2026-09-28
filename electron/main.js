@@ -772,6 +772,28 @@ async function initialize() {
     };
     appSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowedPermission(wc, permission)));
     appSession.setPermissionCheckHandler((wc, permission) => allowedPermission(wc, permission));
+    appSession.setDisplayMediaRequestHandler(async (request, callback) => {
+        let trusted = false;
+        try {
+            trusted = request.frame === mainAppWindow?.webContents.mainFrame
+                && new URL(request.securityOrigin).origin === APP_ORIGIN;
+        } catch { /* Reject malformed origins below. */ }
+        if (!trusted || !request.videoRequested) {
+            callback({});
+            return;
+        }
+        try {
+            const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+            const screenSource = sources.find(source => source.id.startsWith('screen')) || sources[0];
+            if (!screenSource) {
+                callback({});
+                return;
+            }
+            callback({ video: screenSource, audio: 'loopback' });
+        } catch {
+            callback({});
+        }
+    }, { useSystemPicker: true });
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     createMainAppWindow();
