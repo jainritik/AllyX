@@ -700,18 +700,22 @@ export default function InterviewPage() {
                 stream.getTracks().forEach(track => track.stop());
                 return false;
             }
+            const audioTrack = stream.getAudioTracks()[0];
+            if (!audioTrack || audioTrack.readyState !== "live") {
+                stream.getTracks().forEach(track => track.stop());
+                throw new Error("macOS did not provide a live meeting-audio stream. Restart AllyX after enabling Screen & System Audio access.");
+            }
             screenStreamRef.current?.getTracks().forEach(track => track.stop());
             screenStreamRef.current = stream;
             screenSourceIdRef.current = sourceId;
-            setIsScreenAudioActive(true);
             if (audioContextRef.current && analyserRef.current) {
                 screenSourceRef.current?.disconnect();
-                const source = audioContextRef.current.createMediaStreamSource(stream);
+                const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
                 source.connect(analyserRef.current);
                 screenSourceRef.current = source;
             }
-            const endedTrack = stream.getVideoTracks()[0] || stream.getAudioTracks()[0];
-            if (endedTrack) endedTrack.onended = () => {
+            setIsScreenAudioActive(true);
+            audioTrack.onended = () => {
                 stopScreenAudio();
                 if (!sessionEndingRef.current) setError("Meeting audio stopped. Press Start listening to reconnect it.");
             };
@@ -951,7 +955,11 @@ export default function InterviewPage() {
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
             // VAD Parameters (Ultra-Low Latency Mode)
-            const SPEECH_THRESHOLD = 6;         // Sensitive enough for quiet laptop microphones
+            // Human speech is concentrated in the lower portion of this FFT. Averaging
+            // every bin (including the mostly empty high-frequency range) made meeting
+            // audio look silent even when macOS supplied a healthy loopback stream.
+            const SPEECH_BAND_BINS = Math.min(64, analyser.frequencyBinCount);
+            const SPEECH_THRESHOLD = 3;
             const SILENCE_DURATION = 1300;      // Avoid splitting a question at a short speaking pause
             const MIN_SPEECH_DURATION = 500;    // Allow short sentences
             const MAX_RECORDING_TIME = 15000;   // Force send after 15s
@@ -967,7 +975,9 @@ export default function InterviewPage() {
                 if (!activeStreamsRef.current.length && !screenStreamRef.current) return;
 
                 analyser.getByteFrequencyData(dataArray);
-                const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+                let speechEnergy = 0;
+                for (let index = 0; index < SPEECH_BAND_BINS; index++) speechEnergy += dataArray[index];
+                const average = speechEnergy / SPEECH_BAND_BINS;
 
                 // Log every 2.5s to reduce console noise
                 if (Date.now() - lastLogTime > 2500) {
