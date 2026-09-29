@@ -144,13 +144,13 @@ function createScannerFrame() {
     scannerFrameWindow = null;
     isScannerFrameOpen = true;
 
-    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    const primaryWorkArea = screen.getPrimaryDisplay().workArea;
 
     scannerFrameWindow = new BrowserWindow({
         width: 400,
         height: 300,
-        x: Math.floor(width / 2 - 200),
-        y: Math.floor(height / 2 - 150),
+        x: Math.floor(primaryWorkArea.x + (primaryWorkArea.width - 400) / 2),
+        y: Math.floor(primaryWorkArea.y + (primaryWorkArea.height - 300) / 2),
         frame: false,
         transparent: true,
         alwaysOnTop: true,
@@ -287,6 +287,7 @@ function createMainAppWindow() {
             contextIsolation: true,
             nodeIntegration: false,
             webSecurity: true,
+            backgroundThrottling: false,
             partition: 'persist:main'
         }
     });
@@ -772,28 +773,6 @@ async function initialize() {
     };
     appSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowedPermission(wc, permission)));
     appSession.setPermissionCheckHandler((wc, permission) => allowedPermission(wc, permission));
-    appSession.setDisplayMediaRequestHandler(async (request, callback) => {
-        let trusted = false;
-        try {
-            trusted = request.frame === mainAppWindow?.webContents.mainFrame
-                && new URL(request.securityOrigin).origin === APP_ORIGIN;
-        } catch { /* Reject malformed origins below. */ }
-        if (!trusted || !request.videoRequested) {
-            callback({});
-            return;
-        }
-        try {
-            const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-            const screenSource = sources.find(source => source.id.startsWith('screen')) || sources[0];
-            if (!screenSource) {
-                callback({});
-                return;
-            }
-            callback({ video: screenSource, audio: 'loopback' });
-        } catch {
-            callback({});
-        }
-    }, { useSystemPicker: true });
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     createMainAppWindow();

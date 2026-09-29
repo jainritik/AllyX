@@ -80,6 +80,7 @@ export default function InterviewPage() {
     const recordingStartRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
+    const vadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const transcriptionQueueRef = useRef<Promise<void>>(Promise.resolve());
     const draftHydratedRef = useRef(false);
     const sessionIdRef = useRef("");
@@ -730,54 +731,8 @@ export default function InterviewPage() {
         }
     }, [stopScreenAudio]);
 
-    const connectDisplayMediaAudio = useCallback(async () => {
-        if (!navigator.mediaDevices?.getDisplayMedia) return false;
-        const epoch = screenCaptureEpochRef.current;
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        if (epoch !== screenCaptureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
-            stream.getTracks().forEach(track => track.stop());
-            return false;
-        }
-        const audioTrack = stream.getAudioTracks()[0];
-        if (!audioTrack || audioTrack.readyState !== "live") {
-            stream.getTracks().forEach(track => track.stop());
-            throw new Error("No meeting audio was shared. Choose the display with system audio enabled, then try again.");
-        }
-        screenStreamRef.current?.getTracks().forEach(track => track.stop());
-        screenStreamRef.current = stream;
-        screenSourceIdRef.current = "display-media";
-        if (audioContextRef.current && analyserRef.current) {
-            screenSourceRef.current?.disconnect();
-            const source = audioContextRef.current.createMediaStreamSource(new MediaStream([audioTrack]));
-            source.connect(analyserRef.current);
-            screenSourceRef.current = source;
-        }
-        setIsScreenAudioActive(true);
-        audioTrack.onended = () => {
-            stopScreenAudio();
-            if (!sessionEndingRef.current) setError("Meeting audio stopped. Press Start listening to reconnect it.");
-        };
-        return true;
-    }, [stopScreenAudio]);
-
     const startMeetingAudio = useCallback(async () => {
         if (!isElectron || screenStreamRef.current) return Boolean(screenStreamRef.current);
-        try {
-            const connected = await connectDisplayMediaAudio();
-            if (connected) {
-                setCapturePermissionNeedsRestart(false);
-                return true;
-            }
-        } catch (error) {
-            console.error("[Meeting Audio] Display capture failed:", error);
-            const message = error instanceof Error && error.name === "NotAllowedError"
-                ? "Meeting audio sharing was cancelled. Start listening again and choose the interview display."
-                : error instanceof Error ? error.message : "Meeting audio could not be started. Microphone listening is still available.";
-            setIsScreenAudioActive(false);
-            setError(message);
-            window.electronAPI?.sendOverlayStatus?.(message, "error");
-            return false;
-        }
         const result = await window.electronAPI?.startSystemAudioCapture();
         if (!result?.success || !result.sourceId) {
             const message = result?.error || "Meeting audio could not be started. Microphone listening is still available.";
@@ -788,7 +743,7 @@ export default function InterviewPage() {
         }
         setCapturePermissionNeedsRestart(false);
         return connectScreenAudio(result.sourceId);
-    }, [connectDisplayMediaAudio, connectScreenAudio, isElectron]);
+    }, [connectScreenAudio, isElectron]);
 
     const toggleScreenAudio = async () => {
         if (!isElectron) return;
@@ -1000,12 +955,10 @@ export default function InterviewPage() {
 
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-            // VAD Parameters (Ultra-Low Latency Mode)
-            // Human speech is concentrated in the lower portion of this FFT. Averaging
-            // every bin (including the mostly empty high-frequency range) made meeting
-            // audio look silent even when macOS supplied a healthy loopback stream.
-            const SPEECH_BAND_BINS = Math.min(64, analyser.frequencyBinCount);
-            const SPEECH_THRESHOLD = 3;
+            // Use the proven full-spectrum threshold from the working desktop build.
+            // The low-band-only threshold was continuously triggered by ordinary room
+            // noise, forcing every question to wait for the 15-second safety cutoff.
+            const SPEECH_THRESHOLD = 6;
             const SILENCE_DURATION = 1300;      // Avoid splitting a question at a short speaking pause
             const MIN_SPEECH_DURATION = 500;    // Allow short sentences
             const MAX_RECORDING_TIME = 15000;   // Force send after 15s
@@ -1021,9 +974,7 @@ export default function InterviewPage() {
                 if (!activeStreamsRef.current.length && !screenStreamRef.current) return;
 
                 analyser.getByteFrequencyData(dataArray);
-                let speechEnergy = 0;
-                for (let index = 0; index < SPEECH_BAND_BINS; index++) speechEnergy += dataArray[index];
-                const average = speechEnergy / SPEECH_BAND_BINS;
+                const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
 
                 // Log every 2.5s to reduce console noise
                 if (Date.now() - lastLogTime > 2500) {
@@ -1107,7 +1058,6 @@ export default function InterviewPage() {
                         }
                     }
                 }
-                requestAnimationFrame(checkAudioLevel);
             };
 
             const stopAndProcess = () => {
@@ -1120,7 +1070,12 @@ export default function InterviewPage() {
                 }
             };
 
+            if (vadTimerRef.current) clearInterval(vadTimerRef.current);
             checkAudioLevel();
+            // The desktop control window is intentionally hidden while the overlay is
+            // in use. requestAnimationFrame pauses in a hidden BrowserWindow, so audio
+            // detection must run on an interval that remains active in the background.
+            vadTimerRef.current = setInterval(checkAudioLevel, 50);
             setIsRecording(true);
             console.log("[Desktop STT] VAD Engine Started");
             return true;
@@ -1141,6 +1096,10 @@ export default function InterviewPage() {
     const stopDesktopSTT = useCallback(() => {
         captureEpochRef.current++;
         speechActiveRef.current = false;
+        if (vadTimerRef.current) {
+            clearInterval(vadTimerRef.current);
+            vadTimerRef.current = null;
+        }
         if (mediaRecorderRef.current?.state === 'recording') {
             mediaRecorderRef.current.onstop = null;
             mediaRecorderRef.current.stop();
@@ -1536,6 +1495,8 @@ export default function InterviewPage() {
                 new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
             ]);
             worker = await deadline(createWorker('eng', 1, {
+                workerPath: '/tesseract/worker.min.js',
+                corePath: '/tesseract-core',
                 langPath: '/tessdata',
                 logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
             }), 30000, "OCR engine initialization timed out. Check your connection and retry.");
@@ -1558,7 +1519,11 @@ export default function InterviewPage() {
             await getAiAnswer(text);
         } catch (err) {
             console.error("[Scanner] OCR processing failed:", err);
-            const message = err instanceof Error ? err.message : "Failed to process screen capture.";
+            const message = err instanceof Error
+                ? err.message
+                : typeof err === "string" && err.trim()
+                    ? err
+                    : "Failed to process screen capture.";
             showToast(message, "error");
             window.electronAPI?.sendOverlayStatus?.(message, "error");
         } finally {
