@@ -8,6 +8,7 @@ import { Settings, User, LogOut, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useConfirmDialog } from "@/components/confirm-dialog";
+import { useRouter } from "next/navigation";
 
 interface SettingsDialogProps {
     open: boolean;
@@ -15,6 +16,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+    const router = useRouter();
     const { confirm, showToast } = useConfirmDialog();
     const [userEmail, setUserEmail] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +36,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         setIsLoading(true);
         try {
             await signOutAndClear();
-            window.location.href = "/login";
+            router.replace("/login");
         } catch (error) {
             console.error("Sign out error:", error);
             window.alert("Could not sign out. Please try again.");

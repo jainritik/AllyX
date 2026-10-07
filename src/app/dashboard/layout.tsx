@@ -15,6 +15,7 @@ import { PageTransition } from "@/components/page-transition";
 
 
 function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) => void }) {
+    const router = useRouter();
     return (
         <>
             <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
@@ -61,7 +62,7 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
                     onClick={async () => {
                         try {
                             await signOutAndClear();
-                            window.location.href = "/login";
+                            router.replace("/login");
                         } catch { window.alert("Could not sign out. Please try again."); }
                     }}
                 >

@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Image from "next/image";
 import { ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function DesktopNavBar() {
+    const router = useRouter();
     const [isDesktop, setIsDesktop] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [user, setUser] = useState<{ email?: string; user_metadata?: { avatar_url?: string; full_name?: string } } | null>(null);
@@ -41,7 +43,7 @@ export function DesktopNavBar() {
     const handleSignOut = async () => {
         try {
             await signOutAndClear();
-            window.location.href = '/';
+            router.replace('/');
         } catch (error) {
             console.error("Sign out error:", error);
             window.alert("Could not sign out. Please try again.");
@@ -127,13 +129,13 @@ export function DesktopNavBar() {
                                     <p className="text-zinc-400 text-xs truncate">{user.email}</p>
                                 </div>
                                     <button
-                                        onClick={() => { window.location.href = '/dashboard/new'; setIsDropdownOpen(false); }}
+                                        onClick={() => { router.push('/dashboard/new'); setIsDropdownOpen(false); }}
                                         className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
                                     >
                                         Simulation Setup
                                     </button>
                                 <button
-                                    onClick={() => { window.location.href = '/dashboard'; setIsDropdownOpen(false); }}
+                                    onClick={() => { router.push('/dashboard'); setIsDropdownOpen(false); }}
                                     className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
                                 >
                                     Dashboard
@@ -169,7 +171,7 @@ export function DesktopNavBar() {
                     </div>
                 ) : (
                     <button
-                        onClick={() => window.location.href = '/login'}
+                        onClick={() => router.push('/login')}
                         className="px-3 py-1.5 rounded-md bg-white/15 text-white text-sm font-medium hover:bg-white/25 transition-colors"
                         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     >

@@ -8,6 +8,7 @@ import { Menu } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
@@ -178,6 +179,7 @@ export function Navbar() {
 }
 
 function AuthButtons({ onSheetClose }: { onSheetClose?: () => void }) {
+    const router = useRouter();
     const { user, checkSession } = useAuth();
     const isLoggedIn = Boolean(user);
     const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || null;
@@ -202,7 +204,7 @@ function AuthButtons({ onSheetClose }: { onSheetClose?: () => void }) {
     const handleLogout = async () => {
         try {
             await signOutAndClear();
-            window.location.href = "/login";
+            router.replace("/login");
         } catch {
             window.alert("Could not sign out. Please check your connection and try again.");
         }

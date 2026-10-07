@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
-// Sized for a full one-hour private-demo session plus retries.
+// Sized for a full one-hour practice session plus retries.
 const limits = { generate: 300, transcribe: 1200 } as const;
 export type UsageKind = keyof typeof limits;
 
