@@ -132,7 +132,7 @@ export function DesktopNavBar() {
                                         onClick={() => { router.push('/dashboard/new'); setIsDropdownOpen(false); }}
                                         className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
                                     >
-                                        Simulation Setup
+                                        Interview Setup
                                     </button>
                                 <button
                                     onClick={() => { router.push('/dashboard'); setIsDropdownOpen(false); }}

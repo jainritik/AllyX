@@ -96,7 +96,7 @@ export default function InterviewPage() {
     const [transcript, setTranscript] = useState("");
     const [fullTranscript, setFullTranscript] = useState("");
     const [interimTranscript, setInterimTranscript] = useState("");
-    const [aiResponse, setAiResponse] = useState("## Ready to Assist\n\nI am your AI Copilot. I will listen to your meeting and provide real-time context.\n\n**Instructions:**\n1. Click the microphone to start listening.\n2. Speak your question or discussion point.\n3. When you need context, click **Get Answer**.");
+    const [aiResponse, setAiResponse] = useState("## Ready to Assist\n\nI am your AllyX interview assistant. I will listen to your interview and provide real-time context.\n\n**Instructions:**\n1. Click the microphone to start listening.\n2. Speak your question or discussion point.\n3. When you need context, click **Get Answer**.");
     const [isCameraOn, setIsCameraOn] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -446,7 +446,7 @@ export default function InterviewPage() {
         - Avoid stiff Standard Arabic.
 
         CONTEXT:
-        - Meeting Type: ${interviewContext.type}
+        - Interview type: ${interviewContext.type}
         - AI Context & Answer Style: ${jobContext || "Not provided"}
         - Resume: ${resumeContext || "Not provided"}
         `;
@@ -568,6 +568,8 @@ export default function InterviewPage() {
             let errorMessage = "Could not generate response.";
             if (err.name === "AbortError") {
                 errorMessage = "The AI response timed out. Check your connection and retry.";
+            } else if (err.message === "Usage accounting is unavailable" || err.message === "Interview access verification is unavailable") {
+                errorMessage = "AllyX could not confirm session usage right now. Your time and credits are safe. Wait a moment, then try again.";
             } else if (err.message.includes("429")) {
                 errorMessage = "AI is busy (Rate Limit). Please try again.";
             } else if (err.message.includes("configuration missing")) {
@@ -1638,8 +1640,8 @@ export default function InterviewPage() {
 
         try {
             const title = interviewContext.type
-                ? `${interviewContext.type} Meeting`
-                : "Meeting Session";
+                ? `${interviewContext.type} Interview`
+                : "Interview Session";
 
             // Calculate interview duration in minutes
             const durationMinutes = Math.round((new Date().getTime() - interviewStartTime.getTime()) / 60000);
@@ -1666,7 +1668,7 @@ export default function InterviewPage() {
                     sessionIdRef.current || undefined
                 );
                 historySavedRef.current = true;
-                showToast("Meeting saved to history", "success");
+                showToast("Interview saved to history", "success");
             }
             try {
                 await interviewAccess.finish(sessionIdRef.current);
@@ -1815,7 +1817,7 @@ export default function InterviewPage() {
                                 onClick={handleEndInterview}
                                 disabled={isSaving}
                                 className="w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-sm bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
-                                title="End Meeting"
+                                title="End Interview"
                             >
                                 {isSaving ? <Loader2 size={26} className="animate-spin" /> : <LogOut size={26} strokeWidth={2} />}
                             </button>
@@ -1878,7 +1880,7 @@ export default function InterviewPage() {
                             onClick={handleEndInterview}
                             disabled={isSaving}
                             className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-md bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
-                            title="End Meeting"
+                            title="End Interview"
                         >
                             {isSaving ? <Loader2 size={26} className="animate-spin" /> : <LogOut size={26} strokeWidth={2} />}
                         </button>
@@ -1927,7 +1929,7 @@ export default function InterviewPage() {
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
                         <h3 className="font-bold flex items-center gap-2 text-lg text-gray-900 dark:text-white">
                             <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-                            AI Copilot
+                            AllyX Assistant
                         </h3>
                         {answerModel && (
                             <span className="text-xs text-gray-500 dark:text-gray-400">

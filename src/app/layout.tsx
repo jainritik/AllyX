@@ -45,7 +45,7 @@ export const metadata: Metadata = {
         url: "/allyx-social-banner.png",
         width: 1200,
         height: 630,
-        alt: "AllyX - Interview Simulation Assistant",
+        alt: "AllyX - Interview Assistant",
       },
       {
         url: "/allyx-logo.png",

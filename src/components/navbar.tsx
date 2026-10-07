@@ -108,7 +108,7 @@ export function Navbar() {
                 <div className="md:hidden flex items-center gap-4">
                     <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                         <SheetTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-gray-600 dark:text-gray-300">
+                            <Button variant="ghost" size="icon" className="text-gray-600 dark:text-gray-300" aria-label="Open navigation menu">
                                 <Menu size={24} />
                             </Button>
                         </SheetTrigger>
@@ -128,17 +128,17 @@ export function Navbar() {
                                     </Link>
                                     <Link href="/dashboard/new" onClick={() => setIsSheetOpen(false)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
-                                            New Simulation
+                                            New Interview
                                         </Button>
                                     </Link>
                                     <Link href="/dashboard/resumes" onClick={() => setIsSheetOpen(false)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
-                                            My Context Files
+                                            My Resumes
                                         </Button>
                                     </Link>
                                     <Link href="/dashboard/history" onClick={() => setIsSheetOpen(false)}>
                                         <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
-                                            Training History
+                                            Interview History
                                         </Button>
                                     </Link>
 
@@ -218,6 +218,8 @@ function AuthButtons({ onSheetClose }: { onSheetClose?: () => void }) {
                     <button
                         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                         className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
+                        aria-label="Open account menu"
+                        aria-expanded={isDropdownOpen}
                     >
                         <div className="w-10.5 h-10.5 rounded-full overflow-hidden border-2 border-green-500 shadow-md">
                             {userAvatar ? (

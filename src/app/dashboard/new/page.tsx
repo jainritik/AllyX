@@ -48,7 +48,6 @@ const AI_MODELS = [
         logo: "/openai-logo.png",
         gradient: "from-blue-500/20 to-cyan-500/20",
         border: "group-hover:border-blue-500/50",
-        paid: false,
     },
     {
         id: "qwen/qwen3.8-27b",
@@ -57,7 +56,6 @@ const AI_MODELS = [
         logo: "/qwen.png",
         gradient: "from-indigo-500/20 to-violet-500/20",
         border: "group-hover:border-indigo-500/50",
-        paid: false,
     },
     {
         id: "openai/gpt-oss-120b",
@@ -66,16 +64,14 @@ const AI_MODELS = [
         logo: "/openai-logo.png",
         gradient: "from-emerald-500/20 to-green-500/20",
         border: "group-hover:border-emerald-500/50",
-        paid: false,
     },
     {
         id: "gpt-5.4-mini",
         name: "GPT-5.4 Mini",
-        description: "Fast paid technical model",
+        description: "Fast technical responses",
         logo: "/openai-logo.png",
         gradient: "from-red-500/20 to-orange-500/20",
         border: "group-hover:border-red-500/50",
-        paid: true,
     },
 ];
 
@@ -270,7 +266,7 @@ export default function NewInterviewPage() {
                             <h1 className="text-2xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-500 dark:from-white dark:to-gray-400 mb-1 sm:mb-2">
                                 Setup Interview
                             </h1>
-                            <p className="text-sm sm:text-lg text-gray-500 dark:text-gray-400">Configure your AI copilot for the perfect session.</p>
+                            <p className="text-sm sm:text-lg text-gray-500 dark:text-gray-400">Set up your AI interview assistant for a focused session.</p>
                         </div>
                     </div>
                 </div>
@@ -433,11 +429,11 @@ export default function NewInterviewPage() {
                             {/* AI Model Header with AI.jpg */}
                             <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8">
                                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-white/10">
-                                    <Image src="/AI.jpg" alt="AI Model" width={48} height={48} className="w-full h-full object-cover" />
+                                    <Image src="/AI.jpg" alt="Answer model" width={48} height={48} className="w-full h-full object-cover" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-900 dark:text-white text-lg sm:text-xl">AI Model</h3>
-                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Choose the brain behind AllyX</p>
+                                    <h3 className="font-bold text-gray-900 dark:text-white text-lg sm:text-xl">Answer model</h3>
+                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Choose the model for your interview session.</p>
                                 </div>
                             </div>
 
@@ -474,7 +470,7 @@ export default function NewInterviewPage() {
                                                     <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]"></div>
                                                 )}
                                             </div>
-                                            <p className="text-[10px] sm:text-sm text-gray-400 dark:text-gray-500">{model.description}</p>
+                                            <p className="text-[10px] sm:text-sm text-gray-600 dark:text-gray-400">{model.description}</p>
                                         </div>
                                     </button>
                                 ))}
@@ -529,8 +525,6 @@ export default function NewInterviewPage() {
                     </div>
                 </div>
             </div>
-
-            {/* Premium Floating Action Bar */}
 
         </div>
     );

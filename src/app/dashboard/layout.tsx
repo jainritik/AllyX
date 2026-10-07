@@ -99,7 +99,7 @@ function PlanCard() {
             ? "Your free session has been used. Buy credits to continue."
             : plan?.trialStatus === "active"
                 ? "Your 10-minute free session is active."
-                : "Start a 10-minute free session or buy credits for full interviews.";
+                : "Start a 10-minute free session or purchase credits for additional interview sessions.";
 
     return <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-950">
         <div className="flex items-center gap-2 font-semibold text-gray-950 dark:text-white"><Gift className="h-5 w-5 text-emerald-600" />{title}</div>

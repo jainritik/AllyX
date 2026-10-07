@@ -40,8 +40,12 @@ export const useAuth = create<AuthState>((set) => ({
     loading: true,
     checkSession: async () => {
         try {
-            const { data, error } = await supabase.auth.getUser();
-            set({ user: error ? null : data.user, loading: false });
+            // This only controls the public navigation state. `getSession` reads
+            // the local session immediately, avoiding an unnecessary auth-network
+            // call (and console warning) on every public page visit. Protected
+            // routes and server APIs still verify the user with `getUser`.
+            const { data, error } = await supabase.auth.getSession();
+            set({ user: error ? null : data.session?.user ?? null, loading: false });
         } catch { set({ user: null, loading: false }); }
     },
     signIn: async (email, password) => {

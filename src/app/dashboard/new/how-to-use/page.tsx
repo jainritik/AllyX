@@ -167,7 +167,7 @@ export default function HowToUsePage() {
                     className="text-center mb-8 sm:mb-16 px-4"
                 >
                     <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-emerald-600 to-gray-900 dark:from-white dark:via-emerald-400 dark:to-white pb-4 leading-[1.2] sm:leading-tight">
-                        Mastering the Copilot
+                        Review your session controls
                     </h1>
                     <p className="text-gray-500 dark:text-gray-400 text-base sm:text-xl max-w-2xl mx-auto">
                         A quick guide to the controls used during your session.

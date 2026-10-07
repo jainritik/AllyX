@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next';
 
 export default function sitemap(): MetadataRoute.Sitemap {
     const baseUrl = 'https://allyx.vercel.app';
-    const lastModified = new Date('2026-09-26T00:00:00.000Z');
+    const lastModified = new Date('2026-10-07T00:00:00.000Z');
 
     return [
         { url: `${baseUrl}/`, lastModified, changeFrequency: 'weekly', priority: 1 },

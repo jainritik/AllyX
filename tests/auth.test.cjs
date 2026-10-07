@@ -86,10 +86,10 @@ test('email sender failures, throttling, and expired links have actionable messa
     assert.equal(validateNewPassword('long-password', 'long-password'), null);
 });
 
-test('session checks do not add more auth subscriptions', async () => {
+test('navigation session checks use the local session and do not add auth subscriptions', async () => {
     let subscriptions = 0;
     const auth = authWith({
-        getUser: async () => ({ data: { user: null }, error: null }),
+        getSession: async () => ({ data: { session: null }, error: null }),
         onAuthStateChange: () => { subscriptions++; },
     });
     await auth.checkSession();
@@ -174,28 +174,39 @@ test('fabricated legacy cookie cannot authorize dashboard access', async () => {
     assert.equal(destination.pathname, '/login');
     assert.equal(destination.searchParams.get('from'), '/dashboard/new?step=1');
     assert.equal(response.cookies.get('auth_token').value, '');
+    assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow');
 });
 
 test('only a verified identity passes; refreshed cookies reach browser and server renderer', async () => {
     const response = await proxyFor({ data: { user: { id: 'verified-user' } }, error: null }, true)(
-        new NextRequest('https://allyx.invalid/dashboard'));
+        new NextRequest('https://allyx.invalid/dashboard', { headers: { cookie: 'sb-test-auth-token=verified' } }));
     assert.equal(response.status, 200);
     assert.equal(response.cookies.get('sb-test-auth-token').value, 'refreshed');
     assert.match(response.headers.get('x-middleware-request-cookie'), /sb-test-auth-token=refreshed/);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow');
 });
 
 test('failed verification rejects access even if a user object is present', async () => {
     const response = await proxyFor({ data: { user: { id: 'untrusted' } }, error: { status: 401 } }, true)(
-        new NextRequest('https://allyx.invalid/interview'));
+        new NextRequest('https://allyx.invalid/interview', { headers: { cookie: 'sb-test-auth-token=untrusted' } }));
     assert.equal(response.status, 307);
     assert.equal(response.cookies.get('sb-test-auth-token').value, 'refreshed');
 });
 
 test('temporary auth outages do not sign users out or redirect them into a login loop', async () => {
     const response = await proxyFor({ data: { user: null }, error: { status: 503 } })(
-        new NextRequest('https://allyx.invalid/dashboard'));
+        new NextRequest('https://allyx.invalid/dashboard', { headers: { cookie: 'sb-test-auth-token=active' } }));
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('location'), null);
     assert.equal(response.headers.get('retry-after'), '10');
+});
+
+test('anonymous protected-page visits always use the normal sign-in flow without waiting for Supabase', async () => {
+    const response = await proxyFor({ data: { user: null }, error: { status: 503 } })(
+        new NextRequest('https://allyx.invalid/dashboard/new?step=1'));
+    assert.equal(response.status, 307);
+    const destination = new URL(response.headers.get('location'));
+    assert.equal(destination.pathname, '/login');
+    assert.equal(destination.searchParams.get('from'), '/dashboard/new?step=1');
 });

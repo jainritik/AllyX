@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     title: "AllyX — Real-Time AI Interview Assistant",
-    description: "A desktop interview copilot with live transcription, contextual suggestions, screen text capture, and support for macOS and Windows.",
+    description: "A desktop interview assistant with live transcription, contextual suggestions, screen text capture, and support for macOS and Windows.",
     url: "/",
     images: [{ url: "/allyx-social-banner.png", width: 1200, height: 630, alt: "AllyX desktop interview assistant" }],
   },
@@ -86,7 +86,7 @@ export default function Home() {
     applicationCategory: "BusinessApplication",
     applicationSubCategory: "Interview preparation software",
     operatingSystem: "macOS, Windows 10, Windows 11",
-    softwareVersion: "1.3.5",
+    softwareVersion: "1.3.14",
     description: metadata.description,
     url: "https://allyx.vercel.app/",
     downloadUrl: "https://allyx.vercel.app/download",
