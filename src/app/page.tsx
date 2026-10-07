@@ -7,6 +7,8 @@ import { PurchaseButton } from "@/components/purchase-button";
 import type { BillingPlanId } from "@/lib/billing-plans";
 import { desktopDownloads } from "@/lib/download-links";
 import { DesktopAppNotice } from "@/components/desktop-app-notice";
+import { TestimonialCarousel } from "@/components/testimonial-carousel";
+import { testimonials } from "@/lib/testimonials";
 
 export const metadata: Metadata = {
   title: "Real-Time AI Interview Assistant for Mac and Windows",
@@ -149,6 +151,8 @@ export default function Home() {
             { icon: MonitorDown, title: "Start the desktop session", copy: "Open the app on macOS or Windows, choose your audio source, and position the overlay where it is comfortable to read." },
             { icon: WandSparkles, title: "Ask, listen, or capture", copy: "Let Auto Answer respond after a pause, paste a question manually, or select text and code from your screen." },
           ].map(({ icon: StepIcon, title, copy }, index) => <article key={title} className="rounded-[1.75rem] border border-white/10 bg-white/[.045] p-7 sm:p-9"><div className="flex items-start gap-5"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-sky-500 text-slate-950"><StepIcon className="h-6 w-6" /></div><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Step {index + 1}</p><h3 className="mt-2 text-2xl font-semibold">{title}</h3><p className="mt-3 leading-7 text-slate-400">{copy}</p></div></div></article>)}</div></div></div></section>
+
+        {testimonials.length > 0 && <TestimonialCarousel testimonials={testimonials} />}
 
         <section id="pricing" className="scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="mx-auto max-w-3xl text-center"><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">Simple interview packs</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Pay for the interviews you need.</h2><p className="mt-5 text-lg leading-8 text-slate-600 dark:text-slate-400">Start with a 10-minute account trial, then choose an interview pack that fits your preparation schedule.</p></div>
           <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{plans.map(plan => {
