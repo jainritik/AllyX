@@ -395,20 +395,26 @@ async function fetchCompatibilityWithRetry() {
 
 async function loadAppContent() {
     if (!mainAppWindow) return;
-    if (app.isPackaged) {
-        try {
-            const { compatibility } = await fetchCompatibilityWithRetry();
-            if (!isVersionAtLeast(app.getVersion(), compatibility.minimumDesktopVersion)) {
-                dialog.showErrorBox('AllyX update required', `This web release needs desktop version ${compatibility.minimumDesktopVersion} or newer. Please install the current desktop build.`);
-                return;
-            }
-        } catch (error) {
-            dialog.showErrorBox('AllyX connection unavailable', 'Could not verify desktop and web version compatibility. Check your connection and retry from the tray.');
-            return;
-        }
-    }
     const startUrl = `${APP_URL}/dashboard?desktop=true`;
     mainAppWindow.loadURL(startUrl).catch(e => console.error('[App] Load fail:', e));
+
+    // A remote availability or version lookup must never prevent the locally
+    // installed app from opening. The signed-in renderer can still show its
+    // normal update guidance, while a temporary web/API issue cannot strand
+    // a customer behind a modal before the app has loaded.
+    if (app.isPackaged) {
+        void fetchCompatibilityWithRetry()
+            .then(({ compatibility }) => {
+                if (!isVersionAtLeast(app.getVersion(), compatibility.minimumDesktopVersion)) {
+                    console.warn(
+                        `[App] Desktop ${app.getVersion()} is below the recommended ${compatibility.minimumDesktopVersion}; continuing so the user can access the app.`,
+                    );
+                }
+            })
+            .catch(error => {
+                console.warn('[App] Compatibility service unavailable; continuing without a startup block:', error.message);
+            });
+    }
 }
 
 function toggleApp() {
