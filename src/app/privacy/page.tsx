@@ -29,7 +29,7 @@ export default function PrivacyPolicyPage() {
                             <li>Engage with us in other related ways, including any sales, marketing, or events</li>
                         </ul>
                         <p className="mt-4 text-gray-600 dark:text-gray-300">
-                            <strong>Questions or concerns?</strong> Reading this Privacy Notice will help you understand your privacy rights and choices. Payment and refund questions can be submitted through <Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link>. Other questions can be sent to <a href={`mailto:${supportContact.email}`} className="text-emerald-600 hover:underline">{supportContact.email}</a> or through <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">WhatsApp</a>.
+                            <strong>Questions or concerns?</strong> Reading this Privacy Notice will help you understand your privacy rights and choices. Payment and refund questions can be submitted through <Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link>. Other questions can be sent by <a href={supportContact.emailUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">email</a> or through <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">WhatsApp</a>.
                         </p>
                     </section>
 
@@ -284,7 +284,7 @@ export default function PrivacyPolicyPage() {
                         <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-xl">
                             <p className="text-gray-900 dark:text-white font-semibold">AllyX</p>
                             <p className="text-gray-600 dark:text-gray-300"><Link href="/dashboard/billing/support" className="text-emerald-600 hover:underline">Payment & refund support</Link></p>
-                            <p className="text-gray-600 dark:text-gray-300">Email: <a href={`mailto:${supportContact.email}`} className="text-emerald-600 hover:underline">{supportContact.email}</a></p>
+                            <p className="text-gray-600 dark:text-gray-300">Email: <a href={supportContact.emailUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">{supportContact.email}</a></p>
                             <p className="text-gray-600 dark:text-gray-300">WhatsApp: <a href={supportContact.whatsappUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">{supportContact.whatsappDisplay}</a></p>
                         </div>
                     </section>

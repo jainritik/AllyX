@@ -57,7 +57,7 @@ export default function PublicReportBugPage() {
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 px-4 py-7 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"><Paperclip className="h-4 w-4" />{attachmentName ? "Replace attachment" : "Add screenshot or short video (optional, maximum 4 MB)"}<input ref={attachmentRef} name="attachment" type="file" accept={accepted} onChange={event => setAttachmentName(event.target.files?.[0]?.name || "")} className="sr-only" /></label>
                 <button disabled={busy || sent} className="inline-flex items-center rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{sent ? "Report sent" : "Submit bug report"}</button>
                 {notice && <p role="status" className="text-sm text-gray-700 dark:text-gray-300">{notice}</p>}
-                <p className="text-xs text-gray-500">Do not include passwords, API keys, payment card details, or other secrets. For urgent assistance, email <a className="font-semibold underline" href={`mailto:${supportContact.email}`}>{supportContact.email}</a>.</p>
+                <p className="text-xs text-gray-500">Do not include passwords, API keys, payment card details, or other secrets. For urgent assistance, <a className="font-semibold underline" href={supportContact.emailUrl} target="_blank" rel="noreferrer">open an email draft to {supportContact.email}</a>.</p>
             </form>
         </main>
         <Footer />
