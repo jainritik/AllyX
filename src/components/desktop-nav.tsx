@@ -6,10 +6,11 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Image from "next/image";
 import { ShieldCheck } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function DesktopNavBar() {
     const router = useRouter();
+    const pathname = usePathname();
     const [isDesktop, setIsDesktop] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [user, setUser] = useState<{ email?: string; user_metadata?: { avatar_url?: string; full_name?: string } } | null>(null);
@@ -50,7 +51,7 @@ export function DesktopNavBar() {
         }
     };
 
-    if (!isDesktop) return null;
+    if (!isDesktop || pathname === "/scanner-frame") return null;
 
     const handleBack = () => {
         if (window.history.length > 1) {

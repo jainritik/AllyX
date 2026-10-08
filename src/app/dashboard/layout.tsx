@@ -11,6 +11,7 @@ import { SettingsDialog } from "@/components/settings-dialog";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { PageTransition } from "@/components/page-transition";
+import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 
 
 
@@ -174,6 +175,7 @@ export default function DashboardLayout({
 
 
     return (
+        <ConfirmDialogProvider>
         <div className="min-h-screen bg-white dark:bg-black flex flex-col transition-colors duration-300">
             <Navbar />
             <SettingsDialog open={showSettings} onOpenChange={setShowSettings} />
@@ -199,5 +201,6 @@ export default function DashboardLayout({
                 </main>
             </div>
         </div>
+        </ConfirmDialogProvider>
     );
 }

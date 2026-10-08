@@ -17,12 +17,9 @@ function hasSupabaseSessionCookie(request: NextRequest) {
 
 export default async function proxy(request: NextRequest) {
     const headers = new Headers(request.headers);
-    headers.delete('x-is-scanner');
-    headers.set('x-url', request.url);
-    if (request.nextUrl.pathname === '/scanner-frame') headers.set('x-is-scanner', 'true');
     let response = NextResponse.next({ request: { headers } });
     // These auxiliary windows use their own Electron session and contain no account data.
-    if (headers.get('x-is-scanner') === 'true') {
+    if (request.nextUrl.pathname === '/scanner-frame') {
         response.headers.set('X-Robots-Tag', 'noindex, nofollow');
         return response;
     }

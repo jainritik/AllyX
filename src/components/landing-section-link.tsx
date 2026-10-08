@@ -20,7 +20,7 @@ export function LandingSectionLink({
 
         event.preventDefault();
         window.history.pushState(null, "", `#${sectionId}`);
-        section.scrollIntoView({ behavior: "smooth", block: "start" });
+        section.scrollIntoView({ behavior: "auto", block: "start" });
     };
 
     return <Link href={`/#${sectionId}`} className={className} onClick={handleClick}>{children}</Link>;

@@ -16,7 +16,6 @@ export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [otp, setOtp] = useState("");
     const [busy, setBusy] = useState(false);
-    const [checking, setChecking] = useState(true);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
     const [resendSeconds, setResendSeconds] = useState(0);
@@ -26,18 +25,11 @@ export default function LoginPage() {
     useEffect(() => {
         setIsDesktop(Boolean(window.electronAPI?.isElectron));
         let active = true;
-        const timeout = window.setTimeout(() => {
-            if (active) setChecking(false);
-        }, 3500);
         void supabase.auth.getSession().then(({ data }) => {
             if (!active) return;
-            window.clearTimeout(timeout);
             if (data.session?.user) window.location.replace(destination());
-            else setChecking(false);
-        }).catch(() => {
-            if (active) setChecking(false);
-        });
-        return () => { active = false; window.clearTimeout(timeout); };
+        }).catch(() => undefined);
+        return () => { active = false; };
     }, []);
 
     useEffect(() => {
@@ -74,8 +66,6 @@ export default function LoginPage() {
         try { await signInWithGoogle(); }
         catch (googleError) { setError(authErrorMessage(googleError)); setBusy(false); }
     }
-
-    if (checking) return <div className="flex min-h-screen items-center justify-center bg-white dark:bg-zinc-950"><RefreshCw className="h-8 w-8 animate-spin text-emerald-600" /><span className="ml-3 text-sm text-gray-500">Checking your session…</span></div>;
 
     return <div className="grid min-h-screen w-full md:grid-cols-2">
         <section className="relative hidden overflow-hidden bg-gradient-to-br from-emerald-950 to-teal-950 p-8 text-white md:flex md:flex-col md:justify-between lg:p-12">

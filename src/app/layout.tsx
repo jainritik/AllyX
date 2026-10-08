@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import "./globals.css";
 import ErrorBoundary from "@/components/error-boundary";
-import { ConfirmDialogProvider } from "@/components/confirm-dialog";
-import { DesktopNavBar } from "@/components/desktop-nav";
+import { DesktopChrome } from "@/components/desktop-chrome";
 import { ProductionErrorMonitor } from "@/components/production-error-monitor";
 
 export const metadata: Metadata = {
@@ -87,21 +85,13 @@ export const viewport = {
   initialScale: 1,
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const headersList = await headers();
-  const xUrl = headersList.get("x-url") || "";
-
-  // Robust detection: check for headers or URL patterns (fallback for dev mode issues)
-  const isScanner = headersList.get("x-is-scanner") === "true" || xUrl.toLowerCase().includes("scanner-frame");
-  const isOverlay = xUrl.toLowerCase().includes("isoverlay=true") || xUrl.toLowerCase().includes("overlay");
-  const isHideNav = isScanner || isOverlay;
-
   return (
-    <html lang="en" suppressHydrationWarning className={isScanner ? "bg-transparent" : ""}>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="name" content="AllyX" />
         <meta property="og:site_name" content="AllyX" />
@@ -164,16 +154,11 @@ export default async function RootLayout({
 
 
       </head>
-      <body
-        className={`antialiased ${isScanner ? 'bg-transparent overflow-hidden' : ''}`}
-        suppressHydrationWarning
-      >
+      <body className="antialiased" suppressHydrationWarning>
         <ProductionErrorMonitor />
-        {!isHideNav && <DesktopNavBar />}
+        <DesktopChrome />
         <ErrorBoundary>
-          <ConfirmDialogProvider>
-            {children}
-          </ConfirmDialogProvider>
+          {children}
         </ErrorBoundary>
       </body>
     </html>

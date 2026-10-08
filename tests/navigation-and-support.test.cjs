@@ -80,3 +80,22 @@ test("global styles prevent decorative page elements from creating horizontal sc
 
     assert.match(styles, /html,\s*body\s*\{[\s\S]*overflow-x:\s*clip;/);
 });
+
+test("ordinary navigation avoids artificial route and anchor delays", () => {
+    const template = read("src/app/template.tsx");
+    const dashboardTransition = read("src/components/page-transition.tsx");
+    const styles = read("src/app/globals.css");
+    const navbar = read("src/components/navbar.tsx");
+    const landingLink = read("src/components/landing-section-link.tsx");
+    const rootLayout = read("src/app/layout.tsx");
+    const desktopChrome = read("src/components/desktop-chrome.tsx");
+
+    assert.doesNotMatch(template, /framer-motion|duration:/);
+    assert.doesNotMatch(dashboardTransition, /framer-motion|duration:/);
+    assert.doesNotMatch(styles, /scroll-behavior:\s*smooth/);
+    assert.match(navbar, /scrollIntoView\(\{ behavior: "auto"/);
+    assert.match(landingLink, /scrollIntoView\(\{ behavior: "auto"/);
+    assert.doesNotMatch(rootLayout, /await headers\(\)/);
+    assert.match(rootLayout, /<DesktopChrome \/>/);
+    assert.match(desktopChrome, /dynamic\([\s\S]*ssr: false/);
+});

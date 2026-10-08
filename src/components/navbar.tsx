@@ -42,7 +42,7 @@ export function Navbar() {
 
         event.preventDefault();
         window.history.pushState(null, "", `#${sectionId}`);
-        section.scrollIntoView({ behavior: "smooth", block: "start" });
+        section.scrollIntoView({ behavior: "auto", block: "start" });
     };
 
     // Hide full navbar in desktop mode - DesktopNavBar handles navigation
