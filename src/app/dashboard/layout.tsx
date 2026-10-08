@@ -77,6 +77,7 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
 type PlanSummary = {
     creditsRemaining: number;
     trialStatus: "available" | "active" | "used";
+    purchases?: Array<{ status: string }>;
 };
 
 function PlanCard() {
@@ -91,11 +92,17 @@ function PlanCard() {
         return () => controller.abort();
     }, []);
 
+    const isLoadingPlan = plan === null;
     const hasCredits = (plan?.creditsRemaining || 0) > 0;
-    const title = hasCredits ? "Interview credits" : "Free Plan";
-    const detail = hasCredits
+    const hasPurchasedPack = Boolean(plan?.purchases?.some(purchase => ["paid", "refund_pending", "partially_refunded", "refunded", "disputed"].includes(purchase.status)));
+    const title = isLoadingPlan ? "Your plan" : hasCredits ? "Interview credits" : "Free Plan";
+    const detail = isLoadingPlan
+        ? "Checking your available interview access…"
+        : hasCredits
         ? `${plan?.creditsRemaining} interview credit${plan?.creditsRemaining === 1 ? "" : "s"} available.`
-        : plan?.trialStatus === "used"
+        : hasPurchasedPack
+            ? "Your interview credits have been used. Buy another pack to continue."
+            : plan?.trialStatus === "used"
             ? "Your free session has been used. Buy credits to continue."
             : plan?.trialStatus === "active"
                 ? "Your 10-minute free session is active."
@@ -105,7 +112,7 @@ function PlanCard() {
         <div className="flex items-center gap-2 font-semibold text-gray-950 dark:text-white"><Gift className="h-5 w-5 text-emerald-600" />{title}</div>
         <p className="mt-3 text-sm leading-5 text-gray-500 dark:text-gray-400">{detail}</p>
         <Link href="/dashboard/billing" className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
-            {hasCredits ? "Manage credits" : "Upgrade"}
+            {hasCredits || isLoadingPlan ? "Manage credits" : "Upgrade"}
         </Link>
     </div>;
 }

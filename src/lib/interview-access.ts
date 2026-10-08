@@ -6,6 +6,7 @@ export type InterviewAccess = {
     remainingSeconds: number;
     creditsRemaining: number;
     trialAvailable?: boolean;
+    hasPurchasedPack?: boolean;
     creditRefunded?: boolean;
     reason?: string;
 };

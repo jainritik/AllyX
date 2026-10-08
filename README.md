@@ -89,11 +89,12 @@ Apply the SQL in this order through the Supabase SQL editor:
 8. `supabase_interview_source_migration.sql`
 9. `supabase_payment_lifecycle_migration.sql`
 10. `supabase_purchaser_trial_policy_migration.sql`
-11. `supabase_payment_email_migration.sql`
-12. `supabase_billing_support_migration.sql`
-13. `supabase_bug_reports_migration.sql`
-14. `supabase_interview_setup_migration.sql`
-15. `supabase_error_monitoring_migration.sql`
+11. `supabase_post_purchase_trial_policy_migration.sql`
+12. `supabase_payment_email_migration.sql`
+13. `supabase_billing_support_migration.sql`
+14. `supabase_bug_reports_migration.sql`
+15. `supabase_interview_setup_migration.sql`
+16. `supabase_error_monitoring_migration.sql`
 
 These migrations contain the server-side usage ledger, account-bound profile rules, recoverable session updates, atomic resume limit, trial clock, payment ledger, interview credits, explicit trial-or-credit selection, payment-email outbox, authenticated billing support, and private bug-report attachments. Apply them before deploying the matching API routes; missing accounting functions intentionally stop access rather than allowing uncounted use.
 

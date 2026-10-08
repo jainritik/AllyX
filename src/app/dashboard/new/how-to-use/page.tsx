@@ -28,6 +28,8 @@ export default function HowToUsePage() {
     const [accessError, setAccessError] = useState("");
     const [isStarting, setIsStarting] = useState(false);
     const [accessStatus, setAccessStatus] = useState<InterviewAccess | null>(null);
+    const hasCredits = (accessStatus?.creditsRemaining || 0) > 0;
+    const canUseTrial = Boolean(accessStatus?.trialAvailable && !accessStatus?.hasPurchasedPack && !hasCredits);
 
     useEffect(() => {
         let cancelled = false;
@@ -221,17 +223,17 @@ export default function HowToUsePage() {
                     >{isStarting ? "Opening securely…" : "Resume active interview"}<ArrowRight className="ml-2 shrink-0" /></Button>
                     : <div className="grid w-full gap-3 sm:grid-cols-2">
                         {!accessStatus && <Button disabled className="h-auto min-h-16 rounded-2xl bg-gray-700 px-4 py-4 text-base font-bold text-white sm:col-span-2">Checking interview access…</Button>}
-                        {accessStatus?.trialAvailable && <Button
+                        {canUseTrial && <Button
                             onClick={() => void handleStart("trial")}
                             disabled={!setupReady || isStarting}
                             className="h-auto min-h-16 whitespace-normal rounded-2xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-4 text-base font-bold text-white"
                         >{isStarting ? "Opening…" : "Start free 10-minute trial"}</Button>}
-                        {(accessStatus?.creditsRemaining || 0) > 0 && <Button
+                        {hasCredits && <Button
                             onClick={() => void handleStart("credit")}
                             disabled={!setupReady || isStarting}
                             className="h-auto min-h-16 whitespace-normal rounded-2xl bg-gray-900 px-4 py-4 text-base font-bold text-white dark:bg-white dark:text-black"
                         >{isStarting ? "Opening…" : `Use 1 interview credit (${accessStatus?.creditsRemaining} left)`}</Button>}
-                        {!accessStatus?.trialAvailable && (accessStatus?.creditsRemaining || 0) === 0 && <Button
+                        {!canUseTrial && !hasCredits && <Button
                             onClick={() => router.push("/dashboard/billing")}
                             className="h-auto min-h-16 whitespace-normal rounded-2xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-4 text-base font-bold text-white sm:col-span-2"
                         >Choose an interview pack<ArrowRight className="ml-2 shrink-0" /></Button>}

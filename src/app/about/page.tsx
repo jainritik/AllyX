@@ -147,7 +147,7 @@ export default function AboutPage() {
                                     Ready to prepare your first session?
                                 </h2>
                                 <p className="text-lg text-gray-600 dark:text-gray-300 mb-10 max-w-xl mx-auto">
-                                    Create an account, add your context, and use the 10-minute trial in the AllyX desktop app.
+                                    Create an account, add your context, and—if you have not purchased a pack yet—use the 10-minute trial in the AllyX desktop app.
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                                     <Link href="/download">

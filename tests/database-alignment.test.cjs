@@ -18,6 +18,7 @@ test("README lists every database script exactly once in deployment order", () =
         "supabase_interview_source_migration.sql",
         "supabase_payment_lifecycle_migration.sql",
         "supabase_purchaser_trial_policy_migration.sql",
+        "supabase_post_purchase_trial_policy_migration.sql",
         "supabase_payment_email_migration.sql",
         "supabase_billing_support_migration.sql",
         "supabase_bug_reports_migration.sql",
@@ -47,6 +48,14 @@ test("every application RPC has a SQL function definition", () => {
     const called = new Set([...code.matchAll(/\.rpc\(\s*["']([^"']+)/g)].map(match => match[1]));
     const defined = new Set([...sql.matchAll(/create\s+or\s+replace\s+function\s+public\.([a-z0-9_]+)/gi)].map(match => match[1]));
     assert.deepEqual([...called].filter(name => !defined.has(name)), []);
+});
+
+test("a pack purchase permanently takes precedence over the introductory trial", () => {
+    const sql = read("supabase_post_purchase_trial_policy_migration.sql");
+    assert.match(sql, /'hasPurchasedPack', has_purchased_pack/);
+    assert.match(sql, /'trialAvailable', ent\.trial_started_at is null and not has_purchased_pack/);
+    assert.match(sql, /requested_source in \('auto', 'trial'\).*not has_purchased_pack/s);
+    assert.match(sql, /The free trial is available before your first pack purchase only\./);
 });
 
 test("bug reports are account scoped and attachments remain private", () => {

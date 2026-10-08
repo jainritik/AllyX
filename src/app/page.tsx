@@ -40,7 +40,7 @@ const faqs = [
   ["Does AllyX join my meeting?", "No. The desktop app runs locally as a separate assistant and does not appear as a meeting participant or bot."],
   ["Which computers are supported?", "The desktop product is designed for Apple Silicon and Intel Macs, plus 64-bit Windows 10 and Windows 11 computers. Each published build will identify its supported systems."],
   ["Can I run an interview session on my phone or in a browser?", "No. Phones and browsers can be used for account setup, billing, and history. Live listening, screen capture, and the answer overlay require the AllyX desktop app on a supported Mac or Windows computer."],
-  ["Can I try it before purchasing?", "Each account includes one trial of up to 10 minutes. Interview packs provide additional full interview sessions."],
+  ["Can I try it before purchasing?", "Each account includes one trial of up to 10 minutes before its first interview-pack purchase. Interview packs provide additional full interview sessions."],
   ["Does it work with technical interviews?", "Yes. You can paste questions and code, capture text from the screen, and provide resume and role context for more relevant answers."],
   ["Will my interview credits expire?", "Purchased interview credits remain in your account until you use them. Each interview uses one credit, and paid interview sessions do not have a fixed time limit."],
 ];
@@ -134,7 +134,7 @@ export default function Home() {
               <a href={macUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950"><Apple className="h-4 w-4" />Download for Mac</a>
               <a href={windowsUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-white sm:bg-white/70 sm:backdrop-blur dark:border-white/15 dark:bg-slate-900 sm:dark:bg-white/5 dark:text-white dark:hover:bg-white/10"><Monitor className="h-4 w-4" />Download for Windows</a>
             </div>
-            <p className="mt-4 text-xs text-slate-500">One 10-minute trial per account · No payment required for the trial</p>
+            <p className="mt-4 text-xs text-slate-500">One 10-minute trial per account before your first pack purchase · No payment required</p>
             <div className="mx-auto mt-7 max-w-2xl text-left"><DesktopAppNotice compact /></div>
           </div>
           <ProductPreview />

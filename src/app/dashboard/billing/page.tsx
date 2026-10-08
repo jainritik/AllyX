@@ -66,8 +66,10 @@ export default function BillingPage() {
 
     useEffect(() => { void loadAccount(); }, [loadAccount]);
 
-    const trialLabel = account?.trialStatus === "available" ? "10-minute trial available"
-        : account?.trialStatus === "active" ? "Trial currently active" : "Free trial used";
+    const hasPurchasedPack = Boolean(account?.purchases.some(purchase => ["paid", "refund_pending", "partially_refunded", "refunded", "disputed"].includes(purchase.status)));
+    const trialLabel = hasPurchasedPack ? "Not available after a pack purchase"
+        : account?.trialStatus === "available" ? "10-minute trial available"
+            : account?.trialStatus === "active" ? "Trial currently active" : "Free trial used";
 
     return <div className="space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -79,7 +81,7 @@ export default function BillingPage() {
         {loading && !account ? <div className="flex min-h-48 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div> : account && <>
             <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"><div className="flex items-center gap-3 text-gray-500"><CreditCard className="h-5 w-5" /><span className="text-sm font-medium">Interview credits</span></div><p className="mt-4 text-5xl font-bold text-gray-950 dark:text-white">{account.creditsRemaining}</p><p className="mt-2 text-sm text-gray-500">One credit starts one paid interview. It is returned if the session ends before meaningful use.</p></div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"><div className="flex items-center gap-3 text-gray-500"><Clock3 className="h-5 w-5" /><span className="text-sm font-medium">Free trial</span></div><p className="mt-4 text-xl font-bold text-gray-950 dark:text-white">{trialLabel}</p>{account.trialExpiresAt && account.trialStatus === "active" && <p className="mt-2 text-sm text-gray-500">Ends {new Date(account.trialExpiresAt).toLocaleString()}</p>}</div>
+                <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"><div className="flex items-center gap-3 text-gray-500"><Clock3 className="h-5 w-5" /><span className="text-sm font-medium">{hasPurchasedPack ? "Trial eligibility" : "Free trial"}</span></div><p className="mt-4 text-xl font-bold text-gray-950 dark:text-white">{trialLabel}</p>{account.trialExpiresAt && account.trialStatus === "active" && !hasPurchasedPack && <p className="mt-2 text-sm text-gray-500">Ends {new Date(account.trialExpiresAt).toLocaleString()}</p>}</div>
             </div>
 
             <p className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
