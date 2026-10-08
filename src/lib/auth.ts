@@ -10,7 +10,7 @@ interface AuthState {
     signUp: (email: string, password: string, fullName?: string) => Promise<{ session: Session | null }>;
     verifyOtp: (email: string, token: string) => Promise<unknown>;
     sendEmailOtp: (email: string) => Promise<void>;
-    signInWithGoogle: () => Promise<void>;
+    signInWithGoogle: () => Promise<string>;
     signOut: () => Promise<void>;
     checkSession: () => Promise<void>;
 }
@@ -81,8 +81,15 @@ export const useAuth = create<AuthState>((set) => ({
         if (error) throw error;
     },
     signInWithGoogle: async () => {
-        const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: authCallbackUrl() } });
+        // Request the provider URL without navigating. Browser users continue in
+        // this tab; Electron opens it in a separate, closable sign-in window.
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: authCallbackUrl(), skipBrowserRedirect: true },
+        });
         if (error) throw error;
+        if (!data.url) throw new Error('Google sign-in could not be started. Please try again.');
+        return data.url;
     },
     signOut: signOutAndClear,
 }));

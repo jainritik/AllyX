@@ -9,6 +9,7 @@ export interface ElectronAPI {
     toggleApp: () => void;
     goBack: () => void;
     canGoBack: () => boolean;
+    openGoogleSignIn: (authorizationUrl: string) => Promise<{ success: boolean }>;
     isDesktopMode: () => boolean;
     isPresentationSafeMode: () => boolean;
     setPresentationSafeMode: (active: boolean) => Promise<{ active: boolean }>;

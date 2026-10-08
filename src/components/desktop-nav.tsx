@@ -54,9 +54,11 @@ export function DesktopNavBar() {
     if (!isDesktop || pathname === "/scanner-frame") return null;
 
     const handleBack = () => {
-        if (window.history.length > 1) {
-            window.history.back();
+        if (window.electronAPI?.canGoBack()) {
+            window.electronAPI.goBack();
+            return;
         }
+        if (window.history.length > 1) router.back();
     };
 
     const handleRefresh = () => {

@@ -11,7 +11,7 @@ import { safeReturnPath } from "@/lib/auth-navigation";
 import { authErrorMessage } from "@/lib/auth-errors";
 
 export default function LoginPage() {
-    const { sendEmailOtp, verifyOtp, signInWithGoogle } = useAuth();
+    const { user, sendEmailOtp, verifyOtp, signInWithGoogle } = useAuth();
     const [step, setStep] = useState<"choice" | "email" | "otp">("choice");
     const [email, setEmail] = useState("");
     const [otp, setOtp] = useState("");
@@ -31,6 +31,10 @@ export default function LoginPage() {
         }).catch(() => undefined);
         return () => { active = false; };
     }, []);
+
+    useEffect(() => {
+        if (user) window.location.replace(destination());
+    }, [user]);
 
     useEffect(() => {
         if (!resendSeconds) return;
@@ -62,9 +66,17 @@ export default function LoginPage() {
     }
 
     async function continueWithGoogle() {
-        setBusy(true); setError("");
-        try { await signInWithGoogle(); }
-        catch (googleError) { setError(authErrorMessage(googleError)); setBusy(false); }
+        setBusy(true); setError(""); setNotice("");
+        try {
+            const authorizationUrl = await signInWithGoogle();
+            if (window.electronAPI?.openGoogleSignIn) {
+                await window.electronAPI.openGoogleSignIn(authorizationUrl);
+                setNotice("Finish sign-in in the Google window. Close that window at any time to return here and use email instead.");
+                setBusy(false);
+                return;
+            }
+            window.location.assign(authorizationUrl);
+        } catch (googleError) { setError(authErrorMessage(googleError)); setBusy(false); }
     }
 
     return <div className="grid min-h-screen w-full md:grid-cols-2">
@@ -99,7 +111,7 @@ export default function LoginPage() {
                     </Button>
                     <div className="flex items-center gap-3 text-xs uppercase text-gray-400"><span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />or<span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" /></div>
                     <Button type="button" variant="outline" onClick={() => setStep("email")} className="h-14 w-full rounded-2xl border-gray-300 bg-white text-base font-semibold text-gray-950 shadow-sm hover:bg-gray-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">Continue with Email</Button>
-                    {isDesktop && <p className="text-center text-xs leading-5 text-gray-500">Google sign-in and email codes both create or open the same AllyX account.</p>}
+                    {isDesktop && <p className="text-center text-xs leading-5 text-gray-500">Google opens in a separate window. Close it anytime to return here and choose email instead.</p>}
                 </div> : step === "email" ? <>
                     <form onSubmit={sendCode} className="mt-7">
                         <label htmlFor="login-email" className="text-sm font-semibold">Email address</label>

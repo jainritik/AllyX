@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeApp: () => ipcRenderer.send('close-app'),
     goBack: () => ipcRenderer.send('go-back'),
     canGoBack: () => ipcRenderer.sendSync('can-go-back'),
+    openGoogleSignIn: (authorizationUrl) => ipcRenderer.invoke('open-google-sign-in', authorizationUrl),
     copyToClipboard: (text) => ipcRenderer.send('copy-to-clipboard', text),
     isDesktopMode: () => ipcRenderer.sendSync('get-desktop-mode'),
     isPresentationSafeMode: () => ipcRenderer.sendSync('get-presentation-safe-mode'),

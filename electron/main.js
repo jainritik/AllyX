@@ -4,6 +4,7 @@ const os = require('os');
 const fs = require('fs/promises');
 const { createCapturePrivacy } = require('./capture-privacy');
 const { allowAppNavigation } = require('./navigation-policy');
+const { isAllowedOAuthAuthorizationUrl, isCompletedOAuthNavigation } = require('./oauth-window-policy');
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
@@ -51,6 +52,7 @@ function initPlatform() {
 let floatingIconWindow = null;
 let mainAppWindow = null;
 let scannerFrameWindow = null;
+let googleSignInWindow = null;
 let tray = null;
 let isAppVisible = false;
 let isScannerFrameOpen = false;
@@ -68,6 +70,9 @@ const isDev = !app.isPackaged;
 const APP_URL = process.env.ALLYX_APP_URL || (isDev ? 'http://localhost:3000' : 'https://allyx.vercel.app');
 const APP_ORIGIN = new URL(APP_URL).origin;
 const COMPATIBILITY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SUPABASE_AUTH_ORIGIN = 'https://eslcatxyhshjlgukkfhc.supabase.co';
+const OAUTH_NAVIGATION_ORIGINS = [SUPABASE_AUTH_ORIGIN, 'https://accounts.google.com', 'https://accounts.googleusercontent.com'];
+const DESKTOP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 let isQuitting = false;
 
 function isTrustedPage(event, channel) {
@@ -261,6 +266,68 @@ function setOverlayInteractive(active) {
     return isOverlayInteractive;
 }
 
+function closeGoogleSignInWindow() {
+    if (!googleSignInWindow || googleSignInWindow.isDestroyed()) {
+        googleSignInWindow = null;
+        return;
+    }
+    googleSignInWindow.close();
+}
+
+function openGoogleSignInWindow(authorizationUrl) {
+    if (!isAllowedOAuthAuthorizationUrl(authorizationUrl, SUPABASE_AUTH_ORIGIN)) {
+        throw new Error('Invalid Google sign-in request. Please try again from AllyX.');
+    }
+
+    closeGoogleSignInWindow();
+    googleSignInWindow = new BrowserWindow({
+        width: 520,
+        height: 720,
+        minWidth: 420,
+        minHeight: 600,
+        parent: mainAppWindow || undefined,
+        modal: Boolean(mainAppWindow && !mainAppWindow.isDestroyed()),
+        title: 'Sign in with Google — AllyX',
+        show: false,
+        autoHideMenuBar: true,
+        icon: ICON_PATH,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+            // The OAuth window shares AllyX's persisted browser storage so the
+            // completed Supabase session is available to the main app. It does
+            // not receive the desktop IPC bridge.
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+            webSecurity: true,
+            partition: 'persist:main',
+        },
+    });
+    allowAppNavigation(googleSignInWindow, APP_ORIGIN, url => shell.openExternal(url), OAUTH_NAVIGATION_ORIGINS);
+    googleSignInWindow.webContents.setUserAgent(DESKTOP_USER_AGENT);
+    googleSignInWindow.once('ready-to-show', () => googleSignInWindow?.show());
+    googleSignInWindow.on('closed', () => {
+        googleSignInWindow = null;
+        if (mainAppWindow && !mainAppWindow.isDestroyed() && !isPresentationSafeMode && !isQuitting) {
+            mainAppWindow.show();
+            mainAppWindow.focus();
+            isAppVisible = true;
+        }
+    });
+    googleSignInWindow.webContents.on('did-navigate', (_event, url) => {
+        if (!isCompletedOAuthNavigation(url, APP_ORIGIN) || !mainAppWindow || mainAppWindow.isDestroyed()) return;
+        // The callback reached an authenticated AllyX route in the shared
+        // partition. Bring the existing main window there and close the
+        // disposable sign-in window so Email remains an easy fallback.
+        void mainAppWindow.loadURL(url).catch(error => console.error('[Auth] Could not return to AllyX:', error));
+        closeGoogleSignInWindow();
+    });
+    void googleSignInWindow.loadURL(authorizationUrl).catch(error => {
+        console.error('[Auth] Could not open Google sign-in:', error);
+        closeGoogleSignInWindow();
+    });
+}
+
 function createMainAppWindow() {
     const { width } = screen.getPrimaryDisplay().workAreaSize;
 
@@ -291,14 +358,8 @@ function createMainAppWindow() {
             partition: 'persist:main'
         }
     });
-    allowAppNavigation(mainAppWindow, APP_ORIGIN, url => shell.openExternal(url), [
-        'https://eslcatxyhshjlgukkfhc.supabase.co',
-        'https://accounts.google.com',
-        'https://accounts.googleusercontent.com',
-    ]);
-
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    mainAppWindow.webContents.setUserAgent(userAgent);
+    allowAppNavigation(mainAppWindow, APP_ORIGIN, url => shell.openExternal(url), OAUTH_NAVIGATION_ORIGINS);
+    mainAppWindow.webContents.setUserAgent(DESKTOP_USER_AGENT);
 
     if (process.platform === 'win32') {
         mainAppWindow.setAlwaysOnTop(true, 'screen-saver', 5);
@@ -573,6 +634,10 @@ function setupIpcHandlers() {
     });
     onTrusted('hide-overlay', () => floatingIconWindow?.hide());
 
+    handleTrusted('open-google-sign-in', async (_event, authorizationUrl) => {
+        openGoogleSignInWindow(authorizationUrl);
+        return { success: true };
+    });
     onTrusted('retry-connection', () => loadAppContent());
     onTrusted('quit-app', () => app.quit());
     onTrusted('go-back', () => mainAppWindow?.webContents.goBack());
@@ -809,5 +874,6 @@ app.on('activate', () => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => {
     isQuitting = true;
+    closeGoogleSignInWindow();
     globalShortcut.unregisterAll();
 });
