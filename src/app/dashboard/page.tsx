@@ -17,7 +17,6 @@ export default function DashboardPage() {
     const [stats, setStats] = useState({ totalInterviews: 0, totalMinutes: 0 });
     const [recentSessions, setRecentSessions] = useState<Interview[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isAuthChecking, setIsAuthChecking] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
 
@@ -29,7 +28,6 @@ export default function DashboardPage() {
                 const interviews = await interviewService.getUserInterviews();
                 const access = await interviewAccess.status().catch(() => null);
                 setCreditsRemaining(access?.creditsRemaining ?? null);
-                setIsAuthChecking(false); // Auth passed
                 setRecentSessions(interviews.slice(0, 3)); // Get top 3
 
                 // Only count measured duration; never invent time for short sessions.
@@ -48,7 +46,6 @@ export default function DashboardPage() {
                     router.push("/login");
                     return;
                 }
-                setIsAuthChecking(false);
                 console.error(err);
                 setError("Could not load your dashboard. Check your connection and retry.");
             } finally {
@@ -83,29 +80,8 @@ export default function DashboardPage() {
         }
     };
 
-    // Show loading while checking auth
-    if (isAuthChecking) {
-        return (
-            <div className="space-y-8 animate-pulse">
-                <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                        <Skeleton className="h-8 w-48" />
-                        <Skeleton className="h-4 w-64" />
-                    </div>
-                    <Skeleton className="h-10 w-40" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Skeleton className="h-32 rounded-2xl" />
-                    <Skeleton className="h-32 rounded-2xl" />
-                    <Skeleton className="h-32 rounded-2xl" />
-                </div>
-                <Skeleton className="h-64 rounded-2xl" />
-            </div>
-        );
-    }
-
     return (
-        <div className="space-y-8">
+        <div className="space-y-8" aria-busy={isLoading}>
             <DesktopAppNotice compact />
             {error && (
                 <div role="alert" className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
@@ -135,7 +111,7 @@ export default function DashboardPage() {
                         </div>
                         <div>
                             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-medium">Total Time</p>
-                            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.totalMinutes}m</h3>
+                            {isLoading ? <Skeleton className="mt-1 h-8 w-16" /> : <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.totalMinutes}m</h3>}
                         </div>
                     </div>
                 </div>
@@ -147,7 +123,7 @@ export default function DashboardPage() {
                         </div>
                         <div>
                             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-medium">Interviews Completed</p>
-                            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.totalInterviews}</h3>
+                            {isLoading ? <Skeleton className="mt-1 h-8 w-12" /> : <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.totalInterviews}</h3>}
                         </div>
                     </div>
                 </div>
@@ -159,7 +135,7 @@ export default function DashboardPage() {
                         </div>
                         <div>
                             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-medium">Interview Credits</p>
-                            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{creditsRemaining ?? "—"}</h3>
+                            {isLoading ? <Skeleton className="mt-1 h-8 w-12" /> : <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{creditsRemaining ?? "—"}</h3>}
                         </div>
                     </div>
                     <Link href="/#pricing" className="text-xs font-semibold text-violet-600 dark:text-violet-400">Buy interview pack</Link>
