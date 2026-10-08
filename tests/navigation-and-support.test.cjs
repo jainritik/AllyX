@@ -74,3 +74,9 @@ test("signed-in mobile navigation includes account, billing, and support destina
         assert.match(navbar, new RegExp(`href="${destination}"`));
     }
 });
+
+test("global styles prevent decorative page elements from creating horizontal scrolling", () => {
+    const styles = read("src/app/globals.css");
+
+    assert.match(styles, /html,\s*body\s*\{[\s\S]*overflow-x:\s*clip;/);
+});
