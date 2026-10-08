@@ -1,4 +1,4 @@
-const RELEASE = "1.3.5";
+const RELEASE = "1.3.14";
 
 export function reportClientError(error: unknown, componentStack?: string) {
     if (process.env.NODE_ENV !== "production" || typeof window === "undefined") return;

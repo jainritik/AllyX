@@ -95,12 +95,12 @@ export default function DashboardPage() {
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
                     <p className="text-gray-600 dark:text-gray-300">Welcome back! Ready for your next interview?</p>
                 </div>
-                <Link href="/dashboard/new" className="w-full sm:w-auto">
-                    <Button variant="gradient" className="w-full sm:w-auto shadow-lg shadow-green-900/20">
+                <Button asChild variant="gradient" className="w-full sm:w-auto shadow-lg shadow-green-900/20">
+                    <Link href="/dashboard/new">
                         <Plus className="mr-2 h-4 w-4" />
                         Start New Interview
-                    </Button>
-                </Link>
+                    </Link>
+                </Button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -138,7 +138,11 @@ export default function DashboardPage() {
                             {isLoading ? <Skeleton className="mt-1 h-8 w-12" /> : <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{creditsRemaining ?? "—"}</h3>}
                         </div>
                     </div>
-                    <Link href="/#pricing" className="text-xs font-semibold text-violet-600 dark:text-violet-400">Buy interview pack</Link>
+                    {isLoading ? <Skeleton className="h-4 w-28" /> : creditsRemaining && creditsRemaining > 0 ? (
+                        <Link href="/dashboard/billing" className="text-xs font-semibold text-violet-600 dark:text-violet-400">Manage credits</Link>
+                    ) : (
+                        <Link href="/dashboard/billing" className="text-xs font-semibold text-violet-600 dark:text-violet-400">Buy interview pack</Link>
+                    )}
                 </div>
 
             </div>
@@ -147,11 +151,11 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white">Recent History</h3>
                     {recentSessions.length > 0 && (
-                        <Link href="/dashboard/history">
-                            <Button variant="ghost" size="sm" className="text-gray-500 dark:text-gray-400">
+                        <Button asChild variant="ghost" size="sm" className="text-gray-500 dark:text-gray-400">
+                            <Link href="/dashboard/history">
                                 View All
-                            </Button>
-                        </Link>
+                            </Link>
+                        </Button>
                     )}
                 </div>
 

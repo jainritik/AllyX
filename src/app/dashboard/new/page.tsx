@@ -257,11 +257,11 @@ export default function NewInterviewPage() {
                 {/* Header */}
                 <div className="flex flex-col items-start gap-4 mb-8 sm:mb-12">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5">
-                        <Link href="/dashboard">
-                            <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full w-10 h-10 sm:w-14 sm:h-14">
+                        <Button asChild variant="ghost" size="icon" className="text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full w-10 h-10 sm:w-14 sm:h-14">
+                            <Link href="/dashboard" aria-label="Return to dashboard">
                                 <ArrowLeft size={20} className="sm:size-[28px]" />
-                            </Button>
-                        </Link>
+                            </Link>
+                        </Button>
                         <div>
                             <h1 className="text-2xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-500 dark:from-white dark:to-gray-400 mb-1 sm:mb-2">
                                 Setup Interview

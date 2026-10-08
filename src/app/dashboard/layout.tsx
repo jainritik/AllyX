@@ -18,42 +18,42 @@ function NavItems({ setMobileMenuOpen }: { setMobileMenuOpen: (open: boolean) =>
     const router = useRouter();
     return (
         <>
-            <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+            <Button asChild variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
                     <LayoutDashboard size={20} />
                     Dashboard
-                </Button>
-            </Link>
-            <Link href="/dashboard/new" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                </Link>
+            </Button>
+            <Button asChild variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <Link href="/dashboard/new" onClick={() => setMobileMenuOpen(false)}>
                     <Video size={20} />
                     New Interview
-                </Button>
-            </Link>
-            <Link href="/dashboard/resumes" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                </Link>
+            </Button>
+            <Button asChild variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <Link href="/dashboard/resumes" onClick={() => setMobileMenuOpen(false)}>
                     <FileText size={20} />
                     My Resumes
-                </Button>
-            </Link>
-            <Link href="/dashboard/history" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                </Link>
+            </Button>
+            <Button asChild variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <Link href="/dashboard/history" onClick={() => setMobileMenuOpen(false)}>
                     <Clock size={20} />
                     Interview History
-                </Button>
-            </Link>
-            <Link href="/dashboard/billing" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                </Link>
+            </Button>
+            <Button asChild variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <Link href="/dashboard/billing" onClick={() => setMobileMenuOpen(false)}>
                     <CreditCard size={20} />
                     Billing & Credits
-                </Button>
-            </Link>
-            <Link href="/support/report-bug" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                </Link>
+            </Button>
+            <Button asChild variant="ghost" className="w-full justify-start gap-3 text-gray-600 dark:text-gray-300 hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                <Link href="/support/report-bug" onClick={() => setMobileMenuOpen(false)}>
                     <Bug size={20} />
                     Report a Bug
-                </Button>
-            </Link>
+                </Link>
+            </Button>
 
             <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
                 <Button
@@ -180,10 +180,10 @@ export default function DashboardLayout({
 
 
 
-            <div className="flex flex-1 pt-20 w-full max-w-full md:max-w-[75vw] mx-auto px-6 sm:px-6 gap-6 sm:gap-8">
+            <div className="mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 pt-20 sm:gap-8 sm:px-6">
                 {/* Desktop Sidebar */}
                 <aside className="w-64 hidden md:block py-8">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 p-4 sticky top-24 mt-20 transition-colors duration-300">
+                    <div className="sticky top-24 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-colors duration-300 dark:border-zinc-800 dark:bg-zinc-900">
                         <nav className="space-y-2">
                             <NavItems setMobileMenuOpen={setMobileMenuOpen} />
                         </nav>

@@ -4,7 +4,7 @@ import { useAuth, signOutAndClear } from "@/lib/auth";
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { Bug, CreditCard, Menu } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -13,9 +13,11 @@ import { useRouter } from "next/navigation";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export function Navbar() {
+    const user = useAuth(state => state.user);
     const [scrolled, setScrolled] = useState(false);
     const [isDesktop, setIsDesktop] = useState(false);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const isLoggedIn = Boolean(user);
 
     useEffect(() => {
         // Check if running in Electron desktop mode
@@ -121,49 +123,63 @@ export function Navbar() {
                                     </h2>
                                 </div>
                                 <div className="flex flex-col gap-1 p-4 overflow-y-auto">
-                                    <Link href="/dashboard" onClick={() => setIsSheetOpen(false)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                    {isLoggedIn && <>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/dashboard" onClick={() => setIsSheetOpen(false)}>
                                             Dashboard
-                                        </Button>
-                                    </Link>
-                                    <Link href="/dashboard/new" onClick={() => setIsSheetOpen(false)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/dashboard/new" onClick={() => setIsSheetOpen(false)}>
                                             New Interview
-                                        </Button>
-                                    </Link>
-                                    <Link href="/dashboard/resumes" onClick={() => setIsSheetOpen(false)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/dashboard/resumes" onClick={() => setIsSheetOpen(false)}>
                                             My Resumes
-                                        </Button>
-                                    </Link>
-                                    <Link href="/dashboard/history" onClick={() => setIsSheetOpen(false)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/dashboard/history" onClick={() => setIsSheetOpen(false)}>
                                             Interview History
-                                        </Button>
-                                    </Link>
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start gap-3 text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/dashboard/billing" onClick={() => setIsSheetOpen(false)}>
+                                            <CreditCard className="h-4 w-4" />
+                                            Billing &amp; Credits
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start gap-3 text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/support/report-bug" onClick={() => setIsSheetOpen(false)}>
+                                            <Bug className="h-4 w-4" />
+                                            Report a bug
+                                        </Link>
+                                    </Button>
 
                                     <div className="h-px bg-gray-100 dark:bg-gray-800 my-4 mx-2" />
+                                    </>}
 
-                                    <Link href="/#how-it-works" onClick={(event) => navigateToSection(event, "how-it-works", true)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/#how-it-works" onClick={(event) => navigateToSection(event, "how-it-works", true)}>
                                             How it Works
-                                        </Button>
-                                    </Link>
-                                    <Link href="/#pricing" onClick={(event) => navigateToSection(event, "pricing", true)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/#pricing" onClick={(event) => navigateToSection(event, "pricing", true)}>
                                             Pricing
-                                        </Button>
-                                    </Link>
-                                    <Link href="/download" onClick={() => setIsSheetOpen(false)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/download" onClick={() => setIsSheetOpen(false)}>
                                             Desktop App
-                                        </Button>
-                                    </Link>
-                                    <Link href="/about" onClick={() => setIsSheetOpen(false)}>
-                                        <Button variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        </Link>
+                                    </Button>
+                                    <Button asChild variant="ghost" className="w-full justify-start text-base font-medium h-12 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800">
+                                        <Link href="/about" onClick={() => setIsSheetOpen(false)}>
                                             About AllyX
-                                        </Button>
-                                    </Link>
+                                        </Link>
+                                    </Button>
 
                                     <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
                                         <AuthButtons onSheetClose={() => setIsSheetOpen(false)} />
@@ -311,16 +327,16 @@ function AuthButtons({ onSheetClose }: { onSheetClose?: () => void }) {
 
     return (
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-            <Link href="/login" onClick={onSheetClose}>
-                <Button variant="ghost" className="w-full sm:w-auto text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">
+            <Button asChild variant="ghost" className="w-full sm:w-auto text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400">
+                <Link href="/login" onClick={onSheetClose}>
                     Sign in
-                </Button>
-            </Link>
-            <Link href="/login" onClick={onSheetClose}>
-                <Button variant="gradient" className="w-full sm:w-auto shadow-lg shadow-green-900/20">
+                </Link>
+            </Button>
+            <Button asChild variant="gradient" className="w-full sm:w-auto shadow-lg shadow-green-900/20">
+                <Link href="/login" onClick={onSheetClose}>
                     Try For Free
-                </Button>
-            </Link>
+                </Link>
+            </Button>
         </div>
     );
 }
