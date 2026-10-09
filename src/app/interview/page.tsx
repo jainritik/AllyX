@@ -118,6 +118,7 @@ export default function InterviewPage() {
     const [selectedMeetingAudioSource, setSelectedMeetingAudioSource] = useState("");
     const [isLoadingMeetingAudioSources, setIsLoadingMeetingAudioSources] = useState(false);
     const [capturePermissionNeedsRestart, setCapturePermissionNeedsRestart] = useState(false);
+    const [audioCaptureStatus, setAudioCaptureStatus] = useState<"idle" | "waiting" | "hearing" | "transcribing" | "no-signal">("idle");
     const [isScreenCapturing, setIsScreenCapturing] = useState(false);
     const screenStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -130,6 +131,8 @@ export default function InterviewPage() {
     const [contextReady, setContextReady] = useState(false);
     const [accessReady, setAccessReady] = useState(false);
     const [accessRemaining, setAccessRemaining] = useState<number | null>(null);
+    const lastAudibleSignalAtRef = useRef(0);
+    const lastAudioStatusUpdateAtRef = useRef(0);
 
     // Constants
     const MAX_TRANSCRIPT_LENGTH = 4000;
@@ -836,6 +839,7 @@ export default function InterviewPage() {
             }
 
             console.log(`[Desktop STT] Sending audio with language: ${langCode}`);
+            setAudioCaptureStatus("transcribing");
 
             let response;
             let retries = 2;
@@ -905,6 +909,7 @@ export default function InterviewPage() {
 
                 lastGroqTranscriptRef.current = clean;
                 console.log(`[Desktop STT] ✅ Heard (${langCode}): "${newText}"`);
+                setAudioCaptureStatus("hearing");
 
                 appendFullTranscript(newText);
 
@@ -928,9 +933,11 @@ export default function InterviewPage() {
                 }
             } else {
                 console.log("[Desktop STT] Groq returned empty response");
+                setAudioCaptureStatus("waiting");
             }
         } catch (error) {
             console.error("[Desktop STT] Error:", error);
+            setAudioCaptureStatus("waiting");
             setError("Transcription failed. Check your connection, then stop and restart the microphone.");
         }
     };
@@ -1000,14 +1007,19 @@ export default function InterviewPage() {
             }
 
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            const timeDomainData = new Uint8Array(analyser.fftSize);
 
-            // Use the proven full-spectrum threshold from the working desktop build.
-            // The low-band-only threshold was continuously triggered by ordinary room
-            // noise, forcing every question to wait for the 15-second safety cutoff.
-            const SPEECH_THRESHOLD = 6;
+            // Frequency averages can report a quiet room even when the microphone is
+            // carrying speech. Use time-domain RMS as the primary detector, with the
+            // spectrum as a secondary signal for supported desktop-audio streams.
+            const SPEECH_RMS_THRESHOLD = 2.2;
+            const SPEECH_SPECTRUM_THRESHOLD = 6;
             const SILENCE_DURATION = 1300;      // Avoid splitting a question at a short speaking pause
             const MIN_SPEECH_DURATION = 500;    // Allow short sentences
-            const MAX_RECORDING_TIME = 15000;   // Force send after 15s
+            // A continuous interviewer should not have to pause before the first
+            // transcript appears. Each finished segment is a valid WebM file for
+            // Whisper, so send an ongoing turn at least every eight seconds.
+            const MAX_RECORDING_TIME = 8000;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
@@ -1020,15 +1032,27 @@ export default function InterviewPage() {
                 if (!activeStreamsRef.current.length && !screenStreamRef.current) return;
 
                 analyser.getByteFrequencyData(dataArray);
-                const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+                analyser.getByteTimeDomainData(timeDomainData);
+                const spectrumAverage = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+                const rms = Math.sqrt(timeDomainData.reduce((sum, value) => {
+                    const centered = value - 128;
+                    return sum + centered * centered;
+                }, 0) / timeDomainData.length);
+                const audible = rms >= SPEECH_RMS_THRESHOLD || spectrumAverage >= SPEECH_SPECTRUM_THRESHOLD;
+                const now = Date.now();
 
                 // Log every 2.5s to reduce console noise
-                if (Date.now() - lastLogTime > 2500) {
-                    console.log(`[VAD] Avg: ${average.toFixed(1)} | Mic: ${!!micStream} | Screen: ${isScreenAudioActive}`);
-                    lastLogTime = Date.now();
+                if (now - lastLogTime > 2500) {
+                    console.log(`[VAD] RMS: ${rms.toFixed(1)} | Spectrum: ${spectrumAverage.toFixed(1)} | Mic: ${!!micStream} | Screen: ${isScreenAudioActive}`);
+                    lastLogTime = now;
                 }
 
-                if (average > SPEECH_THRESHOLD) {
+                if (audible) {
+                    lastAudibleSignalAtRef.current = now;
+                    if (now - lastAudioStatusUpdateAtRef.current > 500) {
+                        lastAudioStatusUpdateAtRef.current = now;
+                        setAudioCaptureStatus("hearing");
+                    }
                     speechActiveRef.current = true;
                     // SPEECH DETECTED
                     silenceStart = 0;
@@ -1089,7 +1113,7 @@ export default function InterviewPage() {
                     } else {
                         // Check Max Duration
                         if (Date.now() - speechStart > MAX_RECORDING_TIME) {
-                            console.log("[VAD] Max duration reached, forcing stop.");
+                            console.log("[VAD] Segment limit reached, sending ongoing speech.");
                             stopAndProcess();
                         }
                     }
@@ -1104,6 +1128,11 @@ export default function InterviewPage() {
                         }
                     }
                 }
+
+                if (!isSpeaking && now - lastAudibleSignalAtRef.current > 7000 && now - lastAudioStatusUpdateAtRef.current > 1000) {
+                    lastAudioStatusUpdateAtRef.current = now;
+                    setAudioCaptureStatus("no-signal");
+                }
             };
 
             const stopAndProcess = () => {
@@ -1117,6 +1146,9 @@ export default function InterviewPage() {
             };
 
             if (vadTimerRef.current) clearInterval(vadTimerRef.current);
+            lastAudibleSignalAtRef.current = Date.now();
+            lastAudioStatusUpdateAtRef.current = Date.now();
+            setAudioCaptureStatus("waiting");
             checkAudioLevel();
             // The desktop control window is intentionally hidden while the overlay is
             // in use. requestAnimationFrame pauses in a hidden BrowserWindow, so audio
@@ -1146,6 +1178,7 @@ export default function InterviewPage() {
             clearInterval(vadTimerRef.current);
             vadTimerRef.current = null;
         }
+        setAudioCaptureStatus("idle");
         if (mediaRecorderRef.current?.state === 'recording') {
             mediaRecorderRef.current.onstop = null;
             mediaRecorderRef.current.stop();
@@ -1958,6 +1991,24 @@ export default function InterviewPage() {
                         </div>
                         {!isScreenAudioActive && <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">If this is your first use, your computer may ask for Screen &amp; System Audio permission. Enable it only when you want AllyX to transcribe meeting audio.</p>}
                     </section>
+                )}
+
+                {isElectron && isRecording && (
+                    <div role="status" className={cn(
+                        "rounded-xl border px-4 py-3 text-sm",
+                        audioCaptureStatus === "no-signal"
+                            ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"
+                    )}>
+                        <p className="font-semibold">
+                            {audioCaptureStatus === "transcribing" ? "Transcribing the latest audio…" : audioCaptureStatus === "hearing" ? "Audio detected — transcript is updating." : audioCaptureStatus === "no-signal" ? "No audible signal detected yet." : "Listening for speech…"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 opacity-80">
+                            {isScreenAudioActive
+                                ? "Microphone and the selected meeting display are active. Ongoing speech is sent for transcription in short segments."
+                                : "Your microphone is active. To transcribe the interviewer, select their display above and start interviewer audio."}
+                        </p>
+                    </div>
                 )}
 
                 {/* Transcript Area */}

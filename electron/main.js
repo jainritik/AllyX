@@ -9,6 +9,16 @@ const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./wind
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
 const { isAllowedMainWindowMediaPermission, shouldAttemptScreenCapturePermission } = require('./media-permission-policy');
+
+// Electron 39 moved macOS desktop audio to the CoreAudio Tap path. On machines
+// where that path cannot start, Chromium exposes a live-but-silent track with no
+// useful error. AllyX already asks for the established Screen & System Audio
+// permission, so retain that dependable capture path until CoreAudio Tap is
+// consistently reliable across supported macOS releases.
+if (process.platform === 'darwin') {
+    app.commandLine.appendSwitch('disable-features', 'MacCatapLoopbackAudioForScreenShare');
+}
+
 const capturePrivacy = createCapturePrivacy({
     platform: process.platform,
     release: os.release(),
