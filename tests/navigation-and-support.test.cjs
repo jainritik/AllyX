@@ -20,7 +20,9 @@ function knownPageRoutes() {
     return sourceFiles(path.join(root, "src", "app"))
         .filter(file => /\/page\.tsx$/.test(file))
         .map(file => {
-            const segments = path.dirname(file).split(path.sep).slice(2)
+            // `sourceFiles` returns POSIX-style paths even on Windows, because
+            // these values represent web routes rather than filesystem paths.
+            const segments = path.posix.dirname(file).split("/").slice(2)
                 .filter(segment => !segment.startsWith("["));
             return `/${segments.join("/")}`.replace(/\/$/, "") || "/";
         });
