@@ -114,6 +114,9 @@ export default function InterviewPage() {
     const [interviewStartTime, setInterviewStartTime] = useState<Date>(new Date());
     const [manualQuestion, setManualQuestion] = useState(""); // Manual input for coding questions
     const [isScreenAudioActive, setIsScreenAudioActive] = useState(false);
+    const [meetingAudioSources, setMeetingAudioSources] = useState<Array<{ id: string; name: string }>>([]);
+    const [selectedMeetingAudioSource, setSelectedMeetingAudioSource] = useState("");
+    const [isLoadingMeetingAudioSources, setIsLoadingMeetingAudioSources] = useState(false);
     const [capturePermissionNeedsRestart, setCapturePermissionNeedsRestart] = useState(false);
     const [isScreenCapturing, setIsScreenCapturing] = useState(false);
     const screenStreamRef = useRef<MediaStream | null>(null);
@@ -684,6 +687,34 @@ export default function InterviewPage() {
 
     useEffect(() => window.electronAPI?.onStopAudioSource?.(() => stopScreenAudio()), [stopScreenAudio]);
 
+    const loadMeetingAudioSources = useCallback(async () => {
+        if (!window.electronAPI?.isElectron) return [] as Array<{ id: string; name: string }>;
+        setIsLoadingMeetingAudioSources(true);
+        try {
+            const result = await window.electronAPI.listSystemAudioSources();
+            if (!result.success) {
+                setError(result.error || "Could not list the available displays for meeting audio.");
+                return [];
+            }
+            const sources = result.sources;
+            setMeetingAudioSources(sources);
+            setSelectedMeetingAudioSource(current => {
+                if (sources.some(source => source.id === current)) return current;
+                return sources.length === 1 ? sources[0].id : "";
+            });
+            return sources;
+        } catch {
+            setError("Could not list the available displays for meeting audio. Refresh and try again.");
+            return [];
+        } finally {
+            setIsLoadingMeetingAudioSources(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isElectron) void loadMeetingAudioSources();
+    }, [isElectron, loadMeetingAudioSources]);
+
     const connectScreenAudio = useCallback(async (sourceId: string) => {
         if (screenSourceIdRef.current === sourceId && screenStreamRef.current) return true;
         const epoch = screenCaptureEpochRef.current;
@@ -706,7 +737,7 @@ export default function InterviewPage() {
             const audioTrack = stream.getAudioTracks()[0];
             if (!audioTrack || audioTrack.readyState !== "live") {
                 stream.getTracks().forEach(track => track.stop());
-                throw new Error("macOS did not provide a live meeting-audio stream. Restart AllyX after enabling Screen & System Audio access.");
+                throw new Error("The selected display did not provide a live audio stream.");
             }
             screenStreamRef.current?.getTracks().forEach(track => track.stop());
             screenStreamRef.current = stream;
@@ -726,16 +757,22 @@ export default function InterviewPage() {
         } catch (error) {
             console.error("[Meeting Audio] Failed:", error);
             setIsScreenAudioActive(false);
-            const message = "Microphone is available, but meeting audio needs Screen & System Audio permission in macOS Settings.";
+            const detail = error instanceof Error ? error.message : "";
+            const platformHint = navigator.userAgent.toLowerCase().includes("mac")
+                ? "Check Screen & System Audio permission in macOS Settings, then restart AllyX."
+                : "Check the selected display and your operating system's screen/audio capture permission.";
+            const message = detail
+                ? `Meeting audio could not start for the selected display. ${detail}`
+                : `Meeting audio could not start for the selected display. ${platformHint}`;
             setError(message);
             window.electronAPI?.sendOverlayStatus?.(message, "error");
             return false;
         }
     }, [stopScreenAudio]);
 
-    const startMeetingAudio = useCallback(async () => {
+    const startMeetingAudio = useCallback(async (sourceId?: string) => {
         if (!isElectron || screenStreamRef.current) return Boolean(screenStreamRef.current);
-        const result = await window.electronAPI?.startSystemAudioCapture();
+        const result = await window.electronAPI?.startSystemAudioCapture(sourceId);
         if (!result?.success || !result.sourceId) {
             const message = result?.error || "Meeting audio could not be started. Microphone listening is still available.";
             setCapturePermissionNeedsRestart(Boolean(result?.restartRequired));
@@ -753,7 +790,14 @@ export default function InterviewPage() {
             stopScreenAudio();
             await window.electronAPI?.stopSystemAudioCapture();
         } else {
-            await startMeetingAudio();
+            const sources = await loadMeetingAudioSources();
+            let sourceId = selectedMeetingAudioSource;
+            if (!sourceId && sources.length === 1) sourceId = sources[0].id;
+            if (!sourceId) {
+                setError("Choose the display that contains your meeting, then start interviewer audio.");
+                return;
+            }
+            await startMeetingAudio(sourceId);
         }
     };
 
@@ -1239,10 +1283,8 @@ export default function InterviewPage() {
 
             // STEP 2: Desktop Only - Start High-Quality mixed audio STT
             if (isElectron) {
-                // One Start action listens to both people: microphone for the candidate,
-                // meeting audio for the interviewer. If macOS blocks meeting audio, mic
-                // capture still starts and the overlay explains the missing permission.
-                await startMeetingAudio();
+                // Microphone listening always starts from this control. Meeting audio
+                // is enabled separately after the customer selects the meeting display.
                 const started = await startDesktopSTT();
                 if (!started) return;
             }
@@ -1806,7 +1848,7 @@ export default function InterviewPage() {
                                             ? "bg-blue-500 text-white scale-110 shadow-blue-500/40"
                                             : "bg-black/40 text-white hover:bg-black/60 border border-white/10"
                                     )}
-                                    title={isScreenAudioActive ? "Stop System Audio" : "Start System Audio (Screen Sharing)"}
+                                    title={isScreenAudioActive ? "Stop interviewer audio" : "Start interviewer audio"}
                                 >
                                     {isScreenAudioActive ? <Monitor size={26} strokeWidth={2.5} /> : <MonitorOff size={26} strokeWidth={2} />}
                                 </button>
@@ -1869,7 +1911,7 @@ export default function InterviewPage() {
                                         ? "bg-blue-500 text-white scale-110 shadow-blue-500/30 ring-4 ring-blue-100 dark:ring-blue-900/30"
                                         : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                                 )}
-                                title={isScreenAudioActive ? "Stop System Audio" : "Start System Audio (Screen Sharing)"}
+                                title={isScreenAudioActive ? "Stop interviewer audio" : "Start interviewer audio"}
                             >
                                 {isScreenAudioActive ? <Monitor size={26} strokeWidth={2.5} /> : <MonitorOff size={26} strokeWidth={2} />}
                             </button>
@@ -1885,6 +1927,37 @@ export default function InterviewPage() {
                             {isSaving ? <Loader2 size={26} className="animate-spin" /> : <LogOut size={26} strokeWidth={2} />}
                         </button>
                     </div>
+                )}
+
+                {isElectron && (
+                    <section className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 text-sm text-slate-700 dark:border-sky-900/70 dark:bg-sky-950/20 dark:text-slate-200">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <h3 className="font-semibold text-slate-950 dark:text-white">Interviewer audio</h3>
+                                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">Choose the display playing the meeting. Microphone listening remains separate and is used for your own voice.</p>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={() => void loadMeetingAudioSources()} disabled={isLoadingMeetingAudioSources || isScreenAudioActive}>
+                                {isLoadingMeetingAudioSources ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1 h-3.5 w-3.5" />}Refresh displays
+                            </Button>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <label className="sr-only" htmlFor="meeting-audio-display">Meeting display</label>
+                            <select
+                                id="meeting-audio-display"
+                                value={selectedMeetingAudioSource}
+                                onChange={event => setSelectedMeetingAudioSource(event.target.value)}
+                                disabled={isScreenAudioActive || isLoadingMeetingAudioSources || meetingAudioSources.length === 0}
+                                className="min-h-10 flex-1 rounded-lg border border-sky-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-sky-500 dark:border-sky-900 dark:bg-slate-950 dark:text-white"
+                            >
+                                <option value="">{meetingAudioSources.length > 1 ? "Choose the display with your meeting" : meetingAudioSources.length === 1 ? "Available meeting display" : "No displays found"}</option>
+                                {meetingAudioSources.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}
+                            </select>
+                            <Button type="button" onClick={() => void toggleScreenAudio()} disabled={isLoadingMeetingAudioSources || (!isScreenAudioActive && !selectedMeetingAudioSource && meetingAudioSources.length !== 1)} className={cn("min-h-10", isScreenAudioActive ? "bg-slate-700 hover:bg-slate-800" : "bg-sky-600 hover:bg-sky-700")}>
+                                {isScreenAudioActive ? "Stop interviewer audio" : "Start interviewer audio"}
+                            </Button>
+                        </div>
+                        {!isScreenAudioActive && <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">If this is your first use, your computer may ask for Screen &amp; System Audio permission. Enable it only when you want AllyX to transcribe meeting audio.</p>}
+                    </section>
                 )}
 
                 {/* Transcript Area */}

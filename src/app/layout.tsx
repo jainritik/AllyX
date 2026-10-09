@@ -7,11 +7,6 @@ import { ProductionErrorMonitor } from "@/components/production-error-monitor";
 export const metadata: Metadata = {
   metadataBase: new URL("https://allyx.vercel.app"),
   applicationName: "AllyX",
-  appleWebApp: {
-    title: "AllyX",
-    statusBarStyle: "default",
-    capable: true,
-  },
   title: {
     default: "AllyX - Real-Time AI Interview Assistant",
     template: "%s | AllyX"
@@ -76,7 +71,6 @@ export const metadata: Metadata = {
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
   },
-  manifest: "/site.webmanifest",
 };
 
 export const viewport = {

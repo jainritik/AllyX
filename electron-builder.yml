@@ -3,6 +3,11 @@ productName: AllyX
 copyright: Copyright (c) 2024 AllyX
 afterSign: scripts/after-sign.mjs
 
+protocols:
+  - name: AllyX secure sign-in
+    schemes:
+      - allyx
+
 directories:
   output: dist
   buildResources: electron/assets

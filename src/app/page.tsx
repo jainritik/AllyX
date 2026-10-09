@@ -23,25 +23,26 @@ export const metadata: Metadata = {
 };
 
 const features = [
-  { icon: AudioLines, title: "Understands the conversation", copy: "Transcribes microphone and supported desktop audio so the current question stays in context." },
+  { icon: AudioLines, title: "Transcribes the audio you enable", copy: "Uses your microphone and, where your computer supports it, the display you explicitly select for meeting audio." },
   { icon: MessageSquareText, title: "Answers with your context", copy: "Uses your resume, target role, preferred tone, and recent questions to generate relevant suggestions." },
   { icon: ScanText, title: "Reads text and code", copy: "Capture a selected area or paste a technical question when audio alone is not enough." },
   { icon: ShieldCheck, title: "Focused desktop overlay", copy: "Keep suggestions in a compact, movable window with adjustable opacity and click-through controls." },
 ];
 
 const plans = [
-  { id: null, name: "Free trial", interviews: "1 trial", price: "₹0", detail: "Up to 10 minutes", featured: false },
+  { id: null, name: "Introductory trial", interviews: "New accounts only", price: "₹0", detail: "Up to 10 minutes before a first purchase", featured: false },
   { id: "starter", name: "Starter", interviews: "2 interviews", price: "₹1,000", detail: "Use when you need it", featured: false },
   { id: "growth", name: "Growth", interviews: "5 interviews", price: "₹2,000", detail: "Best for an active search", featured: true },
   { id: "pro", name: "Pro", interviews: "10 interviews", price: "₹3,500", detail: "Lowest cost per interview", featured: false },
 ] satisfies Array<{ id: BillingPlanId | null; name: string; interviews: string; price: string; detail: string; featured: boolean }>;
 
 const faqs = [
-  ["Does AllyX join my meeting?", "No. The desktop app runs locally as a separate assistant and does not appear as a meeting participant or bot."],
+  ["Does AllyX join my meeting?", "No. The desktop app runs locally as a separate assistant and does not appear as a meeting participant or bot. Use it only where meeting, workplace, and assessment rules allow."],
   ["Which computers are supported?", "The desktop product is designed for Apple Silicon and Intel Macs, plus 64-bit Windows 10 and Windows 11 computers. Each published build will identify its supported systems."],
   ["Can I run an interview session on my phone or in a browser?", "No. Phones and browsers can be used for account setup, billing, and history. Live listening, screen capture, and the answer overlay require the AllyX desktop app on a supported Mac or Windows computer."],
   ["Can I try it before purchasing?", "Each account includes one trial of up to 10 minutes before its first interview-pack purchase. Interview packs provide additional full interview sessions."],
-  ["Does it work with technical interviews?", "Yes. You can paste questions and code, capture text from the screen, and provide resume and role context for more relevant answers."],
+  ["Does it work with technical interviews?", "You can paste questions and code, capture selected screen text, and provide resume and role context for more relevant practice suggestions. Check the rules that apply to your meeting or assessment before using any assistance tool."],
+  ["Will the overlay always be excluded from screen sharing?", "No. Capture privacy depends on your operating system, meeting app, and sharing method. Test with a second participant before relying on it in a real session."],
   ["Will my interview credits expire?", "Purchased interview credits remain in your account until you use them. Each interview uses one credit, and paid interview sessions do not have a fixed time limit."],
 ];
 
@@ -60,7 +61,7 @@ function ProductPreview() {
             <div className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_20%_10%,rgba(56,189,248,.16),transparent_35%),linear-gradient(145deg,#101827,#18273d)] p-5 sm:p-8 lg:border-b-0 lg:border-r">
               <div className="mb-8 flex items-center gap-3 text-xs text-slate-400"><Code2 className="h-4 w-4 text-cyan-300" /><span>candidate-service / handler.go</span></div>
               <pre className="overflow-hidden text-[10px] leading-6 text-slate-400 sm:text-xs sm:leading-7"><code><span className="text-violet-300">func</span> <span className="text-cyan-200">ProcessJobs</span>(ctx context.Context) error {'{'}{"\n"}  jobs, err := queue.Fetch(ctx){"\n"}  <span className="text-violet-300">if</span> err != nil {'{'}{"\n"}    <span className="text-violet-300">return</span> err{"\n"}  {'}'}{"\n\n"}  <span className="text-slate-500">{"// How would you control concurrency here?"}</span>{"\n"}  <span className="text-violet-300">for</span> _, job := <span className="text-violet-300">range</span> jobs {'{'}{"\n"}    go process(job){"\n"}  {'}'}{"\n"}  <span className="text-violet-300">return</span> nil{"\n"}{'}'}</code></pre>
-              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-[11px] text-slate-300 sm:left-8 sm:right-8 sm:bg-black/20 sm:backdrop-blur"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-400 motion-safe:sm:animate-pulse" />Listening to meeting audio</span><span className="hidden text-slate-500 sm:block">00:07:42</span></div>
+              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-[11px] text-slate-300 sm:left-8 sm:right-8 sm:bg-black/20 sm:backdrop-blur"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-400 motion-safe:sm:animate-pulse" />Selected meeting audio enabled</span><span className="hidden text-slate-500 sm:block">00:07:42</span></div>
             </div>
             <div className="relative bg-[#0b111d] p-5 sm:p-8">
               <div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-cyan-300">SUGGESTED ANSWER</p><p className="mt-1 text-xs text-slate-500">Grounded in your role and resume</p></div><Sparkles className="h-5 w-5 text-violet-300" /></div>
@@ -88,7 +89,7 @@ export default function Home() {
     applicationCategory: "BusinessApplication",
     applicationSubCategory: "Interview preparation software",
     operatingSystem: "macOS, Windows 10, Windows 11",
-    softwareVersion: "1.3.17",
+    softwareVersion: "1.3.18",
     description: metadata.description,
     url: "https://allyx.vercel.app/",
     downloadUrl: "https://allyx.vercel.app/download",
@@ -129,7 +130,7 @@ export default function Home() {
           <div className="mx-auto max-w-5xl text-center">
             <div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-sky-300/60 bg-white px-4 py-2 text-xs font-semibold text-sky-900 shadow-sm sm:bg-white/65 sm:backdrop-blur dark:border-cyan-300/20 dark:bg-slate-900 sm:dark:bg-white/5 dark:text-cyan-200"><Zap className="h-3.5 w-3.5 fill-current" />Desktop app for macOS and Windows</div>
             <h1 className="text-balance text-5xl font-semibold leading-[.98] tracking-[-.055em] sm:text-7xl lg:text-[6.2rem]">Your AI interview assistant.<br /><span className="bg-gradient-to-r from-sky-600 via-cyan-500 to-violet-600 bg-clip-text text-transparent">Answer confidently.</span></h1>
-            <p className="mx-auto mt-7 max-w-2xl text-pretty text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-xl sm:leading-8">A real-time AI interview assistant that listens, understands your context, and provides focused answer suggestions when you need them.</p>
+            <p className="mx-auto mt-7 max-w-2xl text-pretty text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-xl sm:leading-8">A desktop interview-practice assistant that uses the audio you enable and your saved context to provide focused answer suggestions.</p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a href={macUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950"><Apple className="h-4 w-4" />Download for Mac</a>
               <a href={windowsUrl} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-white sm:bg-white/70 sm:backdrop-blur dark:border-white/15 dark:bg-slate-900 sm:dark:bg-white/5 dark:text-white dark:hover:bg-white/10"><Monitor className="h-4 w-4" />Download for Windows</a>
@@ -140,7 +141,7 @@ export default function Home() {
           <ProductPreview />
         </section>
 
-        <section className="border-y border-slate-200/80 bg-white/75 px-4 py-8 dark:border-white/10 dark:bg-white/[.025]"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:justify-between"><span className="text-xs font-bold uppercase tracking-[.2em] text-slate-400">Designed to work alongside</span><span>Google Meet</span><span>Microsoft Teams</span><span>Zoom</span><span>HackerRank</span><span>LeetCode</span></div></section>
+        <section className="border-y border-slate-200/80 bg-white/75 px-4 py-8 dark:border-white/10 dark:bg-white/[.025]"><div className="mx-auto max-w-6xl text-center text-sm font-medium text-slate-500 dark:text-slate-400"><p className="text-xs font-bold uppercase tracking-[.2em] text-slate-400">Desktop companion</p><p className="mt-3">Use AllyX only where the meeting, workplace, and assessment rules allow it. Before a real session, verify audio, capture, and overlay behaviour with your computer and meeting app.</p></div></section>
 
         <section id="features" className="scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="max-w-3xl"><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">One focused workspace</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Useful context, exactly when the conversation moves.</h2><p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 dark:text-slate-400">AllyX combines live transcription, your background, and flexible text capture in a desktop interface built for fast-moving sessions.</p></div>
           <div className="mt-14 grid gap-5 md:grid-cols-2">{features.map(({ icon: Icon, title, copy }, index) => <article key={title} className="group relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-7 shadow-[0_18px_50px_-38px_rgba(15,23,42,.35)] transition hover:-translate-y-1 hover:shadow-[0_24px_70px_-35px_rgba(14,116,144,.35)] dark:border-white/10 dark:bg-white/[.04] sm:p-9"><span className="absolute right-6 top-5 text-6xl font-semibold tracking-tighter text-slate-100 dark:text-white/[.035]">0{index + 1}</span><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-cyan-300/10 dark:text-cyan-300"><Icon className="h-6 w-6" /></div><h3 className="mt-8 text-2xl font-semibold tracking-tight">{title}</h3><p className="mt-3 max-w-lg leading-7 text-slate-600 dark:text-slate-400">{copy}</p></article>)}</div></div></section>
@@ -154,7 +155,7 @@ export default function Home() {
 
         {testimonials.length > 0 && <TestimonialCarousel testimonials={testimonials} />}
 
-        <section id="pricing" className="scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="mx-auto max-w-3xl text-center"><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">Simple interview packs</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Pay for the interviews you need.</h2><p className="mt-5 text-lg leading-8 text-slate-600 dark:text-slate-400">Try one 10-minute introductory session before your first pack purchase, then choose the number of interviews that fits your preparation schedule.</p></div>
+        <section id="pricing" className="scroll-mt-20 px-4 py-24 sm:px-6 sm:py-32"><div className="mx-auto max-w-6xl"><div className="mx-auto max-w-3xl text-center"><p className="text-sm font-bold uppercase tracking-[.18em] text-sky-600 dark:text-cyan-300">Simple interview packs</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-6xl">Pay for the interviews you need.</h2><p className="mt-5 text-lg leading-8 text-slate-600 dark:text-slate-400">New accounts can try one introductory session for up to 10 minutes before a first pack purchase. Purchased credits are one-time sessions with no fixed session duration; daily fair-use limits for transcription and answers apply separately.</p></div>
           <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{plans.map(plan => {
             const buttonClass = `inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-60 ${plan.featured ? "bg-white text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-white"}`;
             return <article key={plan.name} className={`relative flex min-h-72 flex-col rounded-[1.6rem] border p-6 ${plan.featured ? "border-sky-500 bg-slate-950 text-white shadow-2xl shadow-sky-900/15" : "border-slate-200 bg-white dark:border-white/10 dark:bg-white/[.04]"}`}>{plan.featured && <span className="absolute right-5 top-5 rounded-full bg-cyan-300 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-950">Popular</span>}<p className={`text-sm font-semibold ${plan.featured ? "text-cyan-300" : "text-sky-700 dark:text-cyan-300"}`}>{plan.name}</p><p className="mt-7 text-4xl font-semibold tracking-tight">{plan.price}</p><p className={`mt-2 text-sm ${plan.featured ? "text-slate-400" : "text-slate-500"}`}>{plan.interviews}</p><div className={`my-6 h-px ${plan.featured ? "bg-white/10" : "bg-slate-200 dark:bg-white/10"}`} /><p className={`flex items-start gap-2 text-sm ${plan.featured ? "text-slate-300" : "text-slate-600 dark:text-slate-400"}`}><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />{plan.detail}</p>{plan.id ? <PurchaseButton planId={plan.id} className={buttonClass} /> : <Link href="/login" className={`mt-auto ${buttonClass}`}>Start free</Link>}</article>;

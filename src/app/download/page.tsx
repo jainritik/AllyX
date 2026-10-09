@@ -36,7 +36,10 @@ export default function DownloadPage() {
             <h1 className="text-4xl font-bold mb-4">Download AllyX desktop</h1>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Choose the installer that matches your computer.</p>
             <div className="mb-8"><DesktopAppNotice showDownload={false} /></div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-10">Before a real session, use a second participant view to confirm the overlay behaves as expected with your computer and meeting app.</p>
+            <div className="mb-10 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100">
+                <p className="font-semibold">Test your setup before a real session</p>
+                <p className="mt-1">Audio capture and capture privacy depend on your computer, operating system, meeting app, and sharing method. Choose the display carrying the meeting audio, then use a second participant view to verify the overlay behaves as expected.</p>
+            </div>
             <div className="grid gap-4 sm:grid-cols-3">
                 {builds.map(build => <div id={build.id} key={build.name} className="scroll-mt-28 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6">
                     <h2 className="font-semibold text-lg">{build.name}</h2>

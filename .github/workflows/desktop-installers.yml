@@ -71,6 +71,11 @@ jobs:
       - name: Verify unsigned macOS bundle integrity
         if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64' }}
         run: codesign --verify --deep --strict --verbose=2 "dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/AllyX.app"
+      - name: Verify desktop OAuth return protocol
+        if: matrix.artifact != 'windows-x64'
+        run: |
+          bundle="dist/mac${{ matrix.artifact == 'macos-arm64' && '-arm64' || '' }}/AllyX.app/Contents/Info.plist"
+          plutil -p "$bundle" | grep -F '"allyx"'
       - name: Verify Apple signature and notarization
         if: startsWith(github.ref, 'refs/tags/desktop-v') && matrix.artifact != 'windows-x64'
         run: |

@@ -71,7 +71,7 @@ export default function LoginPage() {
             const authorizationUrl = await signInWithGoogle();
             if (window.electronAPI?.openGoogleSignIn) {
                 await window.electronAPI.openGoogleSignIn(authorizationUrl);
-                setNotice("Finish sign-in in the Google window. Close that window at any time to return here and use email instead.");
+                setNotice("Continue in your default browser. When Google approves sign-in, AllyX returns here automatically. You can return to this window anytime and choose email instead.");
                 setBusy(false);
                 return;
             }
@@ -111,7 +111,7 @@ export default function LoginPage() {
                     </Button>
                     <div className="flex items-center gap-3 text-xs uppercase text-gray-400"><span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" />or<span className="h-px flex-1 bg-gray-200 dark:bg-zinc-800" /></div>
                     <Button type="button" variant="outline" onClick={() => setStep("email")} className="h-14 w-full rounded-2xl border-gray-300 bg-white text-base font-semibold text-gray-950 shadow-sm hover:bg-gray-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">Continue with Email</Button>
-                    {isDesktop && <p className="text-center text-xs leading-5 text-gray-500">Google opens in a separate window. Close it anytime to return here and choose email instead.</p>}
+                    {isDesktop && <p className="text-center text-xs leading-5 text-gray-500">Google opens in your default browser, where you can choose any saved account or go back to use email.</p>}
                 </div> : step === "email" ? <>
                     <form onSubmit={sendCode} className="mt-7">
                         <label htmlFor="login-email" className="text-sm font-semibold">Email address</label>

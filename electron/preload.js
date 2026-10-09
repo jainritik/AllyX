@@ -22,7 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Audio capture
     getSystemAudioSource: () => ipcRenderer.invoke('get-system-audio-source'),
-    startSystemAudioCapture: () => ipcRenderer.invoke('start-system-audio-capture'),
+    listSystemAudioSources: () => ipcRenderer.invoke('list-system-audio-sources'),
+    startSystemAudioCapture: (sourceId) => ipcRenderer.invoke('start-system-audio-capture', sourceId),
     stopSystemAudioCapture: () => ipcRenderer.invoke('stop-system-audio-capture'),
     relaunchApp: () => ipcRenderer.send('relaunch-app'),
     onStopAudioSource: (callback) => {

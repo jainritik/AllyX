@@ -9,17 +9,21 @@ function isAllowedOAuthAuthorizationUrl(value, providerOrigin) {
     }
 }
 
-function isCompletedOAuthNavigation(value, appOrigin) {
+function isDesktopOAuthCallback(value) {
     try {
         const url = new URL(value);
-        if (url.origin !== appOrigin || url.pathname === '/auth/callback') return false;
-        return url.pathname === '/dashboard'
-            || url.pathname.startsWith('/dashboard/')
-            || url.pathname === '/interview'
-            || url.pathname.startsWith('/interview/');
+        if (url.protocol !== 'allyx:' || url.hostname !== 'auth' || url.pathname !== '/callback') return false;
+        return Boolean(url.searchParams.get('code') || url.searchParams.get('error') || url.searchParams.get('error_description'));
     } catch {
         return false;
     }
 }
 
-module.exports = { isAllowedOAuthAuthorizationUrl, isCompletedOAuthNavigation };
+function toAppOAuthCallbackUrl(value, appUrl) {
+    if (!isDesktopOAuthCallback(value)) return null;
+    const callback = new URL('/auth/callback', appUrl);
+    callback.search = new URL(value).search;
+    return callback.toString();
+}
+
+module.exports = { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallbackUrl };

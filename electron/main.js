@@ -4,7 +4,7 @@ const os = require('os');
 const fs = require('fs/promises');
 const { createCapturePrivacy } = require('./capture-privacy');
 const { allowAppNavigation } = require('./navigation-policy');
-const { isAllowedOAuthAuthorizationUrl, isCompletedOAuthNavigation } = require('./oauth-window-policy');
+const { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallbackUrl } = require('./oauth-window-policy');
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
@@ -52,7 +52,6 @@ function initPlatform() {
 let floatingIconWindow = null;
 let mainAppWindow = null;
 let scannerFrameWindow = null;
-let googleSignInWindow = null;
 let tray = null;
 let isAppVisible = false;
 let isScannerFrameOpen = false;
@@ -73,7 +72,43 @@ const COMPATIBILITY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SUPABASE_AUTH_ORIGIN = 'https://eslcatxyhshjlgukkfhc.supabase.co';
 const OAUTH_NAVIGATION_ORIGINS = [SUPABASE_AUTH_ORIGIN, 'https://accounts.google.com', 'https://accounts.googleusercontent.com'];
 const DESKTOP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const DEEP_LINK_SCHEME = 'allyx';
 let isQuitting = false;
+let pendingDesktopOAuthCallback = null;
+let isInitialized = false;
+
+function registerDesktopProtocol() {
+    if (process.defaultApp && process.argv.length >= 2) {
+        app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+        return;
+    }
+    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+}
+
+function handleDesktopOAuthCallback(value) {
+    if (!isDesktopOAuthCallback(value)) return;
+    const callbackUrl = toAppOAuthCallbackUrl(value, APP_URL);
+    if (!callbackUrl) return;
+    if (!isInitialized) {
+        pendingDesktopOAuthCallback = value;
+        return;
+    }
+    if (!mainAppWindow || mainAppWindow.isDestroyed()) createMainAppWindow();
+    if (!mainAppWindow || mainAppWindow.isDestroyed()) return;
+    void mainAppWindow.loadURL(callbackUrl).catch(error => console.error('[Auth] Could not complete Google sign-in:', error));
+    if (!isPresentationSafeMode) {
+        mainAppWindow.show();
+        mainAppWindow.focus();
+        isAppVisible = true;
+    }
+}
+
+// macOS sends this event to an already-open app. Windows and Linux pass the
+// same URL through `second-instance` below.
+app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDesktopOAuthCallback(url);
+});
 
 function isTrustedPage(event, channel) {
     const sender = event.sender;
@@ -266,66 +301,13 @@ function setOverlayInteractive(active) {
     return isOverlayInteractive;
 }
 
-function closeGoogleSignInWindow() {
-    if (!googleSignInWindow || googleSignInWindow.isDestroyed()) {
-        googleSignInWindow = null;
-        return;
-    }
-    googleSignInWindow.close();
-}
-
-function openGoogleSignInWindow(authorizationUrl) {
+function openGoogleSignInInSystemBrowser(authorizationUrl) {
     if (!isAllowedOAuthAuthorizationUrl(authorizationUrl, SUPABASE_AUTH_ORIGIN)) {
         throw new Error('Invalid Google sign-in request. Please try again from AllyX.');
     }
-
-    closeGoogleSignInWindow();
-    googleSignInWindow = new BrowserWindow({
-        width: 520,
-        height: 720,
-        minWidth: 420,
-        minHeight: 600,
-        parent: mainAppWindow || undefined,
-        modal: Boolean(mainAppWindow && !mainAppWindow.isDestroyed()),
-        title: 'Sign in with Google — AllyX',
-        show: false,
-        autoHideMenuBar: true,
-        icon: ICON_PATH,
-        backgroundColor: '#ffffff',
-        webPreferences: {
-            // The OAuth window shares AllyX's persisted browser storage so the
-            // completed Supabase session is available to the main app. It does
-            // not receive the desktop IPC bridge.
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: true,
-            webSecurity: true,
-            partition: 'persist:main',
-        },
-    });
-    allowAppNavigation(googleSignInWindow, APP_ORIGIN, url => shell.openExternal(url), OAUTH_NAVIGATION_ORIGINS);
-    googleSignInWindow.webContents.setUserAgent(DESKTOP_USER_AGENT);
-    googleSignInWindow.once('ready-to-show', () => googleSignInWindow?.show());
-    googleSignInWindow.on('closed', () => {
-        googleSignInWindow = null;
-        if (mainAppWindow && !mainAppWindow.isDestroyed() && !isPresentationSafeMode && !isQuitting) {
-            mainAppWindow.show();
-            mainAppWindow.focus();
-            isAppVisible = true;
-        }
-    });
-    googleSignInWindow.webContents.on('did-navigate', (_event, url) => {
-        if (!isCompletedOAuthNavigation(url, APP_ORIGIN) || !mainAppWindow || mainAppWindow.isDestroyed()) return;
-        // The callback reached an authenticated AllyX route in the shared
-        // partition. Bring the existing main window there and close the
-        // disposable sign-in window so Email remains an easy fallback.
-        void mainAppWindow.loadURL(url).catch(error => console.error('[Auth] Could not return to AllyX:', error));
-        closeGoogleSignInWindow();
-    });
-    void googleSignInWindow.loadURL(authorizationUrl).catch(error => {
-        console.error('[Auth] Could not open Google sign-in:', error);
-        closeGoogleSignInWindow();
-    });
+    // Google OAuth must use the customer's browser. Once approved, the
+    // registered allyx:// callback returns the PKCE code to this desktop app.
+    return shell.openExternal(authorizationUrl);
 }
 
 function createMainAppWindow() {
@@ -635,7 +617,7 @@ function setupIpcHandlers() {
     onTrusted('hide-overlay', () => floatingIconWindow?.hide());
 
     handleTrusted('open-google-sign-in', async (_event, authorizationUrl) => {
-        openGoogleSignInWindow(authorizationUrl);
+        await openGoogleSignInInSystemBrowser(authorizationUrl);
         return { success: true };
     });
     onTrusted('retry-connection', () => loadAppContent());
@@ -654,13 +636,30 @@ function setupIpcHandlers() {
     handleTrusted('toggle-presentation-safe-mode', () => ({ active: setPresentationSafeMode(!isPresentationSafeMode) }));
     onTrusted('can-go-back', (event) => { event.returnValue = mainAppWindow?.webContents.canGoBack() || false; });
 
-    handleTrusted('get-system-audio-source', async () => {
-        if (isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
+    const listSystemAudioSources = async () => {
+        if (isPresentationSafeMode) return { success: false, sources: [], error: 'Presentation Safe Mode is active.' };
         const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-        return sources.length > 0 ? { success: true, sourceId: sources[0].id } : { success: false };
+        return {
+            success: true,
+            sources: sources.map((source, index) => ({
+                id: source.id,
+                name: String(source.name || `Display ${index + 1}`).slice(0, 120),
+            })),
+        };
+    };
+
+    handleTrusted('list-system-audio-sources', listSystemAudioSources);
+    // Kept for older renderer releases. The current renderer uses the explicit
+    // source picker above and never silently chooses a display on multi-monitor
+    // machines.
+    handleTrusted('get-system-audio-source', async () => {
+        const result = await listSystemAudioSources();
+        return result.success && result.sources.length === 1
+            ? { success: true, sourceId: result.sources[0].id }
+            : { success: false, error: result.error || 'Choose a display before starting meeting audio.' };
     });
 
-    handleTrusted('start-system-audio-capture', async () => {
+    handleTrusted('start-system-audio-capture', async (_event, requestedSourceId) => {
         try {
             if (isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (process.platform === 'darwin') {
@@ -678,16 +677,25 @@ function setupIpcHandlers() {
                 // identity. Permit that bootstrap attempt once per app launch.
                 if (permissionStatus !== 'granted') screenPermissionRequestAttempted = true;
             }
-            // Meeting audio uses the entire display source. Asking for window sources as
-            // well expands the macOS capture request without improving audio capture.
+            // Meeting audio uses an entire display source. Choosing explicitly
+            // prevents a second monitor from being captured by accident.
             const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-            if (sources.length > 0) {
-                const bestSource = sources.find(s => s.id.startsWith('screen')) || sources[0];
-                return { success: true, sourceId: bestSource.id };
+            if (!sources.length) return { success: false, error: 'No display source was available for meeting audio.' };
+            const selectedSource = typeof requestedSourceId === 'string'
+                ? sources.find(source => source.id === requestedSourceId)
+                : (sources.length === 1 ? sources[0] : undefined);
+            if (!selectedSource) {
+                return {
+                    success: false,
+                    selectionRequired: true,
+                    error: sources.length > 1
+                        ? 'Choose the display that contains your meeting before starting meeting audio.'
+                        : 'The selected display is no longer available. Refresh the display list and choose it again.',
+                };
             }
-            return { success: false, error: "No display source was available for meeting audio." };
+            return { success: true, sourceId: selectedSource.id };
         } catch (err) {
-            return { success: false, error: err.message };
+            return { success: false, error: err instanceof Error ? err.message : 'Meeting audio could not be started.' };
         }
     });
 
@@ -831,6 +839,7 @@ function createTray() {
 
 async function initialize() {
     initPlatform();
+    registerDesktopProtocol();
     const appSession = session.fromPartition('persist:main');
     const allowedPermission = (wc, permission) => {
         try {
@@ -847,6 +856,12 @@ async function initialize() {
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     createMainAppWindow();
+    isInitialized = true;
+    if (pendingDesktopOAuthCallback) {
+        const callbackUrl = pendingDesktopOAuthCallback;
+        pendingDesktopOAuthCallback = null;
+        handleDesktopOAuthCallback(callbackUrl);
+    }
     createTray();
     setupIpcHandlers();
     hideShortcutRegistered = globalShortcut.register('CommandOrControl+Shift+H', () => {
@@ -860,7 +875,14 @@ async function initialize() {
 }
 
 if (hasSingleInstanceLock) {
-    app.on('second-instance', () => showApp());
+    app.on('second-instance', (_event, commandLine) => {
+        const deepLink = commandLine.find(value => typeof value === 'string' && value.startsWith(`${DEEP_LINK_SCHEME}://`));
+        if (deepLink) {
+            handleDesktopOAuthCallback(deepLink);
+            return;
+        }
+        showApp();
+    });
     app.whenReady().then(initialize);
 }
 app.on('activate', () => {
@@ -874,6 +896,5 @@ app.on('activate', () => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => {
     isQuitting = true;
-    closeGoogleSignInWindow();
     globalShortcut.unregisterAll();
 });

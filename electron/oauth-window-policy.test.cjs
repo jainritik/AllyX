@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { isAllowedOAuthAuthorizationUrl, isCompletedOAuthNavigation } = require('./oauth-window-policy');
+const { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallbackUrl } = require('./oauth-window-policy');
 
 const provider = 'https://project.supabase.co';
 const app = 'https://allyx.example';
@@ -12,10 +12,18 @@ test('only accepts the expected Supabase OAuth authorization route', () => {
     assert.equal(isAllowedOAuthAuthorizationUrl('javascript:alert(1)', provider), false);
 });
 
-test('only treats authenticated AllyX destinations as a completed OAuth flow', () => {
-    assert.equal(isCompletedOAuthNavigation('https://allyx.example/dashboard', app), true);
-    assert.equal(isCompletedOAuthNavigation('https://allyx.example/interview?desktop=true', app), true);
-    assert.equal(isCompletedOAuthNavigation('https://allyx.example/auth/callback', app), false);
-    assert.equal(isCompletedOAuthNavigation('https://allyx.example/login', app), false);
-    assert.equal(isCompletedOAuthNavigation('https://attacker.example/dashboard', app), false);
+test('only accepts AllyX protocol OAuth callbacks that contain a provider result', () => {
+    assert.equal(isDesktopOAuthCallback('allyx://auth/callback?code=abc'), true);
+    assert.equal(isDesktopOAuthCallback('allyx://auth/callback?error=access_denied'), true);
+    assert.equal(isDesktopOAuthCallback('https://allyx.example/auth/callback?code=abc'), false);
+    assert.equal(isDesktopOAuthCallback('allyx://other/callback?code=abc'), false);
+    assert.equal(isDesktopOAuthCallback('allyx://auth/callback'), false);
+});
+
+test('returns an approved desktop OAuth callback to the trusted renderer', () => {
+    assert.equal(
+        toAppOAuthCallbackUrl('allyx://auth/callback?code=abc&from=%2Fdashboard%2Fbilling', app),
+        'https://allyx.example/auth/callback?code=abc&from=%2Fdashboard%2Fbilling',
+    );
+    assert.equal(toAppOAuthCallbackUrl('https://evil.example/auth/callback?code=abc', app), null);
 });
