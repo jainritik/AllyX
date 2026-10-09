@@ -43,6 +43,7 @@ test('desktop workflow separates signed releases from explicitly unsigned prerel
     assert.match(workflow, /publish_unsigned_release/);
     assert.match(workflow, /--prerelease/);
     assert.match(workflow, /Verify desktop OAuth return protocol/);
+    assert.match(workflow, /NSAudioCaptureUsageDescription/);
     assert.match(workflow, /unknown-publisher warning/);
     assert.match(workflow, /ALLYX_ADHOC_SIGN/);
     assert.match(workflow, /Verify unsigned macOS bundle integrity/);
