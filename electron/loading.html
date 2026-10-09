@@ -150,14 +150,26 @@
         const errDiv = document.getElementById('error-message');
         const retryBtn = document.getElementById('retry-btn');
 
+        const startupError = new URL(window.location.href).searchParams.get('error');
+
+        if (startupError) {
+            errDiv.textContent = 'AllyX could not connect. Check your internet connection, then try again.';
+            errDiv.style.display = 'block';
+            retryBtn.style.display = 'inline-block';
+            loader.style.display = 'none';
+            h2.textContent = 'Connection needed';
+            statusText.textContent = 'Your account and interview setup are still safe.';
+            statusText.style.color = '#e4e4e7';
+        }
+
         // Update status after 3 seconds if still loading
-        const slowLoadTimeout = setTimeout(() => {
+        const slowLoadTimeout = startupError ? null : setTimeout(() => {
             statusText.textContent = 'Connecting to AllyX Cloud...';
             statusText.style.color = '#e4e4e7';
         }, 3000);
 
         // Update status after 8 seconds
-        const verySlowTimeout = setTimeout(() => {
+        const verySlowTimeout = startupError ? null : setTimeout(() => {
             statusText.textContent = 'This is taking longer than usual...';
             statusText.style.color = '#f59e0b';
         }, 8000);
@@ -182,7 +194,7 @@
         });
 
         // Listen for load errors via Bridge
-        if (window.electronAPI) {
+        if (window.electronAPI && !startupError) {
             window.electronAPI.onLoadError((errorDescription) => {
                 clearTimeout(slowLoadTimeout);
                 clearTimeout(verySlowTimeout);

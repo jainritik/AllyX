@@ -11,6 +11,7 @@ export default function ScannerFrame() {
     const [isMoving, setIsMoving] = useState(false);
     const [captureMessage, setCaptureMessage] = useState("Position this frame over text, then press Capture.");
     const [captureFailed, setCaptureFailed] = useState(false);
+    const [restartRequired, setRestartRequired] = useState(false);
     const initialPos = useRef({ x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 });
     const lastUpdate = useRef<number>(0);
 
@@ -28,22 +29,28 @@ export default function ScannerFrame() {
         if (isScanning) return;
         setIsScanning(true);
         setCaptureFailed(false);
+        setRestartRequired(false);
         setCaptureMessage("Capturing…");
         try {
+            if (!window.electronAPI) {
+                setCaptureFailed(true);
+                setCaptureMessage("Screen Capture is available in the AllyX desktop app.");
+                return;
+            }
             const bounds = {
                 x: window.screenX,
                 y: window.screenY,
                 width: window.innerWidth,
                 height: window.innerHeight
             };
-            if (window.electronAPI) {
-                const result = await window.electronAPI.captureScannerArea(bounds);
-                setCaptureFailed(!result.success);
-                setCaptureMessage(result.success ? "Captured. Reading the selected text…" : (result.error || "Capture failed. Try again."));
-            }
+            const result = await window.electronAPI.captureScannerArea(bounds);
+            setCaptureFailed(!result.success);
+            setRestartRequired(Boolean(result.restartRequired));
+            setCaptureMessage(result.success ? "Captured. Reading the selected text…" : (result.error || "Capture failed. Try again."));
         } catch (err) {
             console.error("Scan failed:", err);
             setCaptureFailed(true);
+            setRestartRequired(false);
             setCaptureMessage(err instanceof Error ? err.message : "Capture failed.");
         } finally {
             setTimeout(() => setIsScanning(false), 2000);
@@ -157,7 +164,7 @@ export default function ScannerFrame() {
                 border-2 ${isResizing ? 'border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]' : 'border-emerald-500/80 shadow-[0_0_20px_rgba(16,185,129,0.3)]'}
                 rounded-md transition-all duration-100 m-1
             `}>
-                {/* Header - v17.0 Fix: Manual drag handle for ultra-stability */}
+                {/* Header doubles as a drag handle so the selection stays on the intended display. */}
                 <div
                     onMouseDown={startMoving}
                     className="h-9 bg-emerald-600/20 border-b border-emerald-500/40 flex items-center justify-between px-3 drag-handle"
@@ -165,7 +172,7 @@ export default function ScannerFrame() {
                     <div className="flex items-center gap-2">
                         <Target size={14} className="text-emerald-400 animate-pulse" />
                         <span className="text-[10px] font-mono font-black text-emerald-400 tracking-[0.2em] uppercase">
-                            STABLE v17.0
+                            SCREEN CAPTURE
                         </span>
                     </div>
 
@@ -214,6 +221,16 @@ export default function ScannerFrame() {
 
                     <div aria-live="polite" className={`absolute bottom-3 left-3 right-3 flex flex-col items-center rounded-lg px-3 py-2 ${captureFailed ? 'border border-red-400/70 bg-red-950/90' : 'bg-black/70'}`}>
                         <span className={`max-w-full text-center text-[11px] font-semibold leading-4 ${captureFailed ? 'text-red-100' : 'text-emerald-200'}`}>{captureMessage}</span>
+                        {captureFailed && restartRequired && (
+                            <button
+                                type="button"
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onClick={() => window.electronAPI?.relaunchApp()}
+                                className="mt-2 rounded-md bg-white px-3 py-1 text-[11px] font-bold text-red-800 transition-colors hover:bg-red-100"
+                            >
+                                Restart AllyX
+                            </button>
+                        )}
                         {!captureFailed && <ChevronDown size={12} className="mt-1 animate-bounce text-emerald-400" />}
                     </div>
                 </div>

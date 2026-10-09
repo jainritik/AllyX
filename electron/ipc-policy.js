@@ -2,6 +2,7 @@ const SCANNER_CHANNELS = new Set([
     'update-scanner-bounds',
     'capture-scanner-area',
     'toggle-scanner-frame',
+    'relaunch-app',
 ]);
 
 const OVERLAY_CHANNELS = new Set([

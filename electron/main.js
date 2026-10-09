@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, clipboard, session, desktopCapturer, globalShortcut, dialog, shell, systemPreferences } = require('electron');
 const path = require('path');
+const { fileURLToPath } = require('url');
 const os = require('os');
 const fs = require('fs/promises');
 const { createCapturePrivacy } = require('./capture-privacy');
@@ -8,6 +9,7 @@ const { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallba
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
+const { getUsableScreenSource } = require('./screen-capture-source');
 const { isAllowedMainWindowMediaPermission, shouldAttemptScreenCapturePermission } = require('./media-permission-policy');
 
 // Electron 39 moved macOS desktop audio to the CoreAudio Tap path. On machines
@@ -52,6 +54,8 @@ function showPrivacyStatus() {
 }
 
 const ICON_PATH = path.join(__dirname, '..', 'public', 'favicon.ico');
+const LOADING_PAGE_PATH = path.join(__dirname, 'loading.html');
+const LOADING_PAGE_CHANNELS = new Set(['retry-connection', 'quit-app']);
 
 function initPlatform() {
     if (process.platform === 'win32') {
@@ -126,7 +130,14 @@ function isTrustedPage(event, channel) {
     const frameUrl = frame?.url;
     if (!frameUrl) return false;
     if (sender === mainAppWindow?.webContents) {
-        return frame === sender.mainFrame && frame.origin === APP_ORIGIN;
+        if (frame === sender.mainFrame && frame.origin === APP_ORIGIN) return true;
+        try {
+            const url = new URL(frameUrl);
+            return frame === sender.mainFrame
+                && url.protocol === 'file:'
+                && path.resolve(fileURLToPath(url)) === LOADING_PAGE_PATH
+                && LOADING_PAGE_CHANNELS.has(channel);
+        } catch { return false; }
     }
     if (sender === scannerFrameWindow?.webContents) {
         try { return frame === sender.mainFrame && frame.origin === APP_ORIGIN && new URL(frameUrl).pathname === '/scanner-frame' && isAllowedAuxiliaryChannel('scanner', channel); } catch { return false; }
@@ -367,10 +378,15 @@ function createMainAppWindow() {
     });
 
     // Notify renderer if page fails to load
-    mainAppWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    mainAppWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame || errorCode === -3 || typeof validatedURL !== 'string' || !validatedURL.startsWith(APP_ORIGIN)) return;
         console.error(`[App] Load fail: ${errorDescription} (${errorCode})`);
         closeInterviewWindows();
-        mainAppWindow.webContents.send('load-error', errorDescription);
+        void mainAppWindow.loadFile(LOADING_PAGE_PATH, {
+            query: { error: errorDescription.slice(0, 180) },
+        }).then(() => {
+            if (!isPresentationSafeMode && mainAppWindow && !mainAppWindow.isDestroyed()) showApp();
+        }).catch(error => console.error('[App] Could not show the connection recovery screen:', error));
     });
     mainAppWindow.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
         if (isMainFrame && !isInPlace) closeInterviewWindows();
@@ -563,13 +579,18 @@ function setupIpcHandlers() {
     });
 
     handleTrusted('capture-scanner-area', async (event, bounds) => {
+        let permission = null;
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
             if (process.platform === 'darwin') {
-                const permission = systemPreferences.getMediaAccessStatus('screen');
+                permission = systemPreferences.getMediaAccessStatus('screen');
                 if (!shouldAttemptScreenCapturePermission(permission, screenPermissionRequestAttempted)) {
-                    return { success: false, error: 'Allow AllyX in System Settings → Privacy & Security → Screen & System Audio Recording, then restart AllyX.' };
+                    return {
+                        success: false,
+                        restartRequired: true,
+                        error: 'Allow AllyX in System Settings → Privacy & Security → Screen & System Audio Recording, then press Restart AllyX.',
+                    };
                 }
                 if (permission !== 'granted') screenPermissionRequestAttempted = true;
             }
@@ -578,28 +599,52 @@ function setupIpcHandlers() {
 
             // Hide the selection chrome for the native snapshot, then restore it.
             scannerFrameWindow?.hide();
-            await new Promise(resolve => setTimeout(resolve, 120));
-            const sources = await desktopCapturer.getSources({
-                types: ['screen'],
-                thumbnailSize: {
-                    width: Math.max(1, Math.round(display.bounds.width * display.scaleFactor)),
-                    height: Math.max(1, Math.round(display.bounds.height * display.scaleFactor)),
+            await new Promise(resolve => setTimeout(resolve, 180));
+            const capture = await getUsableScreenSource({
+                getSources: options => desktopCapturer.getSources(options),
+                displayId: display.id,
+                options: {
+                    types: ['screen'],
+                    thumbnailSize: {
+                        width: Math.max(1, Math.round(display.bounds.width * display.scaleFactor)),
+                        height: Math.max(1, Math.round(display.bounds.height * display.scaleFactor)),
+                    },
+                    fetchWindowIcons: false,
                 },
-                fetchWindowIcons: false,
             });
-            if (sources.length === 0) return { success: false };
-            const source = sources.find(item => item.display_id === String(display.id)) || (sources.length === 1 ? sources[0] : null);
-            if (!source) return { success: false, error: 'Could not identify the selected display.' };
-            const size = source.thumbnail.getSize();
-            if (source.thumbnail.isEmpty() || !size.width || !size.height) return { success: false, error: 'Screen capture returned no image. Allow Screen & System Audio Recording for AllyX, then restart the app.' };
-            const crop = calculateCaptureCrop(display.bounds, size, bounds);
-            const imageData = source.thumbnail.crop(crop).toDataURL();
+            if (!capture.source || !capture.size) {
+                const permissionStillMissing = process.platform === 'darwin'
+                    && systemPreferences.getMediaAccessStatus('screen') !== 'granted';
+                if (permissionStillMissing) {
+                    return {
+                        success: false,
+                        restartRequired: true,
+                        error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then press Restart AllyX.',
+                    };
+                }
+                if (capture.reason === 'display-not-found') {
+                    return { success: false, error: 'The selected display changed. Reopen Screen Capture and keep the frame within one display.' };
+                }
+                return { success: false, error: 'macOS did not provide an image yet. Wait a moment, close other screen-recording apps, then press Capture again.' };
+            }
+            const crop = calculateCaptureCrop(display.bounds, capture.size, bounds);
+            const imageData = capture.source.thumbnail.crop(crop).toDataURL();
             mainAppWindow.webContents.send('process-ocr-request', { imageData });
             floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured code…', tone: 'progress' });
             closeScannerFrame();
             return { success: true };
         } catch (err) {
-            return { success: false, error: err instanceof Error ? err.message : 'Screen capture failed.' };
+            const permissionStillMissing = process.platform === 'darwin'
+                && systemPreferences.getMediaAccessStatus('screen') !== 'granted';
+            if (permissionStillMissing || permission === 'denied' || permission === 'restricted') {
+                return {
+                    success: false,
+                    restartRequired: true,
+                    error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then press Restart AllyX.',
+                };
+            }
+            console.error('[Scanner] Native screen capture failed:', err);
+            return { success: false, error: 'Could not capture this screen. Wait a moment, then press Capture again.' };
         } finally {
             if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
         }

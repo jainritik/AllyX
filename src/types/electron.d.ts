@@ -56,7 +56,7 @@ export interface ElectronAPI {
     // Stealth Scanner
     toggleScannerFrame: () => Promise<{ active: boolean }>;
     updateScannerBounds: (bounds: { x: number, y: number, width: number, height: number }) => void;
-    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{ success: boolean; error?: string }>;
+    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{ success: boolean; error?: string; restartRequired?: boolean }>;
     onProcessOcr: (callback: (data: { imageData: string }) => void) => () => void;
     onScannerStateChange: (callback: (active: boolean) => void) => () => void;
     isElectron: boolean;

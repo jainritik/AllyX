@@ -14,3 +14,8 @@ test('desktop startup loads the app before checking remote compatibility', () =>
     assert.match(loadAppContentSource, /void fetchCompatibilityWithRetry\(\)/);
     assert.doesNotMatch(loadAppContentSource, /dialog\.showErrorBox/);
 });
+
+test('a failed hosted-page load falls back to the local connection recovery screen', () => {
+    assert.match(mainSource, /mainAppWindow\.loadFile\(LOADING_PAGE_PATH/);
+    assert.match(mainSource, /LOADING_PAGE_CHANNELS = new Set\(\['retry-connection', 'quit-app'\]\)/);
+});
