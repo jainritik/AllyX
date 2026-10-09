@@ -8,7 +8,9 @@ const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 
 function sourceFiles(directory) {
     return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-        const relative = path.relative(root, path.join(directory, entry.name));
+        // Normalize Windows separators so route discovery uses the same URL
+        // shape on every CI runner.
+        const relative = path.relative(root, path.join(directory, entry.name)).split(path.sep).join("/");
         if (entry.isDirectory()) return sourceFiles(path.join(directory, entry.name));
         return /\.(ts|tsx)$/.test(entry.name) ? [relative] : [];
     });
