@@ -578,6 +578,22 @@ function setupIpcHandlers() {
         }
     });
 
+    handleTrusted('open-screen-recording-settings', async () => {
+        if (process.platform !== 'darwin') {
+            return { success: false, error: 'Screen recording settings are managed by your operating system.' };
+        }
+        try {
+            // macOS keeps screen-recording approval under the Privacy & Security
+            // pane. The user still makes the final choice; AllyX only opens the
+            // correct destination instead of making them search for it.
+            await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+            return { success: true };
+        } catch (error) {
+            console.error('[Scanner] Could not open Screen & System Audio Recording settings:', error);
+            return { success: false, error: 'Could not open System Settings. Open Privacy & Security → Screen & System Audio Recording.' };
+        }
+    });
+
     handleTrusted('capture-scanner-area', async (event, bounds) => {
         let permission = null;
         try {
@@ -588,8 +604,9 @@ function setupIpcHandlers() {
                 if (!shouldAttemptScreenCapturePermission(permission, screenPermissionRequestAttempted)) {
                     return {
                         success: false,
+                        settingsRequired: true,
                         restartRequired: true,
-                        error: 'Allow AllyX in System Settings → Privacy & Security → Screen & System Audio Recording, then press Restart AllyX.',
+                        error: 'Allow AllyX in Screen & System Audio Recording, then restart AllyX.',
                     };
                 }
                 if (permission !== 'granted') screenPermissionRequestAttempted = true;
@@ -618,8 +635,9 @@ function setupIpcHandlers() {
                 if (permissionStillMissing) {
                     return {
                         success: false,
+                        settingsRequired: true,
                         restartRequired: true,
-                        error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then press Restart AllyX.',
+                        error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then restart AllyX.',
                     };
                 }
                 if (capture.reason === 'display-not-found') {
@@ -639,6 +657,7 @@ function setupIpcHandlers() {
             if (permissionStillMissing || permission === 'denied' || permission === 'restricted') {
                 return {
                     success: false,
+                    settingsRequired: true,
                     restartRequired: true,
                     error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then press Restart AllyX.',
                 };

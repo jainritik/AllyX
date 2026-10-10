@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 
-test('scanner can capture, move, close, and restart after a permission change but cannot access unrelated controls', () => {
-    for (const channel of ['update-scanner-bounds', 'capture-scanner-area', 'toggle-scanner-frame', 'relaunch-app']) {
+test('scanner can capture, open the screen-permission settings, move, close, and restart after a permission change but cannot access unrelated controls', () => {
+    for (const channel of ['update-scanner-bounds', 'capture-scanner-area', 'open-screen-recording-settings', 'toggle-scanner-frame', 'relaunch-app']) {
         assert.equal(isAllowedAuxiliaryChannel('scanner', channel), true);
     }
     assert.equal(isAllowedAuxiliaryChannel('scanner', 'submit-overlay-question'), false);

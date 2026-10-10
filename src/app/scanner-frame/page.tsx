@@ -11,6 +11,7 @@ export default function ScannerFrame() {
     const [isMoving, setIsMoving] = useState(false);
     const [captureMessage, setCaptureMessage] = useState("Position this frame over text, then press Capture.");
     const [captureFailed, setCaptureFailed] = useState(false);
+    const [settingsRequired, setSettingsRequired] = useState(false);
     const [restartRequired, setRestartRequired] = useState(false);
     const initialPos = useRef({ x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 });
     const lastUpdate = useRef<number>(0);
@@ -29,6 +30,7 @@ export default function ScannerFrame() {
         if (isScanning) return;
         setIsScanning(true);
         setCaptureFailed(false);
+        setSettingsRequired(false);
         setRestartRequired(false);
         setCaptureMessage("Capturing…");
         try {
@@ -45,16 +47,23 @@ export default function ScannerFrame() {
             };
             const result = await window.electronAPI.captureScannerArea(bounds);
             setCaptureFailed(!result.success);
+            setSettingsRequired(Boolean(result.settingsRequired));
             setRestartRequired(Boolean(result.restartRequired));
             setCaptureMessage(result.success ? "Captured. Reading the selected text…" : (result.error || "Capture failed. Try again."));
         } catch (err) {
             console.error("Scan failed:", err);
             setCaptureFailed(true);
+            setSettingsRequired(false);
             setRestartRequired(false);
             setCaptureMessage(err instanceof Error ? err.message : "Capture failed.");
         } finally {
             setTimeout(() => setIsScanning(false), 2000);
         }
+    };
+
+    const openScreenRecordingSettings = async () => {
+        const result = await window.electronAPI?.openScreenRecordingSettings();
+        if (!result?.success && result?.error) setCaptureMessage(result.error);
     };
 
     // --- MANUAL MOVE LOGIC ---
@@ -221,15 +230,29 @@ export default function ScannerFrame() {
 
                     <div aria-live="polite" className={`absolute bottom-3 left-3 right-3 flex flex-col items-center rounded-lg px-3 py-2 ${captureFailed ? 'border border-red-400/70 bg-red-950/90' : 'bg-black/70'}`}>
                         <span className={`max-w-full text-center text-[11px] font-semibold leading-4 ${captureFailed ? 'text-red-100' : 'text-emerald-200'}`}>{captureMessage}</span>
-                        {captureFailed && restartRequired && (
-                            <button
-                                type="button"
-                                onMouseDown={(event) => event.stopPropagation()}
-                                onClick={() => window.electronAPI?.relaunchApp()}
-                                className="mt-2 rounded-md bg-white px-3 py-1 text-[11px] font-bold text-red-800 transition-colors hover:bg-red-100"
-                            >
-                                Restart AllyX
-                            </button>
+                        {captureFailed && (settingsRequired || restartRequired) && (
+                            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                                {settingsRequired && (
+                                    <button
+                                        type="button"
+                                        onMouseDown={(event) => event.stopPropagation()}
+                                        onClick={() => { void openScreenRecordingSettings(); }}
+                                        className="rounded-md bg-white px-3 py-1 text-[11px] font-bold text-red-800 transition-colors hover:bg-red-100"
+                                    >
+                                        Open System Settings
+                                    </button>
+                                )}
+                                {restartRequired && (
+                                    <button
+                                        type="button"
+                                        onMouseDown={(event) => event.stopPropagation()}
+                                        onClick={() => window.electronAPI?.relaunchApp()}
+                                        className="rounded-md border border-red-200 px-3 py-1 text-[11px] font-bold text-white transition-colors hover:bg-red-900"
+                                    >
+                                        Restart AllyX
+                                    </button>
+                                )}
+                            </div>
                         )}
                         {!captureFailed && <ChevronDown size={12} className="mt-1 animate-bounce text-emerald-400" />}
                     </div>

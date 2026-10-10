@@ -133,6 +133,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     toggleScannerFrame: () => ipcRenderer.invoke('toggle-scanner-frame'),
     updateScannerBounds: (bounds) => ipcRenderer.send('update-scanner-bounds', bounds),
     captureScannerArea: (bounds) => ipcRenderer.invoke('capture-scanner-area', bounds),
+    openScreenRecordingSettings: () => ipcRenderer.invoke('open-screen-recording-settings'),
 
     onProcessOcr: (callback) => {
         const wrapper = (event, data) => callback(data);

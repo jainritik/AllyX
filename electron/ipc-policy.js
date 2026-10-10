@@ -1,6 +1,7 @@
 const SCANNER_CHANNELS = new Set([
     'update-scanner-bounds',
     'capture-scanner-area',
+    'open-screen-recording-settings',
     'toggle-scanner-frame',
     'relaunch-app',
 ]);
