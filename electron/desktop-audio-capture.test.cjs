@@ -25,3 +25,11 @@ test('a one-display desktop starts meeting audio with listening while multiple d
     assert.match(interviewSource, /availableSources\.length === 1 \? availableSources\[0\]\.id : ""/);
     assert.match(interviewSource, /if \(sourceId && !isScreenAudioActive\) void startMeetingAudio\(sourceId\)/);
 });
+
+
+test('desktop live captions are provisional and are replaced by the mixed-audio Whisper transcript', () => {
+    assert.match(interviewSource, /const liveCaptionRef = useRef\(""\)/);
+    assert.match(interviewSource, /Start an immediate on-screen caption preview/);
+    assert.match(interviewSource, /liveCaptionRef\.current = "";/);
+    assert.match(interviewSource, /Whisper remains the accurate mixed-audio source/);
+});

@@ -63,6 +63,9 @@ export default function InterviewPage() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const recognitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    // Browser speech recognition is used only as an immediate on-screen preview.
+    // Whisper remains the canonical transcript because it can also hear meeting audio.
+    const liveCaptionRef = useRef("");
     const isRecordingRef = useRef(false);
     const deviceRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const autoAnswerPreferenceRef = useRef(true);
@@ -912,6 +915,11 @@ export default function InterviewPage() {
                 console.log(`[Desktop STT] ✅ Heard (${langCode}): "${newText}"`);
                 setAudioCaptureStatus("hearing");
 
+                // Replace the provisional microphone caption with the canonical
+                // mixed-audio Whisper result. This keeps the saved transcript accurate
+                // while allowing words to appear immediately during speech.
+                liveCaptionRef.current = "";
+                setInterimTranscript("");
                 appendFullTranscript(newText);
 
                 setTranscript(prev => {
@@ -1299,30 +1307,28 @@ export default function InterviewPage() {
         setInterimTranscript("");
 
         try {
-            // Browser speech recognition is web-only. Electron uses Groq Whisper below.
-            if (!isElectron && recognitionRef.current) {
+            // Start an immediate on-screen caption preview whenever Chromium makes
+            // SpeechRecognition available. Its result is never used as the saved
+            // desktop transcript; Whisper remains the accurate mixed-audio source.
+            if (recognitionRef.current) {
                 try {
                     if (!isRecognitionActiveRef.current) {
                         recognitionRef.current.start();
                         isRecognitionActiveRef.current = true;
-                        console.log("[Speech] Fast Live Engine started successfully");
+                        console.log("[Speech] Live caption preview started");
                     }
                 } catch (e: unknown) {
                     const err = e as Error;
                     if (err.name === 'InvalidStateError') {
-                        isRecognitionActiveRef.current = true; // Sync state
+                        isRecognitionActiveRef.current = true;
                     } else {
-                        console.error("[Speech] Failed to start Web Speech API:", err);
-                        if (!isElectron) {
-                            setError("Microphone access is already in use or failed.");
-                        }
+                        console.warn("[Speech] Live caption preview unavailable:", err);
+                        if (!isElectron) setError("Microphone access is already in use or failed.");
                     }
                 }
             } else if (!isElectron) {
                 console.warn("[Speech] Web Speech API not initialized.");
-                if (!isElectron) {
-                    setError("Your browser does not support Live Speech. Use Chrome or Edge.");
-                }
+                setError("Your browser does not support Live Speech. Use Chrome or Edge.");
             }
 
             // STEP 2: Desktop Only - Start High-Quality mixed audio STT
@@ -1357,9 +1363,10 @@ export default function InterviewPage() {
     };
     toggleRecordingActionRef.current = () => { void toggleRecording(); };
 
-    // Initialize Speech Recognition (website only)
+    // Initialize native Chromium speech recognition when it is available. In the
+    // desktop app this is an immediate microphone-only caption preview; Whisper
+    // remains responsible for the final mixed microphone + meeting transcript.
     useEffect(() => {
-        if (window.electronAPI) return;
 
         const schedule = (callback: () => void, delay: number) => {
             const timer = setTimeout(callback, delay);
@@ -1449,7 +1456,20 @@ export default function InterviewPage() {
                     }
                 }
 
-                // Add final text to transcript
+                if (window.electronAPI) {
+                    // Do not save this provisional microphone-only caption. The final
+                    // Whisper result below can include both the candidate and the
+                    // selected meeting display, so it replaces this preview safely.
+                    if (finalText) {
+                        liveCaptionRef.current = `${liveCaptionRef.current} ${finalText}`.trim();
+                    }
+                    const liveCaption = `${liveCaptionRef.current} ${interim}`.trim();
+                    setInterimTranscript(liveCaption);
+                    if (liveCaption) window.electronAPI.sendTranscript?.(liveCaption);
+                    return;
+                }
+
+                // Add final text to the website transcript
                 if (finalText) {
                     const cleanedFinal = finalText.trim();
                     if (cleanedFinal) {
@@ -1489,11 +1509,6 @@ export default function InterviewPage() {
 
                             const newTranscript = prev + (prev ? ' ' : '') + textToAdd;
 
-                            // Broadcast to Electron Overlay
-                            if (window.electronAPI?.sendTranscript) {
-                                window.electronAPI.sendTranscript(textToAdd);
-                            }
-
                             // Limit transcript length
                             if (newTranscript.length > MAX_TRANSCRIPT_LENGTH) {
                                 return newTranscript.slice(-MAX_TRANSCRIPT_LENGTH); // Keep last 4000 chars
@@ -1504,16 +1519,12 @@ export default function InterviewPage() {
                     setInterimTranscript('');
                 } else if (interim) {
                     setInterimTranscript(interim);
-                    // Also broadcast interim if possible for smoother UI
-                    if (window.electronAPI?.sendTranscript) {
-                        window.electronAPI.sendTranscript(interim);
-                    }
                 }
             };
 
             recognitionRef.current.onerror = (event: { error: string; }) => {
                 console.log("[Speech] Error:", event.error);
-                if (event.error === 'not-allowed') {
+                if (event.error === 'not-allowed' && !window.electronAPI) {
                     setError("Microphone access blocked.");
                 }
                 // Sync state on abort/end
@@ -1521,10 +1532,15 @@ export default function InterviewPage() {
                     isRecognitionActiveRef.current = false;
                 }
                 if (event.error === 'audio-capture') {
-                    setIsRecording(false);
-                    setIsAutoMode(false);
-                    setError("The active microphone became unavailable. Check the device and press Start to reconnect.");
-                    setSystemStatus(prev => ({ ...prev, mic: false }));
+                    // Electron's preview recognizer is optional. Keep the verified
+                    // Whisper microphone capture running if this auxiliary preview
+                    // cannot obtain a second browser audio handle.
+                    if (!window.electronAPI) {
+                        setIsRecording(false);
+                        setIsAutoMode(false);
+                        setError("The active microphone became unavailable. Check the device and press Start to reconnect.");
+                        setSystemStatus(prev => ({ ...prev, mic: false }));
+                    }
                     return;
                 }
 
