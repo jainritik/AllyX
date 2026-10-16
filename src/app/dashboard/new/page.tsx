@@ -60,18 +60,10 @@ const AI_MODELS = [
     {
         id: "openai/gpt-oss-120b",
         name: "GPT-OSS 120B",
-        description: "Balanced technical reasoning",
+        description: "Recommended for complete technical answers",
         logo: "/openai-logo.png",
         gradient: "from-emerald-500/20 to-green-500/20",
         border: "group-hover:border-emerald-500/50",
-    },
-    {
-        id: "gpt-5.4-mini",
-        name: "GPT-5.4 Mini",
-        description: "Fast technical responses",
-        logo: "/openai-logo.png",
-        gradient: "from-red-500/20 to-orange-500/20",
-        border: "group-hover:border-red-500/50",
     },
 ];
 

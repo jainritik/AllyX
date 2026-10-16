@@ -13,9 +13,15 @@ test('macOS desktop audio uses the established Screen & System Audio capture pat
     assert.match(builderConfig, /NSAudioCaptureUsageDescription:/);
 });
 
-test('continuous desktop speech is segmented promptly and reveals missing signal state', () => {
-    assert.match(interviewSource, /const MAX_RECORDING_TIME = 8000/);
+test('continuous desktop speech is segmented promptly, resumes the audio graph, and reveals missing signal state', () => {
+    assert.match(interviewSource, /await audioContext\.resume\(\)/);
+    assert.match(interviewSource, /const MAX_RECORDING_TIME = 4500/);
     assert.match(interviewSource, /getByteTimeDomainData/);
     assert.match(interviewSource, /No audible signal detected yet\./);
     assert.match(interviewSource, /To transcribe the interviewer, select their display above and start interviewer audio\./);
+});
+
+test('a one-display desktop starts meeting audio with listening while multiple displays remain explicit', () => {
+    assert.match(interviewSource, /availableSources\.length === 1 \? availableSources\[0\]\.id : ""/);
+    assert.match(interviewSource, /if \(sourceId && !isScreenAudioActive\) void startMeetingAudio\(sourceId\)/);
 });

@@ -439,9 +439,10 @@ export default function InterviewPage() {
         3. **DYNAMIC LENGTH (CRITICAL)**:
            - Adjust your length based on the question. 
            - For a simple factual question, give a complete answer in roughly 3-6 spoken sentences.
-           - For technical questions, explain the approach, key trade-offs, edge cases, and a concrete example. Aim for a natural 60-90 second spoken answer unless the user requested another length.
-           - For coding questions, state the algorithm, provide correct readable code when useful, and finish with time/space complexity and edge cases.
+           - For technical questions, give the complete answer, not an outline or a shortened summary. Explain the approach, key trade-offs, edge cases, and a concrete example. Aim for a natural 60-90 second spoken answer unless the user requested another length.
+           - For coding questions, state the algorithm, provide correct readable code when useful, then explain why it works and finish with time/space complexity and edge cases.
            - For architecture and system-design questions, clarify assumptions, describe components and data flow, then cover scaling, reliability, security, observability, and trade-offs.
+           - Answer every distinct part of a multi-part question. Lead with the conclusion, use short spoken paragraphs, and never add filler, a preamble, or meta-commentary about being an assistant.
         4. **INTERVIEW STRATEGY**: Focus on problem-solving, impact, and clarity. State uncertainty instead of fabricating facts.
         5. **LANGUAGE**: Strictly use ${interviewContext.lang}.
            - If 'ar-EG', use professional Egyptian Arabic (Ammiya) but keep technical terms in English where appropriate. Avoid overly formal Fusha.
@@ -986,6 +987,12 @@ export default function InterviewPage() {
             const analyser = audioContext.createAnalyser();
             analyser.fftSize = 512;
 
+            // An AudioContext may begin suspended even though getUserMedia
+            // succeeded. Resume it while this user-initiated action is still
+            // active so the analyser does not receive a permanently silent
+            // stream on macOS or Windows.
+            if (audioContext.state !== "running") await audioContext.resume();
+
             audioContextRef.current = audioContext;
             analyserRef.current = analyser;
 
@@ -1012,14 +1019,18 @@ export default function InterviewPage() {
             // Frequency averages can report a quiet room even when the microphone is
             // carrying speech. Use time-domain RMS as the primary detector, with the
             // spectrum as a secondary signal for supported desktop-audio streams.
-            const SPEECH_RMS_THRESHOLD = 2.2;
-            const SPEECH_SPECTRUM_THRESHOLD = 6;
-            const SILENCE_DURATION = 1300;      // Avoid splitting a question at a short speaking pause
-            const MIN_SPEECH_DURATION = 500;    // Allow short sentences
+            // Laptop microphones and meeting-audio tracks often sit below the
+            // old thresholds. Keep a small floor to reject a silent stream,
+            // while detecting normal quiet speech reliably.
+            const SPEECH_RMS_THRESHOLD = 1.1;
+            const SPEECH_SPECTRUM_THRESHOLD = 3.5;
+            const SILENCE_DURATION = 900;       // Natural pause between phrases
+            const MIN_SPEECH_DURATION = 350;    // Keep concise questions
             // A continuous interviewer should not have to pause before the first
             // transcript appears. Each finished segment is a valid WebM file for
-            // Whisper, so send an ongoing turn at least every eight seconds.
-            const MAX_RECORDING_TIME = 8000;
+            // Whisper, so send an ongoing turn before the speaker finishes a long
+            // question rather than making them wait for a full sentence break.
+            const MAX_RECORDING_TIME = 4500;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
@@ -1316,10 +1327,21 @@ export default function InterviewPage() {
 
             // STEP 2: Desktop Only - Start High-Quality mixed audio STT
             if (isElectron) {
-                // Microphone listening always starts from this control. Meeting audio
-                // is enabled separately after the customer selects the meeting display.
+                // On a single-display computer there is no meaningful choice to make,
+                // so connect that meeting display as part of Start listening. Multiple
+                // displays still require the customer to choose the correct one.
+                const availableSources = meetingAudioSources.length
+                    ? meetingAudioSources
+                    : await loadMeetingAudioSources();
+                const sourceId = selectedMeetingAudioSource
+                    || (availableSources.length === 1 ? availableSources[0].id : "");
+
+                // Start the microphone first. macOS can take a moment to validate
+                // Screen & System Audio permission; waiting for that would make the
+                // listening control appear broken even though mic capture is ready.
                 const started = await startDesktopSTT();
                 if (!started) return;
+                if (sourceId && !isScreenAudioActive) void startMeetingAudio(sourceId);
             }
 
             setIsRecording(true);
@@ -1796,14 +1818,24 @@ export default function InterviewPage() {
                     <AlertCircle size={20} />
                     <span>{error}</span>
                     {capturePermissionNeedsRestart && isElectron && (
-                        <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => window.electronAPI?.relaunchApp()}
-                            className="ml-auto shrink-0 bg-red-700 text-white hover:bg-red-800"
-                        >
-                            Restart AllyX
-                        </Button>
+                        <div className="ml-auto flex shrink-0 flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { void window.electronAPI?.openScreenRecordingSettings(); }}
+                            >
+                                Open System Settings
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => window.electronAPI?.relaunchApp()}
+                                className="bg-red-700 text-white hover:bg-red-800"
+                            >
+                                Restart AllyX
+                            </Button>
+                        </div>
                     )}
                     <Button aria-label="Dismiss message" title="Dismiss" variant="ghost" size="sm" onClick={() => { setError(null); setCapturePermissionNeedsRestart(false); }} className={`${capturePermissionNeedsRestart ? '' : 'ml-auto'} h-7 w-7 shrink-0 rounded-full p-0 hover:bg-red-200 dark:hover:bg-red-900`}>
                         ×
