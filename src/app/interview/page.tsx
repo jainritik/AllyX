@@ -667,7 +667,10 @@ export default function InterviewPage() {
                 }
                 console.log("Auto-answering after confirmed silence...");
                 getAiAnswer();
-            }, isElectron ? 3200 : 2200);
+            // Desktop VAD already confirms a natural pause before it commits a
+            // Whisper segment, so a short second confirmation keeps answers timely
+            // without answering over an ongoing speaker.
+            }, isElectron ? 1000 : 2200);
         };
         waitForCompleteQuestion();
 
@@ -1036,9 +1039,9 @@ export default function InterviewPage() {
             const MIN_SPEECH_DURATION = 350;    // Keep concise questions
             // A continuous interviewer should not have to pause before the first
             // transcript appears. Each finished segment is a valid WebM file for
-            // Whisper, so send an ongoing turn before the speaker finishes a long
-            // question rather than making them wait for a full sentence break.
-            const MAX_RECORDING_TIME = 4500;
+            // Whisper is file-based rather than token-streaming. Send a short rolling
+            // segment while the speaker continues so meeting-audio captions feel live.
+            const MAX_RECORDING_TIME = 2500;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
@@ -2053,7 +2056,7 @@ export default function InterviewPage() {
                         </p>
                         <p className="mt-1 text-xs leading-5 opacity-80">
                             {isScreenAudioActive
-                                ? "Microphone and the selected meeting display are active. Ongoing speech is sent for transcription in short segments."
+                                ? "Microphone and the selected meeting display are active. Live captions appear immediately when supported; final meeting captions update about every 2.5 seconds."
                                 : "Your microphone is active. To transcribe the interviewer, select their display above and start interviewer audio."}
                         </p>
                     </div>
