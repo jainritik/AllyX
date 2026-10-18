@@ -11,3 +11,9 @@ test('screen-capture recovery opens the macOS Screen Recording settings pane thr
     assert.match(mainSource, /x-apple\.systempreferences:com\.apple\.preference\.security\?Privacy_ScreenCapture/);
     assert.match(preloadSource, /openScreenRecordingSettings:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('open-screen-recording-settings'\)/);
 });
+
+test('a stale macOS permission status does not block a real desktop capture attempt', () => {
+    assert.doesNotMatch(mainSource, /shouldAttemptScreenCapturePermission/);
+    assert.match(mainSource, /The actual desktopCapturer result is the source[\s\S]*always attempt the capture once/);
+    assert.match(mainSource, /const capture = await getUsableScreenSource/);
+});

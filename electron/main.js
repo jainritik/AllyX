@@ -10,7 +10,7 @@ const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./wind
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
 const { getUsableScreenSource } = require('./screen-capture-source');
-const { isAllowedMainWindowMediaPermission, shouldAttemptScreenCapturePermission } = require('./media-permission-policy');
+const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
 // Electron 39 moved macOS desktop audio to the CoreAudio Tap path. On machines
 // where that path cannot start, Chromium exposes a live-but-silent track with no
@@ -72,7 +72,6 @@ let isScannerFrameOpen = false;
 let isPresentationSafeMode = false;
 let isOverlayInteractive = true;
 let isInterviewRendererReady = false;
-let screenPermissionRequestAttempted = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -600,16 +599,12 @@ function setupIpcHandlers() {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
             if (process.platform === 'darwin') {
+                // The macOS status API can retain a stale `denied` value after a
+                // user enables Screen Recording for an unsigned or freshly
+                // rebuilt app. The actual desktopCapturer result is the source
+                // of truth, so always attempt the capture once before showing
+                // a permission-recovery message.
                 permission = systemPreferences.getMediaAccessStatus('screen');
-                if (!shouldAttemptScreenCapturePermission(permission, screenPermissionRequestAttempted)) {
-                    return {
-                        success: false,
-                        settingsRequired: true,
-                        restartRequired: true,
-                        error: 'Allow AllyX in Screen & System Audio Recording, then restart AllyX.',
-                    };
-                }
-                if (permission !== 'granted') screenPermissionRequestAttempted = true;
             }
             const display = screen.getDisplayMatching(bounds);
             calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
@@ -736,21 +731,10 @@ function setupIpcHandlers() {
     handleTrusted('start-system-audio-capture', async (_event, requestedSourceId) => {
         try {
             if (isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
-            if (process.platform === 'darwin') {
-                const permissionStatus = systemPreferences.getMediaAccessStatus('screen');
-                if (!shouldAttemptScreenCapturePermission(permissionStatus, screenPermissionRequestAttempted)) {
-                    return {
-                        success: false,
-                        permissionStatus,
-                        restartRequired: true,
-                        error: 'macOS has not applied Screen & System Audio access to this AllyX process. Enable AllyX in System Settings, then restart AllyX once.',
-                    };
-                }
-                // After a stale permission record is cleared, macOS may report
-                // `denied` until one capture attempt registers the current app
-                // identity. Permit that bootstrap attempt once per app launch.
-                if (permissionStatus !== 'granted') screenPermissionRequestAttempted = true;
-            }
+            // Do not block desktopCapturer from making the first request based
+            // on getMediaAccessStatus('screen'). On macOS that status can lag
+            // behind a newly enabled Screen & System Audio toggle; Chromium's
+            // capture result is authoritative for this running process.
             // Meeting audio uses an entire display source. Choosing explicitly
             // prevents a second monitor from being captured by accident.
             const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
