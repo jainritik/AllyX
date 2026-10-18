@@ -15,9 +15,10 @@ test('macOS desktop audio uses the established Screen & System Audio capture pat
 
 test('continuous desktop speech is segmented promptly, resumes the audio graph, and reveals missing signal state', () => {
     assert.match(interviewSource, /await audioContext\.resume\(\)/);
-    assert.match(interviewSource, /const MAX_RECORDING_TIME = 2500/);
+    assert.match(interviewSource, /const MAX_RECORDING_TIME = 1600/);
     assert.match(interviewSource, /getByteTimeDomainData/);
     assert.match(interviewSource, /No audible signal detected yet\./);
+    assert.match(interviewSource, /const MAX_PARALLEL_TRANSCRIPTIONS = 2/);
     assert.match(interviewSource, /To transcribe the interviewer, select their display above and start interviewer audio\./);
 });
 
@@ -36,5 +37,5 @@ test('desktop live captions are provisional and are replaced by the mixed-audio 
 
 
 test('answers promptly after a confirmed desktop pause instead of adding another multi-second delay', () => {
-    assert.match(interviewSource, /isElectron \? 1000 : 2200/);
+    assert.match(interviewSource, /isElectron \? 550 : 1600/);
 });

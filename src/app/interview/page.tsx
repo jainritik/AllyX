@@ -84,7 +84,11 @@ export default function InterviewPage() {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
     const vadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const transcriptionQueueRef = useRef<Promise<void>>(Promise.resolve());
+    // Keep two short uploads in flight. A serialized queue made live captions fall
+    // behind a continuous speaker whenever one provider request was slow.
+    const activeTranscriptionsRef = useRef(new Set<Promise<void>>());
+    const pendingTranscriptionsRef = useRef<Blob[]>([]);
+    const transcriptionDrainRef = useRef<(() => void) | null>(null);
     const draftHydratedRef = useRef(false);
     const sessionIdRef = useRef("");
     const fullTranscriptRef = useRef("");
@@ -557,20 +561,6 @@ export default function InterviewPage() {
             // Text-to-speech disabled - text only mode
             isAiSpeakingRef.current = false;
 
-            // Restart speech recognition after AI finishes
-            if (isRecordingRef.current && recognitionRef.current) {
-                const timer = setTimeout(() => {
-                    if (!isRecordingRef.current || sessionEndingRef.current) return;
-                    try {
-                        recognitionRef.current?.start();
-                        console.log("[Speech] Restarted after AI response");
-                    } catch (e) {
-                        console.log("[Speech] Could not restart:", e);
-                    }
-                }, 300);
-                recognitionTimersRef.current.push(timer);
-            }
-
         } catch (error: unknown) {
             const err = error as Error;
             if (sessionEndingRef.current) return;
@@ -670,7 +660,7 @@ export default function InterviewPage() {
             // Desktop VAD already confirms a natural pause before it commits a
             // Whisper segment, so a short second confirmation keeps answers timely
             // without answering over an ongoing speaker.
-            }, isElectron ? 1000 : 2200);
+            }, isElectron ? 550 : 1600);
         };
         waitForCompleteQuestion();
 
@@ -954,6 +944,22 @@ export default function InterviewPage() {
         }
     };
 
+    const drainTranscriptions = () => {
+        const MAX_PARALLEL_TRANSCRIPTIONS = 2;
+        while (activeTranscriptionsRef.current.size < MAX_PARALLEL_TRANSCRIPTIONS && pendingTranscriptionsRef.current.length) {
+            const audioBlob = pendingTranscriptionsRef.current.shift();
+            if (!audioBlob) continue;
+            const task = processGroqAudio(audioBlob)
+                .catch(error => console.error("[Desktop STT] Unexpected transcription task error:", error))
+                .finally(() => {
+                    activeTranscriptionsRef.current.delete(task);
+                    drainTranscriptions();
+                });
+            activeTranscriptionsRef.current.add(task);
+        }
+    };
+    transcriptionDrainRef.current = drainTranscriptions;
+
     const startDesktopSTT = async () => {
         const epoch = captureEpochRef.current;
         try {
@@ -1035,13 +1041,13 @@ export default function InterviewPage() {
             // while detecting normal quiet speech reliably.
             const SPEECH_RMS_THRESHOLD = 1.1;
             const SPEECH_SPECTRUM_THRESHOLD = 3.5;
-            const SILENCE_DURATION = 900;       // Natural pause between phrases
+            const SILENCE_DURATION = 650;       // Natural pause between phrases
             const MIN_SPEECH_DURATION = 350;    // Keep concise questions
             // A continuous interviewer should not have to pause before the first
             // transcript appears. Each finished segment is a valid WebM file for
             // Whisper is file-based rather than token-streaming. Send a short rolling
             // segment while the speaker continues so meeting-audio captions feel live.
-            const MAX_RECORDING_TIME = 2500;
+            const MAX_RECORDING_TIME = 1600;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
@@ -1114,9 +1120,11 @@ export default function InterviewPage() {
                                 if (duration < MIN_SPEECH_DURATION || ownedChunks.length === 0) return;
                                 const fullAudio = new Blob(ownedChunks, { type: 'audio/webm' });
                                 console.log(`[VAD] Sending ${(fullAudio.size / 1024).toFixed(1)}KB...`);
-                                transcriptionQueueRef.current = transcriptionQueueRef.current
-                                    .then(() => processGroqAudio(fullAudio));
-                                await transcriptionQueueRef.current;
+                                // Dispatch the short segment immediately. Two requests may run
+                                // together; this avoids a slow request delaying every caption that
+                                // follows it during a continuous practice answer.
+                                pendingTranscriptionsRef.current.push(fullAudio);
+                                transcriptionDrainRef.current?.();
                             } finally {
                                 try { micSource.disconnect(dest); } catch { /* already disconnected */ }
                                 try { screenSourceAtStart?.disconnect(dest); } catch { /* already disconnected */ }
@@ -1234,6 +1242,13 @@ export default function InterviewPage() {
         const flush = flushRecorderRef.current;
         if (flush) await flush();
         stopDesktopSTT();
+        // Do not lose the final short segment when a practice session ends.
+        while (activeTranscriptionsRef.current.size || pendingTranscriptionsRef.current.length) {
+            transcriptionDrainRef.current?.();
+            const running = [...activeTranscriptionsRef.current];
+            if (!running.length) break;
+            await Promise.allSettled(running);
+        }
     }, [stopDesktopSTT]);
 
     useEffect(() => () => {
