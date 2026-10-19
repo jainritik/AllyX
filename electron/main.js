@@ -12,14 +12,9 @@ const { calculateCaptureCrop } = require('./capture-crop');
 const { getUsableScreenSource } = require('./screen-capture-source');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
-// Electron 39 moved macOS desktop audio to the CoreAudio Tap path. On machines
-// where that path cannot start, Chromium exposes a live-but-silent track with no
-// useful error. AllyX already asks for the established Screen & System Audio
-// permission, so retain that dependable capture path until CoreAudio Tap is
-// consistently reliable across supported macOS releases.
-if (process.platform === 'darwin') {
-    app.commandLine.appendSwitch('disable-features', 'MacCatapLoopbackAudioForScreenShare');
-}
+// Electron 39 uses macOS CoreAudio Tap for desktop audio on macOS 14.2+.
+// Keep the default path: AllyX includes NSAudioCaptureUsageDescription in its
+// packaged Info.plist, which is required for a live desktop-audio track.
 
 const capturePrivacy = createCapturePrivacy({
     platform: process.platform,
@@ -594,18 +589,12 @@ function setupIpcHandlers() {
     });
 
     handleTrusted('capture-scanner-area', async (event, bounds) => {
-        let permission = null;
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
-            if (process.platform === 'darwin') {
-                // The macOS status API can retain a stale `denied` value after a
-                // user enables Screen Recording for an unsigned or freshly
-                // rebuilt app. The actual desktopCapturer result is the source
-                // of truth, so always attempt the capture once before showing
-                // a permission-recovery message.
-                permission = systemPreferences.getMediaAccessStatus('screen');
-            }
+            // `getMediaAccessStatus('screen')` can remain stale after the user
+            // changes the current macOS Screen & System Audio toggle. Attempt the
+            // actual capture first; its returned pixels are the only useful signal.
             const display = screen.getDisplayMatching(bounds);
             calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
 
@@ -625,20 +614,13 @@ function setupIpcHandlers() {
                 },
             });
             if (!capture.source || !capture.size) {
-                const permissionStillMissing = process.platform === 'darwin'
-                    && systemPreferences.getMediaAccessStatus('screen') !== 'granted';
-                if (permissionStillMissing) {
-                    return {
-                        success: false,
-                        settingsRequired: true,
-                        restartRequired: true,
-                        error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then restart AllyX.',
-                    };
-                }
                 if (capture.reason === 'display-not-found') {
                     return { success: false, error: 'The selected display changed. Reopen Screen Capture and keep the frame within one display.' };
                 }
-                return { success: false, error: 'macOS did not provide an image yet. Wait a moment, close other screen-recording apps, then press Capture again.' };
+                // Avoid treating a stale macOS status value as a new permission
+                // request. The user may already have enabled AllyX; this failure
+                // means the OS did not provide pixels to this capture attempt.
+                return { success: false, error: 'macOS did not provide a screen image. Close System Settings and other screen-recording apps, wait a few seconds, then press Capture again.' };
             }
             const crop = calculateCaptureCrop(display.bounds, capture.size, bounds);
             const imageData = capture.source.thumbnail.crop(crop).toDataURL();
@@ -647,18 +629,8 @@ function setupIpcHandlers() {
             closeScannerFrame();
             return { success: true };
         } catch (err) {
-            const permissionStillMissing = process.platform === 'darwin'
-                && systemPreferences.getMediaAccessStatus('screen') !== 'granted';
-            if (permissionStillMissing || permission === 'denied' || permission === 'restricted') {
-                return {
-                    success: false,
-                    settingsRequired: true,
-                    restartRequired: true,
-                    error: 'Screen & System Audio Recording access is not active yet. Confirm the permission, then press Restart AllyX.',
-                };
-            }
             console.error('[Scanner] Native screen capture failed:', err);
-            return { success: false, error: 'Could not capture this screen. Wait a moment, then press Capture again.' };
+            return { success: false, error: 'Could not capture this screen. Close System Settings and other screen-recording apps, wait a few seconds, then press Capture again.' };
         } finally {
             if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
         }
@@ -707,14 +679,24 @@ function setupIpcHandlers() {
 
     const listSystemAudioSources = async () => {
         if (isPresentationSafeMode) return { success: false, sources: [], error: 'Presentation Safe Mode is active.' };
-        const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-        return {
-            success: true,
-            sources: sources.map((source, index) => ({
-                id: source.id,
-                name: String(source.name || `Display ${index + 1}`).slice(0, 120),
-            })),
-        };
+        try {
+            const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+            if (!sources.length) return { success: false, sources: [], error: 'macOS did not provide a display for meeting audio. Close System Settings and try again.' };
+            return {
+                success: true,
+                sources: sources.map((source, index) => ({
+                    id: source.id,
+                    name: String(source.name || `Display ${index + 1}`).slice(0, 120),
+                })),
+            };
+        } catch (error) {
+            console.error('[Meeting Audio] Could not list display sources:', error);
+            return {
+                success: false,
+                sources: [],
+                error: 'macOS could not provide a display for meeting audio. Close System Settings and other screen-recording apps, then try again.',
+            };
+        }
     };
 
     handleTrusted('list-system-audio-sources', listSystemAudioSources);

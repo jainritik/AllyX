@@ -8,8 +8,8 @@ const mainSource = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 const builderConfig = fs.readFileSync(path.join(root, 'electron-builder.yml'), 'utf8');
 const interviewSource = fs.readFileSync(path.join(root, 'src/app/interview/page.tsx'), 'utf8');
 
-test('macOS desktop audio uses the established Screen & System Audio capture path', () => {
-    assert.match(mainSource, /appendSwitch\('disable-features', 'MacCatapLoopbackAudioForScreenShare'\)/);
+test('macOS desktop audio uses Electron 39 CoreAudio Tap with a packaged usage description', () => {
+    assert.doesNotMatch(mainSource, /MacCatapLoopbackAudioForScreenShare/);
     assert.match(builderConfig, /NSAudioCaptureUsageDescription:/);
 });
 

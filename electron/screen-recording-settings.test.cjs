@@ -14,6 +14,6 @@ test('screen-capture recovery opens the macOS Screen Recording settings pane thr
 
 test('a stale macOS permission status does not block a real desktop capture attempt', () => {
     assert.doesNotMatch(mainSource, /shouldAttemptScreenCapturePermission/);
-    assert.match(mainSource, /The actual desktopCapturer result is the source[\s\S]*always attempt the capture once/);
+    assert.match(mainSource, /actual capture first; its returned pixels are the only useful signal/);
     assert.match(mainSource, /const capture = await getUsableScreenSource/);
 });
