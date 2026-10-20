@@ -10,11 +10,17 @@ const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./wind
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
 const { getUsableScreenSource } = require('./screen-capture-source');
+const { screenCaptureFailure } = require('./screen-capture-failure');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
-// Electron 39 uses macOS CoreAudio Tap for desktop audio on macOS 14.2+.
-// Keep the default path: AllyX includes NSAudioCaptureUsageDescription in its
-// packaged Info.plist, which is required for a live desktop-audio track.
+// AllyX currently presents the macOS Screen & System Audio Recording permission
+// flow to customers. Electron 39's default CoreAudio Tap path does not fall back
+// to that permission flow when it cannot initialise a desktop-audio track, so
+// keep Electron's documented legacy path until the product adopts CoreAudio Tap
+// end-to-end and updates its user-facing setup steps at the same time.
+if (process.platform === 'darwin') {
+    app.commandLine.appendSwitch('disable-features', 'MacCatapLoopbackAudioForScreenShare');
+}
 
 const capturePrivacy = createCapturePrivacy({
     platform: process.platform,
@@ -67,6 +73,10 @@ let isScannerFrameOpen = false;
 let isPresentationSafeMode = false;
 let isOverlayInteractive = true;
 let isInterviewRendererReady = false;
+let scannerCaptureInFlight = false;
+let scannerOcrInFlight = false;
+let pendingScannerCapture = null;
+let scannerCaptureSequence = 0;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -153,11 +163,54 @@ function sendSafeModeState(active) {
 function closeScannerFrame() {
     isScannerFrameOpen = false;
     if (scannerFrameWindow && !scannerFrameWindow.isDestroyed()) {
-        scannerFrameWindow.removeAllListeners('closed');
         scannerFrameWindow.destroy();
     }
     scannerFrameWindow = null;
     broadcastScannerState(false);
+}
+
+function getScreenCapturePermissionStatus() {
+    if (process.platform !== 'darwin') return 'not-applicable';
+    try {
+        return systemPreferences.getMediaAccessStatus('screen');
+    } catch (error) {
+        console.warn('[Scanner] Could not read macOS Screen Recording status:', error);
+        return 'unknown';
+    }
+}
+
+function settlePendingScannerCapture(captureId, accepted) {
+    if (!pendingScannerCapture || pendingScannerCapture.id !== captureId) return false;
+    const pending = pendingScannerCapture;
+    pendingScannerCapture = null;
+    clearTimeout(pending.timeout);
+    pending.resolve(Boolean(accepted));
+    return true;
+}
+
+function cancelPendingScannerCapture() {
+    if (!pendingScannerCapture) return;
+    settlePendingScannerCapture(pendingScannerCapture.id, false);
+}
+
+async function deliverScannerCapture(imageData) {
+    if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewRendererReady || !isInterviewSessionPage()) {
+        return false;
+    }
+    if (pendingScannerCapture) return false;
+
+    const id = `scan-${Date.now()}-${++scannerCaptureSequence}`;
+    const accepted = await new Promise(resolve => {
+        const timeout = setTimeout(() => settlePendingScannerCapture(id, false), 5000);
+        pendingScannerCapture = { id, timeout, resolve };
+        try {
+            mainAppWindow.webContents.send('process-ocr-request', { id, imageData });
+        } catch (error) {
+            console.error('[Scanner] Could not send captured image to the interview renderer:', error);
+            settlePendingScannerCapture(id, false);
+        }
+    });
+    return accepted;
 }
 
 function setPresentationSafeMode(active) {
@@ -184,24 +237,17 @@ function setPresentationSafeMode(active) {
     return isPresentationSafeMode;
 }
 
-// --- STEALTH SCANNER FRAME ---
+// --- SCANNER FRAME ---
+// Do not tell the renderer the scanner is open until its remote page is ready.
+// Otherwise a navigation/load failure looks like a working Capture button.
 function createScannerFrame() {
-    if (isPresentationSafeMode || !isInterviewRendererReady || !isInterviewSessionPage()) return;
-    // v19.0 FIX: Remove listeners from old window before destroying to prevent race condition "closed" signals
-    if (scannerFrameWindow) {
-        try {
-            if (!scannerFrameWindow.isDestroyed()) {
-                scannerFrameWindow.removeAllListeners('closed');
-                scannerFrameWindow.destroy();
-            }
-        } catch (e) { }
+    if (isPresentationSafeMode || !isInterviewRendererReady || !isInterviewSessionPage()) {
+        return Promise.resolve({ active: false, error: 'Wait for the interview session to finish loading.' });
     }
-    scannerFrameWindow = null;
-    isScannerFrameOpen = true;
+    if (scannerFrameWindow && !scannerFrameWindow.isDestroyed()) closeScannerFrame();
 
     const primaryWorkArea = screen.getPrimaryDisplay().workArea;
-
-    scannerFrameWindow = new BrowserWindow({
+    const frame = new BrowserWindow({
         width: 400,
         height: 300,
         x: Math.floor(primaryWorkArea.x + (primaryWorkArea.width - 400) / 2),
@@ -222,31 +268,65 @@ function createScannerFrame() {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            webSecurity: true
+            webSecurity: true,
+            partition: 'persist:main',
         }
     });
-    allowAppNavigation(scannerFrameWindow, APP_ORIGIN, url => shell.openExternal(url));
+    scannerFrameWindow = frame;
+    allowAppNavigation(frame, APP_ORIGIN, url => shell.openExternal(url));
 
     if (process.platform === 'win32') {
-        scannerFrameWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+        frame.setAlwaysOnTop(true, 'screen-saver', 1);
     } else {
-        scannerFrameWindow.setAlwaysOnTop(true, 'floating', 1);
+        frame.setAlwaysOnTop(true, 'floating', 1);
     }
 
-    scannerFrameWindow.loadURL(`${APP_URL}/scanner-frame?isScanner=true`, {
-        extraHeaders: "x-is-scanner: true\n"
-    });
-    scannerFrameWindow.once('ready-to-show', () => {
-        if (!isPresentationSafeMode) scannerFrameWindow?.show();
-    });
+    return new Promise(resolve => {
+        let settled = false;
+        const settle = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(loadTimeout);
+            resolve(result);
+        };
+        const fail = (error) => {
+            if (scannerFrameWindow === frame) closeScannerFrame();
+            settle({ active: false, error });
+        };
+        const loadTimeout = setTimeout(() => {
+            fail('Screen Capture took too long to open. Check your connection and try again.');
+        }, 10000);
 
-    scannerFrameWindow.on('closed', () => {
-        scannerFrameWindow = null;
-        isScannerFrameOpen = false;
-        broadcastScannerState(false);
+        frame.once('ready-to-show', () => {
+            if (scannerFrameWindow !== frame || isPresentationSafeMode) {
+                fail('Screen Capture is not available right now.');
+                return;
+            }
+            isScannerFrameOpen = true;
+            frame.show();
+            broadcastScannerState(true);
+            settle({ active: true });
+        });
+        frame.webContents.once('did-fail-load', (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+            if (!isMainFrame || errorCode === -3) return;
+            fail(`Could not open Screen Capture (${errorDescription || errorCode}). Try again.`);
+        });
+        frame.on('closed', () => {
+            const wasCurrentFrame = scannerFrameWindow === frame;
+            if (wasCurrentFrame) {
+                scannerFrameWindow = null;
+                isScannerFrameOpen = false;
+                broadcastScannerState(false);
+            }
+            settle({ active: false, error: 'Screen Capture was closed before it finished opening.' });
+        });
+        frame.loadURL(`${APP_URL}/scanner-frame?isScanner=true`, {
+            extraHeaders: "x-is-scanner: true\n"
+        }).catch(error => {
+            console.error('[Scanner] Could not load scanner frame:', error);
+            fail('Could not open Screen Capture. Check your connection and try again.');
+        });
     });
-
-    broadcastScannerState(true);
 }
 
 function broadcastScannerState(active) {
@@ -513,6 +593,8 @@ function canShowInterviewOverlay() {
 
 function closeInterviewWindows() {
     isInterviewRendererReady = false;
+    scannerOcrInFlight = false;
+    cancelPendingScannerCapture();
     closeScannerFrame();
     if (floatingIconWindow && !floatingIconWindow.isDestroyed()) {
         floatingIconWindow.destroy();
@@ -557,19 +639,14 @@ function setupIpcHandlers() {
 
     handleTrusted('toggle-scanner-frame', async () => {
         if (isPresentationSafeMode) return { active: false, error: 'Presentation Safe Mode is active.' };
-        if (isScannerFrameOpen) {
-            isScannerFrameOpen = false;
-            // v19.0: Atomic close with broadcase
-            if (scannerFrameWindow) {
-                try { scannerFrameWindow.close(); } catch (e) { }
-                scannerFrameWindow = null;
-            }
-            return { active: false };
-        } else {
-            if (!isInterviewSessionPage() || !isInterviewRendererReady) return { active: false, error: 'Wait for the interview session to finish loading.' };
-            createScannerFrame();
-            return { active: true };
+        if (scannerCaptureInFlight || scannerOcrInFlight) {
+            return { active: false, error: 'The previous screen capture is still being read. Wait for it to finish before starting another one.' };
         }
+        if (isScannerFrameOpen || (scannerFrameWindow && !scannerFrameWindow.isDestroyed())) {
+            closeScannerFrame();
+            return { active: false };
+        }
+        return createScannerFrame();
     });
 
     handleTrusted('open-screen-recording-settings', async () => {
@@ -589,6 +666,10 @@ function setupIpcHandlers() {
     });
 
     handleTrusted('capture-scanner-area', async (event, bounds) => {
+        if (scannerCaptureInFlight) {
+            return { success: false, failureCode: 'capture-in-progress', error: 'A screen capture is already being processed. Wait for it to finish.' };
+        }
+        scannerCaptureInFlight = true;
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
@@ -600,7 +681,9 @@ function setupIpcHandlers() {
 
             // Hide the selection chrome for the native snapshot, then restore it.
             scannerFrameWindow?.hide();
-            await new Promise(resolve => setTimeout(resolve, 180));
+            // Give macOS a compositor turn after hiding the selection frame.
+            // This avoids a transient empty thumbnail immediately after focus.
+            await new Promise(resolve => setTimeout(resolve, 350));
             const capture = await getUsableScreenSource({
                 getSources: options => desktopCapturer.getSources(options),
                 displayId: display.id,
@@ -614,26 +697,52 @@ function setupIpcHandlers() {
                 },
             });
             if (!capture.source || !capture.size) {
-                if (capture.reason === 'display-not-found') {
-                    return { success: false, error: 'The selected display changed. Reopen Screen Capture and keep the frame within one display.' };
-                }
-                // Avoid treating a stale macOS status value as a new permission
-                // request. The user may already have enabled AllyX; this failure
-                // means the OS did not provide pixels to this capture attempt.
-                return { success: false, error: 'macOS did not provide a screen image. Close System Settings and other screen-recording apps, wait a few seconds, then press Capture again.' };
+                const result = screenCaptureFailure({
+                    platform: process.platform,
+                    permissionStatus: getScreenCapturePermissionStatus(),
+                    capture,
+                });
+                console.warn('[Scanner] No usable screen image:', result.diagnostics);
+                return result;
             }
             const crop = calculateCaptureCrop(display.bounds, capture.size, bounds);
             const imageData = capture.source.thumbnail.crop(crop).toDataURL();
-            mainAppWindow.webContents.send('process-ocr-request', { imageData });
+            const rendererAccepted = await deliverScannerCapture(imageData);
+            if (!rendererAccepted) {
+                return {
+                    success: false,
+                    failureCode: 'renderer-not-ready',
+                    error: 'AllyX was not ready to read the capture. Reopen Screen Capture and try again.',
+                };
+            }
             floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured code…', tone: 'progress' });
             closeScannerFrame();
             return { success: true };
         } catch (err) {
             console.error('[Scanner] Native screen capture failed:', err);
-            return { success: false, error: 'Could not capture this screen. Close System Settings and other screen-recording apps, wait a few seconds, then press Capture again.' };
+            const result = screenCaptureFailure({
+                platform: process.platform,
+                permissionStatus: getScreenCapturePermissionStatus(),
+                capture: {
+                    reason: 'capture-error',
+                    attempts: 0,
+                    sourceCount: 0,
+                },
+            });
+            return result;
         } finally {
+            scannerCaptureInFlight = false;
             if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
         }
+    });
+
+    handleTrusted('acknowledge-scanner-capture', async (_event, captureId) => ({
+        success: typeof captureId === 'string' && settlePendingScannerCapture(captureId, true),
+    }));
+
+    handleTrusted('set-scanner-processing', async (_event, active) => {
+        scannerOcrInFlight = Boolean(active);
+        return { success: true, active: scannerOcrInFlight };
     });
 
     onTrusted('toggle-app', () => toggleApp());

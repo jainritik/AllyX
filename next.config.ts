@@ -8,7 +8,10 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self' https://api.razorpay.com https://checkout.razorpay.com",
-  `script-src 'self' 'unsafe-inline'${isProduction ? "" : " 'unsafe-eval'"} https://checkout.razorpay.com`,
+  // Tesseract initializes its OCR core as WebAssembly in the interview page.
+  // `wasm-unsafe-eval` permits that narrow operation without enabling the much
+  // broader JavaScript `unsafe-eval` in production.
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isProduction ? "" : " 'unsafe-eval'"} https://checkout.razorpay.com`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.razorpay.com",
   "font-src 'self' data:",

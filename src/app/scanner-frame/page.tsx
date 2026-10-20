@@ -63,7 +63,12 @@ export default function ScannerFrame() {
 
     const openScreenRecordingSettings = async () => {
         const result = await window.electronAPI?.openScreenRecordingSettings();
-        if (!result?.success && result?.error) setCaptureMessage(result.error);
+        if (result?.success) {
+            setCaptureMessage("Allow AllyX in Screen & System Audio Recording, then press Restart AllyX. Closing its window only hides the app.");
+            setRestartRequired(true);
+            return;
+        }
+        if (result?.error) setCaptureMessage(result.error);
     };
 
     // --- MANUAL MOVE LOGIC ---
@@ -253,6 +258,9 @@ export default function ScannerFrame() {
                                     </button>
                                 )}
                             </div>
+                        )}
+                        {captureFailed && !settingsRequired && !restartRequired && (
+                            <span className="mt-1 text-center text-[10px] font-medium text-red-100/90">Try Capture again. AllyX keeps the frame open so you can retry.</span>
                         )}
                         {!captureFailed && <ChevronDown size={12} className="mt-1 animate-bounce text-emerald-400" />}
                     </div>

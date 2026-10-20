@@ -14,6 +14,7 @@ import { interviewService } from "@/lib/interview-service";
 import { useAuth } from "@/lib/auth";
 import { loadInterviewContext, readInterviewContext } from "@/lib/interview-context";
 import { interviewAccess } from "@/lib/interview-access";
+import { createLiveQuestionState } from "@/lib/live-question-state";
 
 // --- Types for Web Speech API ---
 interface SpeechRecognitionEvent extends Event {
@@ -47,6 +48,13 @@ interface SpeechRecognition extends EventTarget {
     abort(): void;
 }
 
+type TranscriptionSegment = {
+    audio: Blob;
+    epoch: number;
+    sequence: number;
+    finalizesQuestion: boolean;
+};
+
 function compactContext(value: string, limit: number): string {
     if (value.length <= limit) return value;
     const marker = "\n\n[Earlier context shortened]\n\n";
@@ -69,7 +77,6 @@ export default function InterviewPage() {
     const isRecordingRef = useRef(false);
     const deviceRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const autoAnswerPreferenceRef = useRef(true);
-    const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
     const isAiSpeakingRef = useRef(false);
     const isRecognitionActiveRef = useRef(false);
     const isSavingRef = useRef(false);
@@ -79,16 +86,43 @@ export default function InterviewPage() {
     const sessionEndingRef = useRef(false);
     const captureEpochRef = useRef(0);
     const screenCaptureEpochRef = useRef(0);
-    const speechActiveRef = useRef(false);
+    // Only the canonical audio VAD may decide that a question has ended.
+    // Browser SpeechRecognition is a best-effort caption preview and must not
+    // accidentally trigger an answer at one of its phrase boundaries.
+    const vadSpeechActiveRef = useRef(false);
     const recordingStartRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
     const vadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    // Keep two short uploads in flight. A serialized queue made live captions fall
-    // behind a continuous speaker whenever one provider request was slow.
-    const activeTranscriptionsRef = useRef(new Set<Promise<void>>());
-    const pendingTranscriptionsRef = useRef<Blob[]>([]);
-    const transcriptionDrainRef = useRef<(() => void) | null>(null);
+    // Groq Whisper accepts completed audio files rather than a token stream. Keep
+    // requests ordered and below the provider's free-tier rate limit so captions
+    // never arrive in the wrong order or disappear during rate-limit retries.
+    const pendingTranscriptionsRef = useRef<TranscriptionSegment[]>([]);
+    const transcriptionDrainRef = useRef<(() => Promise<void>) | null>(null);
+    const isTranscriptionDrainActiveRef = useRef(false);
+    const activeTranscriptionTaskRef = useRef<Promise<void> | null>(null);
+    const transcriptionAbortControllersRef = useRef(new Set<AbortController>());
+    const transcriptionEpochRef = useRef(0);
+    const nextTranscriptionSequenceRef = useRef(0);
+    const nextTranscriptionToProcessRef = useRef(1);
+    const skippedTranscriptionSequencesRef = useRef(new Set<number>());
+    const questionStateRef = useRef(createLiveQuestionState());
+    const autoAnswerEnabledRef = useRef(true);
+    const pendingAutoQuestionsRef = useRef<string[]>([]);
+    const processPendingAutoAnswersRef = useRef<() => void>(() => {});
+    const pendingCapturedQuestionRef = useRef<string | null>(null);
+    const processPendingCapturedAnswerRef = useRef<() => void>(() => {});
+    const captureProcessingRef = useRef(false);
+    // Keep the native IPC subscription stable while React re-renders during an
+    // answer stream. The subscription dispatches to this current callback so a
+    // screenshot cannot arrive in the brief unsubscribe/re-subscribe gap.
+    const processCapturedImageRef = useRef<(imageData: string) => Promise<void>>(async () => {});
+    const retryQuestionRef = useRef("");
+    // Electron uses one canonical MediaRecorder pipeline. Starting Chromium's
+    // separate SpeechRecognition microphone path can take the audio device away
+    // from that recorder, so it is a browser-only caption fallback.
+    const previewUnavailableRef = useRef(false);
+    const recoveryGenerationRef = useRef(0);
     const draftHydratedRef = useRef(false);
     const sessionIdRef = useRef("");
     const fullTranscriptRef = useRef("");
@@ -116,6 +150,7 @@ export default function InterviewPage() {
     const [answerTruncated, setAnswerTruncated] = useState(false);
     const [isAutoMode, setIsAutoMode] = useState(true); // Auto Answer ON by default
     const [lastTranscript, setLastTranscript] = useState<string>(""); // For retry functionality
+    const [retryQuestion, setRetryQuestion] = useState("");
     const [allQAPairs, setAllQAPairs] = useState<{ question: string, answer: string }[]>([]); // Track Q&A pairs
     const [isSaving, setIsSaving] = useState(false);
     const [interviewStartTime, setInterviewStartTime] = useState<Date>(new Date());
@@ -154,9 +189,40 @@ export default function InterviewPage() {
         setFullTranscript(next);
     }, []);
 
+    const cancelDeviceRecovery = useCallback(() => {
+        recoveryGenerationRef.current += 1;
+        if (deviceRecoveryTimerRef.current) {
+            clearTimeout(deviceRecoveryTimerRef.current);
+            deviceRecoveryTimerRef.current = null;
+        }
+    }, []);
+
+    const invalidateTranscriptionPipeline = useCallback(() => {
+        transcriptionEpochRef.current += 1;
+        nextTranscriptionSequenceRef.current = 0;
+        nextTranscriptionToProcessRef.current = 1;
+        skippedTranscriptionSequencesRef.current.clear();
+        pendingTranscriptionsRef.current = [];
+        pendingAutoQuestionsRef.current = [];
+        questionStateRef.current.clear();
+        retryQuestionRef.current = "";
+        liveCaptionRef.current = "";
+        transcriptionAbortControllersRef.current.forEach(controller => controller.abort());
+        transcriptionAbortControllersRef.current.clear();
+    }, []);
+
+    const resetTranscriptionPipeline = useCallback(() => {
+        invalidateTranscriptionPipeline();
+        setRetryQuestion("");
+    }, [invalidateTranscriptionPipeline]);
+
     useEffect(() => {
         isRecordingRef.current = isRecording;
     }, [isRecording]);
+
+    useEffect(() => {
+        autoAnswerEnabledRef.current = isAutoMode;
+    }, [isAutoMode]);
 
     useEffect(() => {
         if (!accountId || draftHydratedRef.current) return;
@@ -169,7 +235,10 @@ export default function InterviewPage() {
             if (draft?.accountId === accountId && draft?.contextSavedAt === setup?.savedAt
                 && (!sessionIdRef.current || draft.sessionId === sessionIdRef.current)) {
                 if (!sessionIdRef.current) sessionIdRef.current = typeof draft.sessionId === 'string' ? draft.sessionId : crypto.randomUUID();
-                if (typeof draft.transcript === 'string') setTranscript(draft.transcript);
+                if (typeof draft.transcript === 'string') {
+                    setTranscript(draft.transcript);
+                    questionStateRef.current.append(draft.transcript);
+                }
                 if (typeof draft.fullTranscript === 'string') {
                     fullTranscriptRef.current = draft.fullTranscript;
                     setFullTranscript(draft.fullTranscript);
@@ -223,6 +292,7 @@ export default function InterviewPage() {
     useEffect(() => {
         if (accessRemaining !== 0 || !accessReady) return;
         setAccessReady(false);
+        autoAnswerEnabledRef.current = false;
         setIsAutoMode(false);
         setError("Your 10-minute free trial has ended. End the interview to save your session.");
         answerAbortRef.current?.abort();
@@ -365,13 +435,24 @@ export default function InterviewPage() {
     }, [isCameraOn, isCameraVisible]);
     const isElectron = hasMounted && typeof window !== 'undefined' && (window as unknown as { electronAPI?: { isElectron: boolean } }).electronAPI?.isElectron;
 
-    const getAiAnswer = useCallback(async (explicitQuestion?: string, continuation = false) => {
+    const getAiAnswer = useCallback(async (
+        explicitQuestion?: string,
+        continuation = false,
+        consumePracticeQuestion = false,
+        preserveForRetry = false,
+        queueIfBusy = false,
+    ) => {
         if (!accessReady) {
             setError("Interview access is not active. Start a new session or choose an interview pack.");
             return;
         }
-        const consumesLiveTranscript = explicitQuestion === undefined;
-        const transcriptToUse = explicitQuestion || transcript;
+        const consumesLiveTranscript = consumePracticeQuestion || explicitQuestion === undefined;
+        // The visible caption remains on screen while the answer streams. The
+        // question buffer is separate so the next spoken question can start
+        // cleanly without erasing what the participant just said.
+        const transcriptToUse = explicitQuestion || (consumesLiveTranscript
+            ? questionStateRef.current.current()
+            : transcript);
 
         // No API key check needed - server has Groq configuration
         if (!transcriptToUse.trim()) {
@@ -379,6 +460,11 @@ export default function InterviewPage() {
             return;
         }
         if (answerInFlightRef.current) {
+            if (queueIfBusy && explicitQuestion?.trim()) {
+                pendingCapturedQuestionRef.current = explicitQuestion.trim();
+                window.electronAPI?.sendOverlayStatus?.("Code captured. The current answer will finish before this one starts.", "progress");
+                return;
+            }
             window.electronAPI?.sendOverlayStatus?.("An answer is already being generated. Wait for it to finish, then retry.", "error");
             return;
         }
@@ -392,7 +478,7 @@ export default function InterviewPage() {
             setLastTranscript(currentTranscript);
         }
         if (consumesLiveTranscript) {
-            setTranscript("");
+            questionStateRef.current.consume();
             setInterimTranscript("");
         }
 
@@ -400,11 +486,8 @@ export default function InterviewPage() {
         setError(null);
         window.electronAPI?.sendOverlayStatus?.("Generating answer…", "progress");
 
-        // Stop listening while thinking/speaking to prevent picking up self
-        if (isRecording) {
-            recognitionRef.current?.stop();
-            isAiSpeakingRef.current = true;
-        }
+        // Answer rendering is text-only. Keep the microphone/caption path alive
+        // so a completed answer never disables later practice questions.
 
         let requestTimeout: ReturnType<typeof setTimeout> | null = null;
         let streamedText = "";
@@ -557,10 +640,11 @@ export default function InterviewPage() {
                 updated[updated.length - 1] = { ...last, answer: `${last.answer}\n\n${streamedText}` };
                 return updated;
             });
-            if (!continuation) pendingQuestionRef.current = "";
-            // Text-to-speech disabled - text only mode
-            isAiSpeakingRef.current = false;
-
+            if (!continuation) {
+                pendingQuestionRef.current = "";
+                retryQuestionRef.current = "";
+                setRetryQuestion("");
+            }
         } catch (error: unknown) {
             const err = error as Error;
             if (sessionEndingRef.current) return;
@@ -596,32 +680,57 @@ export default function InterviewPage() {
             } else if (!continuation) {
                 setAiResponse(`**Error:** ${errorMessage}`);
                 setAnswerTruncated(false);
+                if (preserveForRetry) {
+                    retryQuestionRef.current = currentTranscript;
+                    setRetryQuestion(currentTranscript);
+                    autoAnswerEnabledRef.current = false;
+                    setIsAutoMode(false);
+                }
             }
             setError(errorMessage);
             if (!streamedText.trim()) window.electronAPI?.sendOverlayStatus?.(errorMessage, "error");
-            if (consumesLiveTranscript && !continuation && !streamedText.trim()) {
-                setTranscript(liveText => {
-                    const newSpeech = liveText.trim();
-                    return newSpeech ? `${currentTranscript} ${newSpeech}`.slice(-MAX_TRANSCRIPT_LENGTH) : currentTranscript;
-                });
-            }
-            isAiSpeakingRef.current = false;
-            if (isRecordingRef.current) recognitionRef.current?.start();
         } finally {
             if (requestTimeout) clearTimeout(requestTimeout);
             answerAbortRef.current = null;
             answerInFlightRef.current = false;
             setIsLoading(false);
+            if (!sessionEndingRef.current) {
+                setTimeout(() => {
+                    processPendingCapturedAnswerRef.current();
+                    processPendingAutoAnswersRef.current();
+                }, 0);
+            }
         }
-    }, [accessReady, aiResponse, allQAPairs, interviewContext, transcript, isAutoMode, isRecording, recognitionRef]);
+    }, [accessReady, aiResponse, allQAPairs, interviewContext, transcript, isAutoMode]);
+
+    const processPendingAutoAnswers = useCallback(() => {
+        if (!autoAnswerEnabledRef.current || sessionEndingRef.current || answerInFlightRef.current) return;
+        const question = pendingAutoQuestionsRef.current.shift();
+        if (!question) return;
+        // The VAD has already snapshotted and cleared this exact question. Pass it
+        // explicitly so another caller cannot merge it with speech that begins
+        // while the previous answer is still streaming.
+        void getAiAnswer(question, false, false, true);
+    }, [getAiAnswer]);
+    processPendingAutoAnswersRef.current = processPendingAutoAnswers;
+
+    const processPendingCapturedAnswer = useCallback(() => {
+        if (sessionEndingRef.current || answerInFlightRef.current) return;
+        const question = pendingCapturedQuestionRef.current;
+        if (!question) return;
+        pendingCapturedQuestionRef.current = null;
+        void getAiAnswer(question, false, false, false, true);
+    }, [getAiAnswer]);
+    processPendingCapturedAnswerRef.current = processPendingCapturedAnswer;
 
     const handleManualSubmit = () => {
         if (!contextReady) {
             setError("Interview setup is not ready. Return to setup and start again.");
             return;
         }
-        if (!manualQuestion.trim()) return;
-        getAiAnswer(manualQuestion);
+        const question = manualQuestion.trim() || retryQuestionRef.current;
+        if (!question) return;
+        getAiAnswer(question);
     };
 
     useEffect(() => window.electronAPI?.onOverlayManualQuestion?.((question: string) => {
@@ -643,31 +752,9 @@ export default function InterviewPage() {
         return () => window.electronAPI?.setInterviewReady?.(false);
     }, [accessReady, contextReady]);
 
-    // Silence Detection for Auto-Answer
-    useEffect(() => {
-        if (!isAutoMode || !isRecording || isLoading || !transcript.trim()) return;
-
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-        const waitForCompleteQuestion = () => {
-            silenceTimerRef.current = setTimeout(() => {
-                if (speechActiveRef.current) {
-                    waitForCompleteQuestion();
-                    return;
-                }
-                console.log("Auto-answering after confirmed silence...");
-                getAiAnswer();
-            // Desktop VAD already confirms a natural pause before it commits a
-            // Whisper segment, so a short second confirmation keeps answers timely
-            // without answering over an ongoing speaker.
-            }, isElectron ? 550 : 1600);
-        };
-        waitForCompleteQuestion();
-
-        return () => {
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        };
-    }, [transcript, isAutoMode, isLoading, isRecording, getAiAnswer, isElectron]);
+    useEffect(() => window.electronAPI?.onScannerStateChange?.((active: boolean) => {
+        setIsScannerActive(active);
+    }), []);
 
     // --- SCREEN AUDIO CAPTURE (ELECTRON ONLY) ---
     const stopScreenAudio = useCallback(() => {
@@ -690,21 +777,30 @@ export default function InterviewPage() {
     const loadMeetingAudioSources = useCallback(async () => {
         if (!window.electronAPI?.isElectron) return [] as Array<{ id: string; name: string }>;
         setIsLoadingMeetingAudioSources(true);
+        let failureMessage = "Could not list the available displays for meeting audio.";
         try {
-            const result = await window.electronAPI.listSystemAudioSources();
-            if (!result.success) {
-                setError(result.error || "Could not list the available displays for meeting audio.");
-                return [];
+            // macOS can briefly return an empty desktopCapturer list just after
+            // the app regains focus or the customer closes System Settings. Retry
+            // once automatically before showing a setup error.
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                try {
+                    const result = await window.electronAPI.listSystemAudioSources();
+                    if (result.success && result.sources.length) {
+                        const sources = result.sources;
+                        setMeetingAudioSources(sources);
+                        setSelectedMeetingAudioSource(current => {
+                            if (sources.some(source => source.id === current)) return current;
+                            return sources.length === 1 ? sources[0].id : "";
+                        });
+                        return sources;
+                    }
+                    failureMessage = result.error || failureMessage;
+                } catch {
+                    failureMessage = "Could not list the available displays for meeting audio. Refresh and try again.";
+                }
+                if (attempt === 0) await new Promise<void>(resolve => window.setTimeout(resolve, 600));
             }
-            const sources = result.sources;
-            setMeetingAudioSources(sources);
-            setSelectedMeetingAudioSource(current => {
-                if (sources.some(source => source.id === current)) return current;
-                return sources.length === 1 ? sources[0].id : "";
-            });
-            return sources;
-        } catch {
-            setError("Could not list the available displays for meeting audio. Refresh and try again.");
+            setError(failureMessage);
             return [];
         } finally {
             setIsLoadingMeetingAudioSources(false);
@@ -758,7 +854,7 @@ export default function InterviewPage() {
             console.error("[Meeting Audio] Failed:", error);
             setIsScreenAudioActive(false);
             const detail = error instanceof Error ? error.message : "";
-            const platformHint = navigator.userAgent.toLowerCase().includes("mac")
+            const platformHint = (window.electronAPI?.platform === "darwin" || navigator.userAgent.toLowerCase().includes("mac"))
                 ? "Check Screen & System Audio permission in macOS Settings, then restart AllyX."
                 : "Check the selected display and your operating system's screen/audio capture permission.";
             const message = detail
@@ -805,172 +901,187 @@ export default function InterviewPage() {
         void connectScreenAudio(sourceId);
     }), [connectScreenAudio]);
 
-    // --- DESKTOP STT (Groq Whisper with Silence Detection) ---
+    // --- DESKTOP STT (ordered Groq Whisper segments + voice activity detection) ---
     const activeStreamsRef = useRef<MediaStream[]>([]);
-    const lastGroqTranscriptRef = useRef<string>("");
 
     // Ignore only exact non-speech captions. Real phrases must remain available to the AI.
     const NON_SPEECH_CAPTIONS = new Set(["[music]", "[applause]", "(music)", "(applause)"]);
 
-    const processGroqAudio = async (audioBlob: Blob) => {
-        try {
-            // Groq is picky about types. Ensure it's marked as webm.
-            if (audioBlob.size < 2000) {
-                return;
-            }
+    const processGroqAudio = async (segment: TranscriptionSegment): Promise<string | null> => {
+        if (segment.epoch !== transcriptionEpochRef.current || segment.audio.size < 2000) return null;
 
+        const selectedLanguage = interviewContext.lang.split('-')[0];
+        const langCode = selectedLanguage === 'fil' ? 'tl' : selectedLanguage;
+        const buildFormData = () => {
             const formData = new FormData();
-            formData.append('file', audioBlob, 'audio.webm');
+            formData.append('file', segment.audio, 'audio.webm');
             formData.append('model', 'whisper-large-v3-turbo');
-
-            // Get selected language
-            const selectedLanguage = interviewContext.lang.split('-')[0];
-            const langCode = selectedLanguage === 'fil' ? 'tl' : selectedLanguage;
             formData.append('language', langCode);
+            if (langCode === 'en') formData.append('prompt', 'This is an English professional practice interview conversation.');
+            if (langCode === 'ar') formData.append('prompt', 'هذه محادثة تدريبية مهنية باللغة العربية.');
+            return formData;
+        };
 
-            // Add prompt to help Whisper understand the expected language
-            if (langCode === 'en') {
-                formData.append('prompt', 'This is an English professional meeting conversation.');
-            } else if (langCode === 'ar') {
-                formData.append('prompt', 'هذه محادثة اجتماع عمل باللغة العربية.');
+        setAudioCaptureStatus("transcribing");
+        let response: Response | null = null;
+        let lastFailure: unknown = null;
+        const waitWhileCurrent = async (milliseconds: number) => {
+            const deadline = Date.now() + milliseconds;
+            while (Date.now() < deadline) {
+                if (segment.epoch !== transcriptionEpochRef.current) return false;
+                await new Promise<void>(resolve => window.setTimeout(resolve, Math.min(100, deadline - Date.now())));
             }
+            return segment.epoch === transcriptionEpochRef.current;
+        };
 
-            console.log(`[Desktop STT] Sending audio with language: ${langCode}`);
-            setAudioCaptureStatus("transcribing");
-
-            let response;
-            let retries = 2;
-            let delay = 1000;
-
-            while (retries >= 0) {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 25000);
-                try {
-                    response = await fetch('/api/transcribe', {
-                        method: 'POST',
-                        headers: { "X-ALLYX-Session-ID": sessionIdRef.current },
-                        body: formData,
-                        signal: controller.signal,
-                    });
-                } finally {
-                    clearTimeout(timeout);
-                }
-
-                if (response.ok) break;
-
-                if (response.status === 503 || response.status === 429) {
-                    console.warn(`[Desktop STT] Retrying due to ${response.status}... (${retries} left)`);
-                    await new Promise(r => setTimeout(r, delay));
-                    retries--;
-                    delay *= 2;
-                } else {
-                    break;
-                }
-            }
-
-            if (!response || !response.ok) {
-                console.error(`[Desktop STT] API Error: ${response?.status}`);
-                let message = "Transcription stopped because the audio service could not be reached.";
-                try {
-                    const body = await response?.json();
-                    if (typeof body?.error === "string") message = body.error;
-                    else if (typeof body?.error?.message === "string") message = body.error.message;
-                } catch { /* Keep the safe fallback message. */ }
-                setError(`${message} Stop and restart the microphone to retry.`);
-                return;
-            }
-
-            const data = await response.json();
-            console.log(`[Desktop STT] Groq returned: "${data.text || '(empty)'}"`);
-
-            if (data.text && data.text.trim()) {
-                const newText = data.text.trim();
-                const clean = newText.toLowerCase().replace(/[.,!?]/g, '').trim();
-                const wordCount = clean.split(/\s+/).length;
-
-                // Filter: too short (Speed Mode)
-                if (wordCount < 1) {
-                    return;
-                }
-
-                if (NON_SPEECH_CAPTIONS.has(newText.toLowerCase().trim())) {
-                    console.log(`[Desktop STT] Filtered non-speech caption: "${newText}"`);
-                    return;
-                }
-
-                // Filter: duplicate
-                if (lastGroqTranscriptRef.current === clean) {
-                    console.log(`[Desktop STT] Filtered: duplicate`);
-                    return;
-                }
-
-                lastGroqTranscriptRef.current = clean;
-                console.log(`[Desktop STT] ✅ Heard (${langCode}): "${newText}"`);
-                setAudioCaptureStatus("hearing");
-
-                // Replace the provisional microphone caption with the canonical
-                // mixed-audio Whisper result. This keeps the saved transcript accurate
-                // while allowing words to appear immediately during speech.
-                liveCaptionRef.current = "";
-                setInterimTranscript("");
-                appendFullTranscript(newText);
-
-                setTranscript(prev => {
-                    const prevTrimmed = prev.trim();
-
-
-                    // Simple check: if the last few words of the transcript match the start of the new text, skip the overlap
-                    // This is more basic than the onresult deduplication because Groq text is usually 
-                    // more complete and we want to preserve its accuracy.
-
-                    // But if the entire newText is already at the end of the transcript, skip it.
-                    if (prevTrimmed.endsWith(newText)) return prev;
-
-                    const finalTranscript = (prev + " " + newText).trim();
-                    return finalTranscript.slice(-MAX_TRANSCRIPT_LENGTH);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            if (segment.epoch !== transcriptionEpochRef.current) return null;
+            const controller = new AbortController();
+            transcriptionAbortControllersRef.current.add(controller);
+            const timeout = window.setTimeout(() => controller.abort(), 25000);
+            try {
+                response = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { "X-ALLYX-Session-ID": sessionIdRef.current },
+                    body: buildFormData(),
+                    signal: controller.signal,
                 });
-
-                if ((window as unknown as { electronAPI?: { sendTranscript: (t: string) => void } }).electronAPI?.sendTranscript) {
-                    (window as unknown as { electronAPI: { sendTranscript: (t: string) => void } }).electronAPI.sendTranscript(newText);
-                }
-            } else {
-                console.log("[Desktop STT] Groq returned empty response");
-                setAudioCaptureStatus("waiting");
+                if (response.ok) break;
+                lastFailure = new Error(`Transcription request returned ${response.status}`);
+            } catch (error) {
+                lastFailure = error;
+            } finally {
+                window.clearTimeout(timeout);
+                transcriptionAbortControllersRef.current.delete(controller);
             }
-        } catch (error) {
-            console.error("[Desktop STT] Error:", error);
-            setAudioCaptureStatus("waiting");
-            setError("Transcription failed. Check your connection, then stop and restart the microphone.");
+
+            if (segment.epoch !== transcriptionEpochRef.current) return null;
+            const retryable = !response || response.status === 429 || response.status === 503;
+            if (!retryable || attempt === 2) break;
+            const retryAfter = response?.headers.get('retry-after') ?? null;
+            const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
+            const waitMs = Number.isFinite(seconds) && seconds > 0
+                ? Math.min(seconds * 1000, 8000)
+                : 1200 * (attempt + 1);
+            if (!await waitWhileCurrent(waitMs)) return null;
         }
+
+        if (segment.epoch !== transcriptionEpochRef.current) return null;
+        if (!response?.ok) {
+            console.error("[Desktop STT] transcription request failed", lastFailure);
+            setAudioCaptureStatus("waiting");
+            setError("Live captions could not reconnect. Check your connection, then stop and start listening.");
+            window.electronAPI?.sendOverlayStatus?.("Live captions could not reconnect. Stop and start listening to retry.", "error");
+            return null;
+        }
+
+        let data: { text?: string };
+        try {
+            data = await response.json() as { text?: string };
+        } catch (error) {
+            console.error("[Desktop STT] transcription response could not be read", error);
+            setAudioCaptureStatus("waiting");
+            setError("Live captions received an unreadable response. Stop and start listening to retry.");
+            return null;
+        }
+        if (segment.epoch !== transcriptionEpochRef.current) return null;
+        const newText = typeof data.text === 'string' ? data.text.trim() : '';
+        if (!newText || NON_SPEECH_CAPTIONS.has(newText.toLowerCase())) {
+            setAudioCaptureStatus("waiting");
+            return null;
+        }
+        return newText;
     };
 
-    const drainTranscriptions = () => {
-        const MAX_PARALLEL_TRANSCRIPTIONS = 2;
-        while (activeTranscriptionsRef.current.size < MAX_PARALLEL_TRANSCRIPTIONS && pendingTranscriptionsRef.current.length) {
-            const audioBlob = pendingTranscriptionsRef.current.shift();
-            if (!audioBlob) continue;
-            const task = processGroqAudio(audioBlob)
-                .catch(error => console.error("[Desktop STT] Unexpected transcription task error:", error))
-                .finally(() => {
-                    activeTranscriptionsRef.current.delete(task);
-                    drainTranscriptions();
-                });
-            activeTranscriptionsRef.current.add(task);
+    const commitTranscriptSegment = (segment: TranscriptionSegment, text: string) => {
+        if (segment.epoch !== transcriptionEpochRef.current) return;
+        const previousQuestion = questionStateRef.current.current();
+        const currentQuestion = questionStateRef.current.append(text);
+        const novelText = currentQuestion.slice(previousQuestion.length).trim();
+        if (!novelText) return;
+
+        // The browser recognizer is only a provisional preview. Preserve the
+        // server transcript and keep the complete current question visible while
+        // the answer request is in progress.
+        liveCaptionRef.current = "";
+        setInterimTranscript("");
+        appendFullTranscript(novelText);
+        setTranscript(currentQuestion.slice(-MAX_TRANSCRIPT_LENGTH));
+        setAudioCaptureStatus("hearing");
+        window.electronAPI?.sendTranscript?.(currentQuestion.slice(-MAX_TRANSCRIPT_LENGTH));
+    };
+
+    const drainTranscriptions = async (): Promise<void> => {
+        if (isTranscriptionDrainActiveRef.current) return;
+        const drainEpoch = transcriptionEpochRef.current;
+        isTranscriptionDrainActiveRef.current = true;
+        try {
+            while (drainEpoch === transcriptionEpochRef.current) {
+                const expectedSequence = nextTranscriptionToProcessRef.current;
+                if (skippedTranscriptionSequencesRef.current.delete(expectedSequence)) {
+                    nextTranscriptionToProcessRef.current += 1;
+                    continue;
+                }
+                const index = pendingTranscriptionsRef.current.findIndex(segment => (
+                    segment.epoch === drainEpoch && segment.sequence === expectedSequence
+                ));
+                // A later recorder can emit its stop event first. Wait for the
+                // missing earlier sequence instead of corrupting the caption order.
+                if (index < 0) break;
+                const [segment] = pendingTranscriptionsRef.current.splice(index, 1);
+                if (!segment) continue;
+
+                const task = (async () => {
+                    const text = await processGroqAudio(segment);
+                    if (text) commitTranscriptSegment(segment, text);
+
+                    // Only a natural VAD pause can complete a question. A rolling
+                    // chunk from continuous speech never sends an early answer.
+                    if (
+                        segment.finalizesQuestion
+                        && segment.epoch === transcriptionEpochRef.current
+                        && autoAnswerEnabledRef.current
+                        && !sessionEndingRef.current
+                    ) {
+                        const question = questionStateRef.current.consume().trim();
+                        if (question) {
+                            pendingAutoQuestionsRef.current.push(question);
+                            processPendingAutoAnswersRef.current();
+                        }
+                    }
+                })();
+                activeTranscriptionTaskRef.current = task;
+                try {
+                    await task;
+                } catch (error) {
+                    console.error("[Desktop STT] Unexpected transcription task error:", error);
+                } finally {
+                    if (activeTranscriptionTaskRef.current === task) activeTranscriptionTaskRef.current = null;
+                }
+                if (drainEpoch === transcriptionEpochRef.current) {
+                    nextTranscriptionToProcessRef.current += 1;
+                }
+            }
+        } finally {
+            isTranscriptionDrainActiveRef.current = false;
+            if (pendingTranscriptionsRef.current.length) void drainTranscriptions();
         }
     };
     transcriptionDrainRef.current = drainTranscriptions;
 
     const startDesktopSTT = async () => {
-        const epoch = captureEpochRef.current;
+        const captureEpoch = captureEpochRef.current;
+        const transcriptionEpoch = transcriptionEpochRef.current;
         try {
             if (window.electronAPI?.isPresentationSafeMode()) return false;
-            console.log("[Desktop STT] Starting Smart VAD...");
+            console.log("[Desktop STT] Starting ordered caption pipeline...");
 
-            // 1. Get Microphone stream
+            // Start the canonical recorder first. Chromium's optional preview can
+            // otherwise take the microphone and prevent reliable Whisper capture.
             const micStream = await navigator.mediaDevices.getUserMedia({
                 audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
             });
-            if (epoch !== captureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
+            if (captureEpoch !== captureEpochRef.current || window.electronAPI?.isPresentationSafeMode()) {
                 micStream.getTracks().forEach(track => track.stop());
                 return false;
             }
@@ -978,17 +1089,23 @@ export default function InterviewPage() {
             const microphoneTrack = micStream.getAudioTracks()[0];
             if (microphoneTrack) {
                 microphoneTrack.onended = () => {
-                    if (epoch !== captureEpochRef.current || sessionEndingRef.current || !isRecordingRef.current) return;
+                    if (captureEpoch !== captureEpochRef.current || sessionEndingRef.current || !isRecordingRef.current) return;
                     setError("The microphone disconnected. Reconnecting…");
                     setIsRecording(false);
                     setIsAutoMode(false);
                     stopDesktopSTT();
-                    if (deviceRecoveryTimerRef.current) clearTimeout(deviceRecoveryTimerRef.current);
+                    const recoveryGeneration = ++recoveryGenerationRef.current;
                     deviceRecoveryTimerRef.current = setTimeout(async () => {
                         deviceRecoveryTimerRef.current = null;
-                        if (sessionEndingRef.current) return;
+                        if (sessionEndingRef.current || recoveryGeneration !== recoveryGenerationRef.current) return;
+                        resetTranscriptionPipeline();
                         const recovered = await startDesktopSTT();
+                        if (recoveryGeneration !== recoveryGenerationRef.current) {
+                            if (recovered) stopDesktopSTT();
+                            return;
+                        }
                         if (recovered) {
+                            autoAnswerEnabledRef.current = autoAnswerPreferenceRef.current;
                             setIsRecording(true);
                             setIsAutoMode(autoAnswerPreferenceRef.current);
                             setError(null);
@@ -999,66 +1116,152 @@ export default function InterviewPage() {
                 };
             }
 
-            // 2. Initialize Audio Context & Analyser (Saved to Refs for mixing)
             const audioContext = new AudioContext();
             const analyser = audioContext.createAnalyser();
             analyser.fftSize = 512;
-
-            // An AudioContext may begin suspended even though getUserMedia
-            // succeeded. Resume it while this user-initiated action is still
-            // active so the analyser does not receive a permanently silent
-            // stream on macOS or Windows.
             if (audioContext.state !== "running") await audioContext.resume();
-
             audioContextRef.current = audioContext;
             analyserRef.current = analyser;
 
-            // 3. Connect Microphone
             const micSource = audioContext.createMediaStreamSource(micStream);
             micSource.connect(analyser);
             micSourceRef.current = micSource;
-
-            // 4. Connect Screen Audio (if already active)
             if (screenStreamRef.current) {
                 try {
                     const screenSource = audioContext.createMediaStreamSource(screenStreamRef.current);
                     screenSource.connect(analyser);
                     screenSourceRef.current = screenSource;
-                    console.log("[Desktop STT] Screen audio mixed at start");
-                } catch (e) {
-                    console.warn("[Desktop STT] Failed to mix screen audio at start:", e);
+                } catch (error) {
+                    console.warn("[Desktop STT] Could not mix the existing meeting-audio track:", error);
                 }
             }
 
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             const timeDomainData = new Uint8Array(analyser.fftSize);
-
-            // Frequency averages can report a quiet room even when the microphone is
-            // carrying speech. Use time-domain RMS as the primary detector, with the
-            // spectrum as a secondary signal for supported desktop-audio streams.
-            // Laptop microphones and meeting-audio tracks often sit below the
-            // old thresholds. Keep a small floor to reject a silent stream,
-            // while detecting normal quiet speech reliably.
-            const SPEECH_RMS_THRESHOLD = 1.1;
-            const SPEECH_SPECTRUM_THRESHOLD = 3.5;
-            const SILENCE_DURATION = 650;       // Natural pause between phrases
-            const MIN_SPEECH_DURATION = 350;    // Keep concise questions
-            // A continuous interviewer should not have to pause before the first
-            // transcript appears. Each finished segment is a valid WebM file for
-            // Whisper is file-based rather than token-streaming. Send a short rolling
-            // segment while the speaker continues so meeting-audio captions feel live.
-            const MAX_RECORDING_TIME = 1600;
+            // Lower thresholds recognise ordinary laptop-mic speech while still
+            // rejecting a silent input. The selected meeting display is mixed when
+            // its visible OS permission is available.
+            const SPEECH_RMS_THRESHOLD = 0.9;
+            const SPEECH_SPECTRUM_THRESHOLD = 2.4;
+            const SILENCE_DURATION = 750;
+            // Four-second rolling chunks keep confirmed captions close to live
+            // while staying inside the provider request rate available to every
+            // account. A natural pause can finish a question after 2.5 seconds.
+            const MIN_SEGMENT_DURATION = 2500;
+            const MAX_RECORDING_TIME = 4000;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
             let silenceStart = 0;
             let speechStart = 0;
+            let setCurrentSegmentFinalization: ((finalizesQuestion: boolean, waitForContinuation?: boolean) => void) | null = null;
+            let pendingRollover: { sequence: number; decision: boolean | null } | null = null;
+            let deferredRolloverSegment: TranscriptionSegment | null = null;
             let lastLogTime = 0;
 
-            const checkAudioLevel = () => {
-                if (epoch !== captureEpochRef.current) return;
-                if (!activeStreamsRef.current.length && !screenStreamRef.current) return;
+            const releaseRolloverSegment = (finalizesQuestion: boolean) => {
+                if (!pendingRollover) return;
+                pendingRollover.decision = finalizesQuestion;
+                if (!deferredRolloverSegment || deferredRolloverSegment.sequence !== pendingRollover.sequence) return;
+                deferredRolloverSegment.finalizesQuestion = finalizesQuestion;
+                pendingTranscriptionsRef.current.push(deferredRolloverSegment);
+                deferredRolloverSegment = null;
+                pendingRollover = null;
+                void transcriptionDrainRef.current?.();
+            };
 
+            const stopAndQueue = (finalizesQuestion: boolean) => {
+                if (!isSpeaking) return;
+                isSpeaking = false;
+                vadSpeechActiveRef.current = !finalizesQuestion;
+                silenceStart = 0;
+                // At the four-second rollover we wait one silence window before
+                // deciding whether the chunk was the end of the question. This
+                // prevents a long question from being answered halfway through,
+                // while still answering if speech ends on the chunk boundary.
+                setCurrentSegmentFinalization?.(finalizesQuestion, !finalizesQuestion);
+                if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+            };
+
+            const startSegment = () => {
+                // Speech continued after a rolling chunk, so release that previous
+                // chunk as part of the same question before recording the next one.
+                releaseRolloverSegment(false);
+                isSpeaking = true;
+                vadSpeechActiveRef.current = true;
+                speechStart = Date.now();
+                const segmentStartedAt = speechStart;
+                const segmentSequence = ++nextTranscriptionSequenceRef.current;
+                let segmentFinalizesQuestion = false;
+                let waitsForContinuation = false;
+                setCurrentSegmentFinalization = (finalizesQuestion, waitForContinuation = false) => {
+                    segmentFinalizesQuestion = finalizesQuestion;
+                    waitsForContinuation = waitForContinuation;
+                    if (waitForContinuation) pendingRollover = { sequence: segmentSequence, decision: null };
+                };
+                const ownedChunks: Blob[] = [];
+                const destination = audioContext.createMediaStreamDestination();
+                const screenSourceAtStart = screenSourceRef.current;
+                micSource.connect(destination);
+                if (screenSourceAtStart) screenSourceAtStart.connect(destination);
+
+                const preferredMimeType = 'audio/webm;codecs=opus';
+                const mimeType = MediaRecorder.isTypeSupported(preferredMimeType) ? preferredMimeType : 'audio/webm';
+                const ownedRecorder = new MediaRecorder(destination.stream, { mimeType });
+                mediaRecorder = ownedRecorder;
+                mediaRecorderRef.current = ownedRecorder;
+                ownedRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) ownedChunks.push(event.data);
+                };
+
+                let resolveStopped: () => void = () => {};
+                const stopped = new Promise<void>(resolve => { resolveStopped = resolve; });
+                const flushOwned = async () => {
+                    if (ownedRecorder.state === 'recording') ownedRecorder.stop();
+                    await stopped;
+                };
+                ownedRecorder.onstop = () => {
+                    try {
+                        const duration = Date.now() - segmentStartedAt;
+                        if (captureEpoch !== captureEpochRef.current) return;
+                        if (duration < 350 || !ownedChunks.length) {
+                            skippedTranscriptionSequencesRef.current.add(segmentSequence);
+                            void transcriptionDrainRef.current?.();
+                            return;
+                        }
+                        const queuedSegment: TranscriptionSegment = {
+                            audio: new Blob(ownedChunks, { type: 'audio/webm' }),
+                            epoch: transcriptionEpoch,
+                            sequence: segmentSequence,
+                            finalizesQuestion: segmentFinalizesQuestion,
+                        };
+                        if (waitsForContinuation && pendingRollover?.sequence === segmentSequence) {
+                            deferredRolloverSegment = queuedSegment;
+                            if (pendingRollover.decision !== null) {
+                                releaseRolloverSegment(pendingRollover.decision);
+                            }
+                        } else {
+                            pendingTranscriptionsRef.current.push(queuedSegment);
+                            void transcriptionDrainRef.current?.();
+                        }
+                    } finally {
+                        try { micSource.disconnect(destination); } catch { /* already disconnected */ }
+                        try { screenSourceAtStart?.disconnect(destination); } catch { /* already disconnected */ }
+                        destination.stream.getTracks().forEach(track => track.stop());
+                        ownedChunks.length = 0;
+                        if (mediaRecorder === ownedRecorder) setCurrentSegmentFinalization = null;
+                        if (mediaRecorderRef.current === ownedRecorder) mediaRecorderRef.current = null;
+                        if (flushRecorderRef.current === flushOwned) flushRecorderRef.current = null;
+                        resolveStopped();
+                    }
+                };
+                flushRecorderRef.current = flushOwned;
+                ownedRecorder.start();
+            };
+
+            const checkAudioLevel = () => {
+                if (captureEpoch !== captureEpochRef.current) return;
+                if (!activeStreamsRef.current.length && !screenStreamRef.current) return;
                 analyser.getByteFrequencyData(dataArray);
                 analyser.getByteTimeDomainData(timeDomainData);
                 const spectrumAverage = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
@@ -1069,9 +1272,8 @@ export default function InterviewPage() {
                 const audible = rms >= SPEECH_RMS_THRESHOLD || spectrumAverage >= SPEECH_SPECTRUM_THRESHOLD;
                 const now = Date.now();
 
-                // Log every 2.5s to reduce console noise
                 if (now - lastLogTime > 2500) {
-                    console.log(`[VAD] RMS: ${rms.toFixed(1)} | Spectrum: ${spectrumAverage.toFixed(1)} | Mic: ${!!micStream} | Screen: ${isScreenAudioActive}`);
+                    console.log(`[VAD] RMS: ${rms.toFixed(1)} | Spectrum: ${spectrumAverage.toFixed(1)} | Mic stream: ${Boolean(micStream)}`);
                     lastLogTime = now;
                 }
 
@@ -1081,82 +1283,23 @@ export default function InterviewPage() {
                         lastAudioStatusUpdateAtRef.current = now;
                         setAudioCaptureStatus("hearing");
                     }
-                    speechActiveRef.current = true;
-                    // SPEECH DETECTED
                     silenceStart = 0;
-                    if (!isSpeaking) {
-                        isSpeaking = true;
-                        speechStart = Date.now();
-                        const ownedChunks: Blob[] = [];
-                        console.log("[VAD] ⚡ Speech detected!");
-
-                        // Create a mixed stream for the MediaRecorder
-                        const dest = audioContext.createMediaStreamDestination();
-                        const screenSourceAtStart = screenSourceRef.current;
-                        micSource.connect(dest);
-                        if (screenSourceAtStart) {
-                            screenSourceAtStart.connect(dest);
-                        }
-
-                        // Use standard webm to avoid header issues with Whisper
-                        const mimeType = 'audio/webm';
-                        mediaRecorder = new MediaRecorder(dest.stream, { mimeType });
-                        mediaRecorderRef.current = mediaRecorder;
-                        mediaRecorder.ondataavailable = (e) => {
-                            if (e.data.size > 0) ownedChunks.push(e.data);
-                        };
-
-                        let resolveStopped: () => void = () => {};
-                        const stopped = new Promise<void>(resolve => { resolveStopped = resolve; });
-                        const ownedRecorder = mediaRecorder;
-                        const flushOwned = async () => {
-                            if (ownedRecorder.state === 'recording') ownedRecorder.stop();
-                            await stopped;
-                        };
-                        mediaRecorder.onstop = async () => {
-                            try {
-                                if (epoch !== captureEpochRef.current) return;
-                                const duration = Date.now() - speechStart;
-                                if (duration < MIN_SPEECH_DURATION || ownedChunks.length === 0) return;
-                                const fullAudio = new Blob(ownedChunks, { type: 'audio/webm' });
-                                console.log(`[VAD] Sending ${(fullAudio.size / 1024).toFixed(1)}KB...`);
-                                // Dispatch the short segment immediately. Two requests may run
-                                // together; this avoids a slow request delaying every caption that
-                                // follows it during a continuous practice answer.
-                                pendingTranscriptionsRef.current.push(fullAudio);
-                                transcriptionDrainRef.current?.();
-                            } finally {
-                                try { micSource.disconnect(dest); } catch { /* already disconnected */ }
-                                try { screenSourceAtStart?.disconnect(dest); } catch { /* already disconnected */ }
-                                dest.stream.getTracks().forEach(track => track.stop());
-                                ownedChunks.length = 0;
-                                if (mediaRecorderRef.current === ownedRecorder) mediaRecorderRef.current = null;
-                                if (flushRecorderRef.current === flushOwned) flushRecorderRef.current = null;
-                                resolveStopped();
-                            }
-                        };
-                        flushRecorderRef.current = flushOwned;
-
-                        // IMPORTANT: Start without timeslice to get a single valid blob at onstop
-                        // This produces a much more stable WebM file for Groq
-                        mediaRecorder.start();
-                    } else {
-                        // Check Max Duration
-                        if (Date.now() - speechStart > MAX_RECORDING_TIME) {
-                            console.log("[VAD] Segment limit reached, sending ongoing speech.");
-                            stopAndProcess();
-                        }
+                    if (!isSpeaking) startSegment();
+                    else if (now - speechStart >= MAX_RECORDING_TIME) {
+                        // This is a rolling chunk, not the end of the question.
+                        stopAndQueue(false);
                     }
-                } else {
-                    // SILENCE
-                    if (isSpeaking) {
-                        if (silenceStart === 0) {
-                            silenceStart = Date.now();
-                        } else if (Date.now() - silenceStart > SILENCE_DURATION) {
-                            console.log("[VAD] End of sentence (Silence detected).");
-                            stopAndProcess();
-                        }
+                } else if (isSpeaking) {
+                    if (!silenceStart) silenceStart = now;
+                    const longEnough = now - speechStart >= MIN_SEGMENT_DURATION;
+                    if (longEnough && now - silenceStart >= SILENCE_DURATION) {
+                        stopAndQueue(true);
                     }
+                } else if (pendingRollover && now - lastAudibleSignalAtRef.current >= SILENCE_DURATION) {
+                    // A speaker stopped just as the recorder rolled over. Treat the
+                    // held chunk as the complete question instead of leaving it
+                    // visible forever without an answer.
+                    releaseRolloverSegment(true);
                 }
 
                 if (!isSpeaking && now - lastAudibleSignalAtRef.current > 7000 && now - lastAudioStatusUpdateAtRef.current > 1000) {
@@ -1165,89 +1308,98 @@ export default function InterviewPage() {
                 }
             };
 
-            const stopAndProcess = () => {
-                isSpeaking = false;
-                speechActiveRef.current = false;
-                silenceStart = 0;
-
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    mediaRecorder.stop();
-                }
-            };
-
             if (vadTimerRef.current) clearInterval(vadTimerRef.current);
             lastAudibleSignalAtRef.current = Date.now();
             lastAudioStatusUpdateAtRef.current = Date.now();
             setAudioCaptureStatus("waiting");
             checkAudioLevel();
-            // The desktop control window is intentionally hidden while the overlay is
-            // in use. requestAnimationFrame pauses in a hidden BrowserWindow, so audio
-            // detection must run on an interval that remains active in the background.
             vadTimerRef.current = setInterval(checkAudioLevel, 50);
             setIsRecording(true);
-            console.log("[Desktop STT] VAD Engine Started");
+            console.log("[Desktop STT] Ordered VAD engine started");
             return true;
-
         } catch (err: unknown) {
             const error = err as Error;
-            console.error("Desktop STT Error:", error);
+            console.error("[Desktop STT] failed to start:", error);
+            cancelDeviceRecovery();
             captureEpochRef.current++;
+            invalidateTranscriptionPipeline();
+            if (vadTimerRef.current) {
+                clearInterval(vadTimerRef.current);
+                vadTimerRef.current = null;
+            }
             activeStreamsRef.current.forEach(stream => stream.getTracks().forEach(track => track.stop()));
             activeStreamsRef.current = [];
-            void audioContextRef.current?.close();
+            void audioContextRef.current?.close().catch(() => undefined);
             audioContextRef.current = null;
-            setError(error.message || "Recording failed.");
+            autoAnswerEnabledRef.current = false;
+            setIsRecording(false);
+            setIsAutoMode(false);
+            const message = error.message || "Microphone recording could not start.";
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            window.electronAPI?.sendRecordingState?.({ listening: false, meetingAudio: false, finalizing: false });
             return false;
         }
     };
 
-    const stopDesktopSTT = useCallback(() => {
+    const stopDesktopSTT = useCallback((discardPendingTranscription = true) => {
+        // Invalidate any late recorder or network callback before releasing the
+        // audio device. A hard stop must never append a caption from the previous
+        // practice session after the customer starts another one.
+        cancelDeviceRecovery();
         captureEpochRef.current++;
-        speechActiveRef.current = false;
+        vadSpeechActiveRef.current = false;
+        autoAnswerEnabledRef.current = false;
+        if (discardPendingTranscription) invalidateTranscriptionPipeline();
         if (vadTimerRef.current) {
             clearInterval(vadTimerRef.current);
             vadTimerRef.current = null;
         }
         setAudioCaptureStatus("idle");
-        if (mediaRecorderRef.current?.state === 'recording') {
-            mediaRecorderRef.current.onstop = null;
-            mediaRecorderRef.current.stop();
+
+        // Leave the recorder's onstop handler intact. It owns disconnecting its
+        // destination and resolving a pending flush. Removing it left the final
+        // segment hanging and made later sessions appear to stop listening.
+        const recorder = mediaRecorderRef.current;
+        if (recorder?.state === 'recording') recorder.stop();
+        if (!recorder || recorder.state === 'inactive') {
+            mediaRecorderRef.current = null;
+            flushRecorderRef.current = null;
         }
-        mediaRecorderRef.current = null;
-        flushRecorderRef.current = null;
         if (screenSourceRef.current) {
-            screenSourceRef.current.disconnect();
+            try { screenSourceRef.current.disconnect(); } catch { /* already disconnected */ }
             screenSourceRef.current = null;
         }
-
         if (micSourceRef.current) {
-            micSourceRef.current.disconnect();
+            try { micSourceRef.current.disconnect(); } catch { /* already disconnected */ }
             micSourceRef.current = null;
         }
-
         const audioContext = audioContextRef.current;
         if (audioContext) {
-            audioContext.close();
+            void audioContext.close().catch(() => undefined);
             audioContextRef.current = null;
         }
-
-        activeStreamsRef.current.forEach(stream => {
-            stream.getTracks().forEach(track => track.stop());
-        });
+        activeStreamsRef.current.forEach(stream => stream.getTracks().forEach(track => track.stop()));
         activeStreamsRef.current = [];
         console.log("[Desktop STT] Stopped");
-    }, []);
+    }, [cancelDeviceRecovery, invalidateTranscriptionPipeline]);
 
     const flushAndStopDesktopSTT = useCallback(async () => {
+        // Ending an interview preserves the recorder's final segment so it can be
+        // transcribed and saved. Explicit stops and device failures discard it.
+        autoAnswerEnabledRef.current = false;
         const flush = flushRecorderRef.current;
         if (flush) await flush();
-        stopDesktopSTT();
-        // Do not lose the final short segment when a practice session ends.
-        while (activeTranscriptionsRef.current.size || pendingTranscriptionsRef.current.length) {
-            transcriptionDrainRef.current?.();
-            const running = [...activeTranscriptionsRef.current];
-            if (!running.length) break;
-            await Promise.allSettled(running);
+        stopDesktopSTT(false);
+        while (pendingTranscriptionsRef.current.length || activeTranscriptionTaskRef.current || isTranscriptionDrainActiveRef.current) {
+            const drain = transcriptionDrainRef.current;
+            if (pendingTranscriptionsRef.current.length && drain) await drain();
+            const activeTask = activeTranscriptionTaskRef.current;
+            if (activeTask) await activeTask.catch(() => undefined);
+            else if (isTranscriptionDrainActiveRef.current) {
+                await new Promise<void>(resolve => window.setTimeout(resolve, 20));
+            }
+            if (!pendingTranscriptionsRef.current.length && !activeTranscriptionTaskRef.current && !isTranscriptionDrainActiveRef.current) break;
         }
     }, [stopDesktopSTT]);
 
@@ -1271,7 +1423,6 @@ export default function InterviewPage() {
             window.electronAPI?.stopSystemAudioCapture();
             try { recognitionRef.current?.abort(); } catch { }
             isRecognitionActiveRef.current = false;
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
 
         stopForPresentation(window.electronAPI.isPresentationSafeMode());
@@ -1292,6 +1443,7 @@ export default function InterviewPage() {
         if (isRecording) {
             // STOP
             setIsFinalizingCapture(true);
+            autoAnswerEnabledRef.current = false;
             setIsRecording(false);
             setIsAutoMode(false);
 
@@ -1311,7 +1463,6 @@ export default function InterviewPage() {
                 void window.electronAPI?.stopSystemAudioCapture().catch(console.error);
             }
 
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             console.log("[Interview] Recording stopped");
             return;
         }
@@ -1319,37 +1470,18 @@ export default function InterviewPage() {
         // START
         if (window.electronAPI?.isPresentationSafeMode()) return;
         recordingStartRef.current = true;
+        cancelDeviceRecovery();
+        autoAnswerEnabledRef.current = autoAnswerPreferenceRef.current;
         isAiSpeakingRef.current = false;
         setError(null);
         setTranscript("");
         setInterimTranscript("");
+        resetTranscriptionPipeline();
 
         try {
-            // Start an immediate on-screen caption preview whenever Chromium makes
-            // SpeechRecognition available. Its result is never used as the saved
-            // desktop transcript; Whisper remains the accurate mixed-audio source.
-            if (recognitionRef.current) {
-                try {
-                    if (!isRecognitionActiveRef.current) {
-                        recognitionRef.current.start();
-                        isRecognitionActiveRef.current = true;
-                        console.log("[Speech] Live caption preview started");
-                    }
-                } catch (e: unknown) {
-                    const err = e as Error;
-                    if (err.name === 'InvalidStateError') {
-                        isRecognitionActiveRef.current = true;
-                    } else {
-                        console.warn("[Speech] Live caption preview unavailable:", err);
-                        if (!isElectron) setError("Microphone access is already in use or failed.");
-                    }
-                }
-            } else if (!isElectron) {
-                console.warn("[Speech] Web Speech API not initialized.");
-                setError("Your browser does not support Live Speech. Use Chrome or Edge.");
-            }
-
-            // STEP 2: Desktop Only - Start High-Quality mixed audio STT
+            // Start the canonical desktop microphone before the optional Chromium
+            // preview. On macOS, starting the preview first can take the sole audio
+            // handle and make the actual caption recorder fail.
             if (isElectron) {
                 // On a single-display computer there is no meaningful choice to make,
                 // so connect that meeting display as part of Start listening. Multiple
@@ -1368,9 +1500,33 @@ export default function InterviewPage() {
                 if (sourceId && !isScreenAudioActive) void startMeetingAudio(sourceId);
             }
 
-            setIsRecording(true);
+            // The browser recognizer is useful for browser-only practice. Electron
+            // keeps one canonical microphone stream so the preview cannot steal
+            // the device from the recorder that produces final captions.
+            if (recognitionRef.current && !isElectron && !previewUnavailableRef.current) {
+                try {
+                    if (!isRecognitionActiveRef.current) {
+                        recognitionRef.current.start();
+                        isRecognitionActiveRef.current = true;
+                        console.log("[Speech] Provisional caption preview started");
+                    }
+                } catch (e: unknown) {
+                    const err = e as Error;
+                    if (err.name === 'InvalidStateError') {
+                        isRecognitionActiveRef.current = true;
+                    } else {
+                        console.warn("[Speech] Provisional caption preview unavailable:", err);
+                        if (!isElectron) setError("Microphone access is already in use or failed.");
+                    }
+                }
+            } else if (!isElectron && !previewUnavailableRef.current) {
+                console.warn("[Speech] Web Speech API not initialized.");
+                setError("Your browser does not support live microphone captions. Use Chrome or Edge.");
+            }
+
+            if (!isElectron) setIsRecording(true);
             setIsAutoMode(autoAnswerPreferenceRef.current);
-            console.log("[Interview] Recording started (Dual-Engine Mode)");
+            console.log("[Interview] Recording started");
         } catch (err: unknown) {
             const error = err as Error;
             console.error("Failed to start recording:", error);
@@ -1422,24 +1578,21 @@ export default function InterviewPage() {
                 setError(null);
                 console.log("[Speech] Recognition started");
             };
-            recognitionRef.current.onspeechstart = () => {
-                speechActiveRef.current = true;
-            };
-            recognitionRef.current.onspeechend = () => {
-                speechActiveRef.current = false;
-            };
+            recognitionRef.current.onspeechstart = null;
+            recognitionRef.current.onspeechend = null;
         }
 
         if (recognitionRef.current) {
             recognitionRef.current.onend = () => {
                 isRecognitionActiveRef.current = false;
-                console.log("[Speech] Recognition ended, isRecording:", isRecordingRef.current, "isAiSpeaking:", isAiSpeakingRef.current);
-                // Auto-restart ONLY if we are supposed to be recording AND AI is NOT speaking
-                if (isRecordingRef.current && !isAiSpeakingRef.current) {
+                console.log("[Speech] Recognition ended, isRecording:", isRecordingRef.current);
+                // Answers are rendered as text, so a completed answer must never
+                // prevent later provisional captions from restarting.
+                if (isRecordingRef.current && !window.electronAPI && !previewUnavailableRef.current) {
                     console.log("[Speech] Auto-restarting...");
                     // Use a small delay to prevent rapid restart loops
                     schedule(() => {
-                        if (recognitionRef.current && isRecordingRef.current && !isAiSpeakingRef.current && !isRecognitionActiveRef.current) {
+                        if (recognitionRef.current && isRecordingRef.current && !isRecognitionActiveRef.current) {
                             try {
                                 recognitionRef.current.start();
                                 isRecognitionActiveRef.current = true;
@@ -1487,52 +1640,17 @@ export default function InterviewPage() {
                     return;
                 }
 
-                // Add final text to the website transcript
+                // Browser-only practice uses SpeechRecognition as the canonical
+                // source. Use the same question buffer as desktop so a manual
+                // answer always uses the text the participant can see.
                 if (finalText) {
                     const cleanedFinal = finalText.trim();
                     if (cleanedFinal) {
-                        appendFullTranscript(cleanedFinal);
-                        setTranscript(prev => {
-                            // Enhanced deduplication: check if the new text overlaps with the end of existing transcript
-                            const prevTrimmed = prev.trim();
-
-                            // Check if this text is a repeat of what we just added
-                            if (prevTrimmed.endsWith(cleanedFinal)) {
-                                return prev; // Skip complete duplicate
-                            }
-
-                            // Check for partial overlap (last N words match first N words of new text)
-                            const prevWords = prevTrimmed.split(' ').slice(-10); // Last 10 words
-                            const newWords = cleanedFinal.split(' ');
-
-                            // Find overlap: check if end of prev matches start of new
-                            let overlapLength = 0;
-                            for (let len = Math.min(prevWords.length, newWords.length); len > 0; len--) {
-                                const prevEnd = prevWords.slice(-len).join(' ').toLowerCase();
-                                const newStart = newWords.slice(0, len).join(' ').toLowerCase();
-                                if (prevEnd === newStart) {
-                                    overlapLength = len;
-                                    break;
-                                }
-                            }
-
-                            // Remove overlapping words from new text
-                            const textToAdd = overlapLength > 0
-                                ? newWords.slice(overlapLength).join(' ')
-                                : cleanedFinal;
-
-                            if (!textToAdd.trim()) {
-                                return prev; // Nothing new to add
-                            }
-
-                            const newTranscript = prev + (prev ? ' ' : '') + textToAdd;
-
-                            // Limit transcript length
-                            if (newTranscript.length > MAX_TRANSCRIPT_LENGTH) {
-                                return newTranscript.slice(-MAX_TRANSCRIPT_LENGTH); // Keep last 4000 chars
-                            }
-                            return newTranscript;
-                        });
+                        const previousQuestion = questionStateRef.current.current();
+                        const currentQuestion = questionStateRef.current.append(cleanedFinal);
+                        const novelText = currentQuestion.slice(previousQuestion.length).trim();
+                        if (novelText) appendFullTranscript(novelText);
+                        setTranscript(currentQuestion.slice(-MAX_TRANSCRIPT_LENGTH));
                     }
                     setInterimTranscript('');
                 } else if (interim) {
@@ -1550,20 +1668,21 @@ export default function InterviewPage() {
                     isRecognitionActiveRef.current = false;
                 }
                 if (event.error === 'audio-capture') {
-                    // Electron's preview recognizer is optional. Keep the verified
-                    // Whisper microphone capture running if this auxiliary preview
-                    // cannot obtain a second browser audio handle.
-                    if (!window.electronAPI) {
-                        setIsRecording(false);
-                        setIsAutoMode(false);
-                        setError("The active microphone became unavailable. Check the device and press Start to reconnect.");
-                        setSystemStatus(prev => ({ ...prev, mic: false }));
+                    if (window.electronAPI) {
+                        // The Electron recorder remains active. Do not retry this
+                        // optional browser feature and risk taking its microphone.
+                        previewUnavailableRef.current = true;
+                        return;
                     }
+                    setIsRecording(false);
+                    setIsAutoMode(false);
+                    setError("The active microphone became unavailable. Check the device and press Start to reconnect.");
+                    setSystemStatus(prev => ({ ...prev, mic: false }));
                     return;
                 }
 
                 // Still try to restart after minor errors if recording is active
-                if ((event.error === 'no-speech' || event.error === 'aborted') && isRecordingRef.current && !isAiSpeakingRef.current) {
+                if ((event.error === 'no-speech' || event.error === 'aborted') && isRecordingRef.current) {
                     schedule(() => {
                         if (recognitionRef.current && isRecordingRef.current && !isRecognitionActiveRef.current) {
                             try {
@@ -1620,6 +1739,15 @@ export default function InterviewPage() {
 
     const processCapturedImage = useCallback(async (imageData: string) => {
         let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
+        if (captureProcessingRef.current) {
+            const message = "A previous screen capture is still being read. Wait for it to finish before capturing again.";
+            showToast(message, "info");
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return;
+        }
+        captureProcessingRef.current = true;
+        setIsScreenCapturing(true);
+        void window.electronAPI?.setScannerProcessing?.(true);
         try {
             if (!imageData?.startsWith('data:image/')) throw new Error('The captured image was invalid.');
             window.electronAPI?.sendOverlayStatus?.("Reading captured code…", "progress");
@@ -1649,7 +1777,7 @@ export default function InterviewPage() {
             window.electronAPI?.sendCapturedText?.(text);
             window.electronAPI?.sendOverlayStatus?.("Code captured. Generating answer…", "progress");
             showToast("Text captured. Generating the answer.", "success");
-            await getAiAnswer(text);
+            await getAiAnswer(text, false, false, false, true);
         } catch (err) {
             console.error("[Scanner] OCR processing failed:", err);
             const message = err instanceof Error
@@ -1661,8 +1789,12 @@ export default function InterviewPage() {
             window.electronAPI?.sendOverlayStatus?.(message, "error");
         } finally {
             if (worker) await worker.terminate().catch(console.error);
+            captureProcessingRef.current = false;
+            setIsScreenCapturing(false);
+            void window.electronAPI?.setScannerProcessing?.(false);
         }
     }, [getAiAnswer, showToast]);
+    processCapturedImageRef.current = processCapturedImage;
 
     const captureBrowserScreen = useCallback(async () => {
         if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -1710,8 +1842,18 @@ export default function InterviewPage() {
 
     useEffect(() => {
         if (!window.electronAPI) return;
-        return window.electronAPI.onProcessOcr(data => { void processCapturedImage(data.imageData); });
-    }, [processCapturedImage]);
+        return window.electronAPI.onProcessOcr(data => {
+            void (async () => {
+                // Confirm that the current interview renderer has received the
+                // image before the native process closes the selection frame.
+                if (data.id && window.electronAPI?.acknowledgeScannerCapture) {
+                    const acknowledged = await window.electronAPI.acknowledgeScannerCapture(data.id);
+                    if (!acknowledged?.success) return;
+                }
+                await processCapturedImageRef.current(data.imageData);
+            })();
+        });
+    }, []);
 
     // Handle End Interview - Save to history and navigate
     const handleEndInterview = async () => {
@@ -1728,7 +1870,6 @@ export default function InterviewPage() {
         setIsAutoMode(false);
         setIsCameraOn(false);
         setIsCameraVisible(false);
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
         isRecognitionActiveRef.current = false;
         setIsFinalizingCapture(true);
@@ -2071,7 +2212,7 @@ export default function InterviewPage() {
                         </p>
                         <p className="mt-1 text-xs leading-5 opacity-80">
                             {isScreenAudioActive
-                                ? "Microphone and the selected meeting display are active. Live captions appear immediately when supported; final meeting captions update about every 2.5 seconds."
+                                ? "Microphone and the selected meeting display are active. Confirmed captions update in short, ordered segments while the conversation continues; AllyX answers after a natural pause."
                                 : "Your microphone is active. To transcribe the interviewer, select their display above and start interviewer audio."}
                         </p>
                     </div>
@@ -2088,14 +2229,25 @@ export default function InterviewPage() {
                             {!isAutoMode && (
                                 <Button
                                     size="sm"
-                                    onClick={() => getAiAnswer()}
-                                    disabled={isLoading || !transcript.trim()}
+                                    onClick={() => {
+                                        const question = retryQuestionRef.current || questionStateRef.current.current() || transcript;
+                                        void getAiAnswer(question || undefined);
+                                    }}
+                                    disabled={isLoading || !(retryQuestion || questionStateRef.current.current().trim() || transcript.trim())}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                                 >
-                                    <Sparkles size={14} className="mr-1" /> Get Answer
+                                    <Sparkles size={14} className="mr-1" /> {retryQuestion ? "Retry answer" : "Get Answer"}
                                 </Button>
                             )}
-                            <Button variant="ghost" size="sm" onClick={() => setTranscript("")} className="text-gray-400 hover:text-red-500">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                                questionStateRef.current.clear();
+                                pendingAutoQuestionsRef.current = [];
+                                retryQuestionRef.current = "";
+                                liveCaptionRef.current = "";
+                                setRetryQuestion("");
+                                setInterimTranscript("");
+                                setTranscript("");
+                            }} className="text-gray-400 hover:text-red-500">
                                 <Trash2 size={16} />
                             </Button>
                         </div>
@@ -2152,6 +2304,10 @@ export default function InterviewPage() {
                                     if (window.electronAPI) {
                                         const res = await window.electronAPI.toggleScannerFrame();
                                         setIsScannerActive(res.active);
+                                        if (res.error) {
+                                            setError(res.error);
+                                            showToast(res.error, "error");
+                                        }
                                     } else {
                                         await captureBrowserScreen();
                                     }

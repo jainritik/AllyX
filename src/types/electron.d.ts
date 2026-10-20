@@ -53,14 +53,23 @@ export interface ElectronAPI {
     installUpdate: () => void;
     onUpdateAvailable: (callback: (version: string) => void) => () => void;
     onUpdateReady: (callback: () => void) => () => void;
-    // Stealth Scanner
-    toggleScannerFrame: () => Promise<{ active: boolean }>;
+    // Screen capture
+    toggleScannerFrame: () => Promise<{ active: boolean; error?: string }>;
     updateScannerBounds: (bounds: { x: number, y: number, width: number, height: number }) => void;
-    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{ success: boolean; error?: string; settingsRequired?: boolean; restartRequired?: boolean }>;
+    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{
+        success: boolean;
+        error?: string;
+        failureCode?: 'capture-in-progress' | 'display-changed' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';
+        settingsRequired?: boolean;
+        restartRequired?: boolean;
+    }>;
+    acknowledgeScannerCapture: (captureId: string) => Promise<{ success: boolean }>;
+    setScannerProcessing: (active: boolean) => Promise<{ success: boolean; active: boolean }>;
     openScreenRecordingSettings: () => Promise<{ success: boolean; error?: string }>;
-    onProcessOcr: (callback: (data: { imageData: string }) => void) => () => void;
+    onProcessOcr: (callback: (data: { id?: string; imageData: string }) => void) => () => void;
     onScannerStateChange: (callback: (active: boolean) => void) => () => void;
     isElectron: boolean;
+    platform: string;
 }
 
 declare global {

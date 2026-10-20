@@ -5,8 +5,6 @@ export async function POST(request: NextRequest) {
     let quotaReserved = false;
     let reservationId = "";
     try {
-        const access = await authorizeApi(request);
-        if (access.error) return access.error;
         if (Number(request.headers.get("content-length")) > 4_200_000) return NextResponse.json({ error: "Audio is too large" }, { status: 413 });
         const formData = await request.formData();
         const file = formData.get("file");
@@ -34,15 +32,17 @@ export async function POST(request: NextRequest) {
         const audioFile = file;
         console.log(`[Transcribe API] Processing file: ${audioFile.name}, Type: ${audioFile.type}, Size: ${audioFile.size} bytes`);
 
-        if (API_KEYS.length === 0) {
-            console.error("[Transcribe API] No keys found! Check .env.local");
-            return NextResponse.json({ error: "Server configuration error: No keys available" }, { status: 500 });
-        }
         const quota = await authorizeApi(request, "transcribe");
         if (quota.error) return quota.error;
         reservationId = quota.reservationId || "";
         if (!reservationId) return NextResponse.json({ error: "Usage reservation failed" }, { status: 503 });
         quotaReserved = true;
+        if (API_KEYS.length === 0) {
+            console.error("[Transcribe API] No keys found! Check .env.local");
+            await refundApiQuota(request, reservationId);
+            quotaReserved = false;
+            return NextResponse.json({ error: "Server configuration error: No keys available" }, { status: 500 });
+        }
         // Shuffle keys once to start randomly but consistently
         const shuffledKeys = [...API_KEYS].sort(() => Math.random() - 0.5);
 

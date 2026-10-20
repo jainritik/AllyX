@@ -22,6 +22,7 @@ test('anonymous callers never reach paid generation provider', async () => {
             ALLOWED_MODELS: ['openai/gpt-oss-120b'],
             GROQ_MODELS: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
             isOpenAiModel: () => false,
+            parseGenerationBody: () => ({ model: 'openai/gpt-oss-120b', messages: [{ role: 'user', content: 'hello' }], systemPrompt: '' }),
             authorizeApi: async () => ({ error: Response.json({ error: 'Please sign in again' }, { status: 401 }) }),
         } }, async () => { providerCalls++; return new Response(''); });
         const response = await route.POST(request());
@@ -146,11 +147,15 @@ test('streaming content without a provider finish event is committed and offered
     } finally { delete process.env.GROQ_API_KEY; }
 });
 
-test('blank transcription results refund quota and never mark an interview as used', async () => {
+test('transcription authorizes once, then refunds blank results without marking an interview as used', async () => {
     let commits = 0;
     let refunds = 0;
+    const authorizationKinds = [];
     const route = load('src/app/api/transcribe/route.ts', { '@/lib/api-access': {
-        authorizeApi: async (_request, kind) => ({ user: { id: 'test' }, reservationId: kind ? 'r1' : undefined }),
+        authorizeApi: async (_request, kind) => {
+            authorizationKinds.push(kind || 'identity');
+            return { user: { id: 'test' }, reservationId: kind ? 'r1' : undefined };
+        },
         commitApiQuota: async () => { commits++; },
         refundApiQuota: async () => { refunds++; },
     } }, async () => Response.json({ text: '   ' }));
@@ -165,9 +170,42 @@ test('blank transcription results refund quota and never mark an interview as us
     try {
         const response = await route.POST(transcribeRequest);
         assert.deepEqual(await response.json(), { text: '' });
+        assert.deepEqual(authorizationKinds, ['transcribe']);
         assert.equal(commits, 0);
         assert.equal(refunds, 1);
     } finally { delete process.env.GROQ_API_KEY; }
+});
+
+test('missing transcription provider configuration refunds the one quota reservation', async () => {
+    const savedKeys = ['GROQ_API_KEY', 'GROQ_STT_KEY_1', 'GROQ_STT_KEY_2', 'GROQ_STT_KEY_3', 'GROQ_STT_KEY_4', 'GROQ_STT_KEY_5']
+        .map(name => [name, process.env[name]]);
+    const authorizationKinds = [];
+    let refunds = 0;
+    for (const [name] of savedKeys) delete process.env[name];
+    try {
+        const route = load('src/app/api/transcribe/route.ts', { '@/lib/api-access': {
+            authorizeApi: async (_request, kind) => {
+                authorizationKinds.push(kind || 'identity');
+                return { user: { id: 'test' }, reservationId: kind ? 'r1' : undefined };
+            },
+            commitApiQuota: async () => {},
+            refundApiQuota: async () => { refunds++; },
+        } });
+        const form = new FormData();
+        form.append('file', new File([new Uint8Array([1, 2, 3])], 'audio.webm', { type: 'audio/webm' }));
+        const response = await route.POST(new NextRequest('https://allyx.invalid/api/transcribe', {
+            method: 'POST',
+            headers: { 'x-allyx-session-id': '11111111-1111-4111-8111-111111111111' },
+            body: form,
+        }));
+        assert.equal(response.status, 500);
+        assert.deepEqual(authorizationKinds, ['transcribe']);
+        assert.equal(refunds, 1);
+    } finally {
+        for (const [name, value] of savedKeys) {
+            if (value === undefined) delete process.env[name]; else process.env[name] = value;
+        }
+    }
 });
 
 test('OpenAI model uses the OpenAI endpoint with direct-answer settings', async () => {
@@ -235,7 +273,7 @@ test('paid OpenAI failure falls back to free Groq and reports the effective mode
     }
 });
 
-test('failed provider requests reserve then refund generation quota', async () => {
+test('failed provider requests authorize and reserve generation quota once, then refund it', async () => {
     const api = load('src/lib/api-access.ts');
     const authorizationKinds = [];
     let refunds = 0;
@@ -254,7 +292,7 @@ test('failed provider requests reserve then refund generation quota', async () =
     try {
         const response = await route.POST(request());
         assert.equal(response.status, 503);
-        assert.deepEqual(authorizationKinds, ['identity', 'generate']);
+        assert.deepEqual(authorizationKinds, ['generate']);
         assert.equal(refunds, 1);
     } finally { delete process.env.GROQ_API_KEY; }
 });

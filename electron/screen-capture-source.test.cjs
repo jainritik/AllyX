@@ -69,3 +69,17 @@ test('returns a normalized result after all native capture attempts fail', async
     assert.equal(result.reason, 'capture-error');
     assert.equal(result.attempts, 2);
 });
+
+test('bounds a native capture call that never resolves', async () => {
+    const startedAt = Date.now();
+    const result = await getUsableScreenSource({
+        displayId: 1,
+        options: {},
+        attempts: 1,
+        timeoutMs: 10,
+        getSources: async () => new Promise(() => {}),
+    });
+    assert.equal(result.reason, 'capture-timeout');
+    assert.equal(result.attempts, 1);
+    assert.ok(Date.now() - startedAt < 500);
+});

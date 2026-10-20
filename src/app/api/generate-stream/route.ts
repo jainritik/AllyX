@@ -5,8 +5,6 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
     try {
-        const access = await authorizeApi(request);
-        if (access.error) return access.error;
         if (Number(request.headers.get("content-length")) > 50000) return Response.json({ error: "Request too large" }, { status: 413 });
         const parsedBody = parseGenerationBody(await request.json());
         if (!parsedBody) return Response.json({ error: "Invalid prompt, messages, or model" }, { status: 400 });
