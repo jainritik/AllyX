@@ -1816,6 +1816,8 @@ export default function InterviewPage() {
 
     const processCapturedImage = useCallback(async (imageData: string, options?: { reserved?: boolean }) => {
         let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
+        let lastProgressMessage = "";
+        let lastProgressAt = 0;
         if (captureProcessingRef.current && !options?.reserved) {
             const message = "A previous screen capture is still being read. Wait for it to finish before capturing again.";
             showToast(message, "info");
@@ -1836,13 +1838,25 @@ export default function InterviewPage() {
                 workerPath: '/tesseract/worker.min.js',
                 corePath: '/tesseract-core',
                 langPath: '/tessdata',
-                logger: m => console.log("[Scanner] Progress:", m.status, Math.round(m.progress * 100) + "%"),
-            }), 30000, "OCR engine initialization timed out. Check your connection and retry.");
+                logger: m => {
+                    const percent = Math.max(0, Math.min(100, Math.round((Number(m.progress) || 0) * 100)));
+                    const message = m.status === "recognizing text"
+                        ? `Reading captured text… ${percent}%`
+                        : "Preparing the text reader…";
+                    const now = Date.now();
+                    if (message !== lastProgressMessage || now - lastProgressAt >= 750) {
+                        lastProgressMessage = message;
+                        lastProgressAt = now;
+                        window.electronAPI?.sendOverlayStatus?.(message, "progress");
+                    }
+                    console.log("[Scanner] Progress:", m.status, `${percent}%`);
+                },
+            }), 45000, "The text reader took too long to start. Check your connection and try Capture again.");
             await worker.setParameters({
                 tessedit_pageseg_mode: '3',
                 preserve_interword_spaces: '1',
             } as unknown as Record<string, string>);
-            const ret = await deadline(worker.recognize(imageData), 30000, "OCR took too long. Capture a smaller area and retry.");
+            const ret = await deadline(worker.recognize(imageData), 60000, "Reading this capture took too long. Try Capture selected area so AllyX has less text to read.");
             const text = ret.data.text.trim();
             if (!text) {
                 const message = "No readable text was detected. Enlarge the code and try again.";
@@ -1852,9 +1866,9 @@ export default function InterviewPage() {
             }
             setManualQuestion(text);
             window.electronAPI?.sendCapturedText?.(text);
-            window.electronAPI?.sendOverlayStatus?.("Code captured. Generating answer…", "progress");
-            showToast("Text captured. Generating the answer.", "success");
-            await getAiAnswer(text, false, false, false, true);
+            setError(null);
+            window.electronAPI?.sendOverlayStatus?.("Text captured. Review it, then press Ask.", "success");
+            showToast("Text captured. Review it, then press Ask.", "success");
         } catch (err) {
             console.error("[Scanner] OCR processing failed:", err);
             const message = err instanceof Error
@@ -1870,7 +1884,7 @@ export default function InterviewPage() {
             setIsScreenCapturing(false);
             void window.electronAPI?.setScannerProcessing?.(false);
         }
-    }, [getAiAnswer, showToast]);
+    }, [showToast]);
     processCapturedImageRef.current = processCapturedImage;
 
     const captureBrowserScreen = useCallback(async () => {
