@@ -50,5 +50,6 @@ test('desktop workflow separates signed releases from explicitly unsigned prerel
     assert.match(fs.readFileSync('electron-builder.yml', 'utf8'), /afterSign: scripts\/after-sign\.mjs/);
     const afterSign = fs.readFileSync('scripts/after-sign.mjs', 'utf8');
     assert.match(afterSign, /designated => identifier "com\.allyx\.ai"/);
-    assert.doesNotMatch(afterSign, /"--deep"/);
+    assert.match(afterSign, /"--deep"/);
+    assert.match(afterSign, /First re-seal every nested Electron component/);
 });
