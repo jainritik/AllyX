@@ -27,15 +27,24 @@ test('continuous desktop speech uses an ordered, rate-safe caption pipeline', ()
 test('a one-display desktop starts meeting audio with listening while multiple displays remain explicit', () => {
     assert.match(interviewSource, /availableSources\.length === 1 \? availableSources\[0\]\.id : ""/);
     assert.match(interviewSource, /if \(sourceId && !isScreenAudioActive\) void startMeetingAudio\(sourceId\)/);
+    assert.match(interviewSource, /const availableSources = meetingAudioSources;/);
+    assert.match(interviewSource, /void loadMeetingAudioSources\(false\)\.then\(sources =>/);
 });
 
 
 test('desktop live captions preserve the confirmed question while an answer is generated', () => {
     assert.match(interviewSource, /const liveCaptionRef = useRef\(""\)/);
-    assert.match(interviewSource, /recognitionRef\.current && !isElectron && !previewUnavailableRef\.current/);
+    assert.match(interviewSource, /recognitionRef\.current && !previewUnavailableRef\.current/);
     assert.match(interviewSource, /liveCaptionRef\.current = "";/);
     assert.match(interviewSource, /questionStateRef\.current\.append\(text\)/);
     assert.match(interviewSource, /sendTranscript\?\.\(currentQuestion/);
+});
+
+test('desktop microphone capture starts before optional display discovery and access is ready', () => {
+    const microphoneStart = interviewSource.indexOf('const started = await startDesktopSTT();');
+    const displayDiscovery = interviewSource.indexOf('void loadMeetingAudioSources(false).then(sources =>');
+    assert.ok(microphoneStart >= 0 && displayDiscovery > microphoneStart);
+    assert.match(interviewSource, /if \(isElectron && !accessReady\) \{/);
 });
 
 test('only a natural VAD pause can finalise an automatic answer', () => {

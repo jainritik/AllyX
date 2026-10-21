@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Mic, Video, VideoOff, Loader2, AlertCircle, Sparkles, Trash2, LogOut, Copy, RotateCcw, Monitor, MonitorOff, Scan } from "lucide-react";
 import { createWorker } from 'tesseract.js';
 import { cn } from "@/lib/utils";
+import { supportsCoordinatedScannerCapture } from "@/lib/native-scanner-bridge";
 import ReactMarkdown from 'react-markdown';
 
 import { useRouter } from "next/navigation";
@@ -116,11 +117,12 @@ export default function InterviewPage() {
     // Keep the native IPC subscription stable while React re-renders during an
     // answer stream. The subscription dispatches to this current callback so a
     // screenshot cannot arrive in the brief unsubscribe/re-subscribe gap.
-    const processCapturedImageRef = useRef<(imageData: string) => Promise<void>>(async () => {});
+    const processCapturedImageRef = useRef<(imageData: string, options?: { reserved?: boolean }) => Promise<void>>(async () => {});
     const retryQuestionRef = useRef("");
-    // Electron uses one canonical MediaRecorder pipeline. Starting Chromium's
-    // separate SpeechRecognition microphone path can take the audio device away
-    // from that recorder, so it is a browser-only caption fallback.
+    // Electron uses the MediaRecorder pipeline as the canonical transcript.
+    // Chromium SpeechRecognition is a provisional microphone caption preview:
+    // it starts only after the recorder and disables itself if this Mac cannot
+    // provide both audio paths reliably.
     const previewUnavailableRef = useRef(false);
     const recoveryGenerationRef = useRef(0);
     const draftHydratedRef = useRef(false);
@@ -774,7 +776,7 @@ export default function InterviewPage() {
 
     useEffect(() => window.electronAPI?.onStopAudioSource?.(() => stopScreenAudio()), [stopScreenAudio]);
 
-    const loadMeetingAudioSources = useCallback(async () => {
+    const loadMeetingAudioSources = useCallback(async (reportFailure = true) => {
         if (!window.electronAPI?.isElectron) return [] as Array<{ id: string; name: string }>;
         setIsLoadingMeetingAudioSources(true);
         let failureMessage = "Could not list the available displays for meeting audio.";
@@ -800,7 +802,10 @@ export default function InterviewPage() {
                 }
                 if (attempt === 0) await new Promise<void>(resolve => window.setTimeout(resolve, 600));
             }
-            setError(failureMessage);
+            // Starting the microphone must never look broken simply because macOS
+            // is still enumerating displays. Explicit refresh and audio-start
+            // actions still report the actionable source-listing failure.
+            if (reportFailure) setError(failureMessage);
             return [];
         } finally {
             setIsLoadingMeetingAudioSources(false);
@@ -808,7 +813,7 @@ export default function InterviewPage() {
     }, []);
 
     useEffect(() => {
-        if (isElectron) void loadMeetingAudioSources();
+        if (isElectron) void loadMeetingAudioSources(false);
     }, [isElectron, loadMeetingAudioSources]);
 
     const connectScreenAudio = useCallback(async (sourceId: string) => {
@@ -1436,6 +1441,10 @@ export default function InterviewPage() {
             setError("Interview setup is not ready. Return to setup and start again.");
             return;
         }
+        if (isElectron && !accessReady) {
+            setError("Preparing your interview session. Please wait a moment, then start listening.");
+            return;
+        }
         if (recordingStartRef.current) {
             captureEpochRef.current++;
             return;
@@ -1486,9 +1495,7 @@ export default function InterviewPage() {
                 // On a single-display computer there is no meaningful choice to make,
                 // so connect that meeting display as part of Start listening. Multiple
                 // displays still require the customer to choose the correct one.
-                const availableSources = meetingAudioSources.length
-                    ? meetingAudioSources
-                    : await loadMeetingAudioSources();
+                const availableSources = meetingAudioSources;
                 const sourceId = selectedMeetingAudioSource
                     || (availableSources.length === 1 ? availableSources[0].id : "");
 
@@ -1498,12 +1505,22 @@ export default function InterviewPage() {
                 const started = await startDesktopSTT();
                 if (!started) return;
                 if (sourceId && !isScreenAudioActive) void startMeetingAudio(sourceId);
+                // Display enumeration is optional for microphone captions and can
+                // briefly stall after System Settings closes. Start recording first,
+                // then attach a sole meeting display when macOS has one ready.
+                if (!sourceId && availableSources.length === 0) {
+                    void loadMeetingAudioSources(false).then(sources => {
+                        if (!isRecordingRef.current || sessionEndingRef.current || sources.length !== 1) return;
+                        void startMeetingAudio(sources[0].id);
+                    });
+                }
             }
 
-            // The browser recognizer is useful for browser-only practice. Electron
-            // keeps one canonical microphone stream so the preview cannot steal
-            // the device from the recorder that produces final captions.
-            if (recognitionRef.current && !isElectron && !previewUnavailableRef.current) {
+            // Start the provisional microphone caption preview only after the
+            // canonical recorder. If Chromium rejects a second audio consumer,
+            // its error handler disables this optional preview and keeps the
+            // reliable recorder running.
+            if (recognitionRef.current && !previewUnavailableRef.current) {
                 try {
                     if (!isRecognitionActiveRef.current) {
                         recognitionRef.current.start();
@@ -1588,7 +1605,7 @@ export default function InterviewPage() {
                 console.log("[Speech] Recognition ended, isRecording:", isRecordingRef.current);
                 // Answers are rendered as text, so a completed answer must never
                 // prevent later provisional captions from restarting.
-                if (isRecordingRef.current && !window.electronAPI && !previewUnavailableRef.current) {
+                if (isRecordingRef.current && !previewUnavailableRef.current) {
                     console.log("[Speech] Auto-restarting...");
                     // Use a small delay to prevent rapid restart loops
                     schedule(() => {
@@ -1681,6 +1698,15 @@ export default function InterviewPage() {
                     return;
                 }
 
+                if (window.electronAPI && (event.error === 'not-allowed' || event.error === 'service-not-allowed')) {
+                    // The immediate caption preview is optional. Keep the canonical
+                    // MediaRecorder/Whisper path alive if Chromium cannot provide a
+                    // second recognition stream for this particular Mac.
+                    previewUnavailableRef.current = true;
+                    setInterimTranscript("");
+                    return;
+                }
+
                 // Still try to restart after minor errors if recording is active
                 if ((event.error === 'no-speech' || event.error === 'aborted') && isRecordingRef.current) {
                     schedule(() => {
@@ -1737,9 +1763,9 @@ export default function InterviewPage() {
     }, [appendFullTranscript, interviewContext.lang]);
 
 
-    const processCapturedImage = useCallback(async (imageData: string) => {
+    const processCapturedImage = useCallback(async (imageData: string, options?: { reserved?: boolean }) => {
         let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
-        if (captureProcessingRef.current) {
+        if (captureProcessingRef.current && !options?.reserved) {
             const message = "A previous screen capture is still being read. Wait for it to finish before capturing again.";
             showToast(message, "info");
             window.electronAPI?.sendOverlayStatus?.(message, "error");
@@ -1844,13 +1870,45 @@ export default function InterviewPage() {
         if (!window.electronAPI) return;
         return window.electronAPI.onProcessOcr(data => {
             void (async () => {
-                // Confirm that the current interview renderer has received the
-                // image before the native process closes the selection frame.
-                if (data.id && window.electronAPI?.acknowledgeScannerCapture) {
-                    const acknowledged = await window.electronAPI.acknowledgeScannerCapture(data.id);
-                    if (!acknowledged?.success) return;
+                const api = window.electronAPI;
+                if (!api) return;
+
+                // Desktop builds released before coordinated scanner delivery
+                // still emit a valid image but do not expose its reservation
+                // IPC methods. Let those builds use the established renderer
+                // OCR path instead of silently dropping the capture.
+                if (!supportsCoordinatedScannerCapture(api)) {
+                    await processCapturedImageRef.current(data.imageData);
+                    return;
                 }
-                await processCapturedImageRef.current(data.imageData);
+
+                // Reserve both renderer and main-process state before ACKing.
+                // Without this ordering a quick second scanner action can be
+                // accepted while the first image is still waiting to start OCR.
+                if (captureProcessingRef.current) return;
+                captureProcessingRef.current = true;
+                try {
+                    const processing = await api.setScannerProcessing(true);
+                    if (!processing?.success) {
+                        captureProcessingRef.current = false;
+                        return;
+                    }
+                    // Confirm that the current interview renderer has received the
+                    // image before the native process closes the selection frame.
+                    if (data.id) {
+                        const acknowledged = await api.acknowledgeScannerCapture(data.id);
+                        if (!acknowledged?.success) {
+                            captureProcessingRef.current = false;
+                            void api.setScannerProcessing(false);
+                            return;
+                        }
+                    }
+                    await processCapturedImageRef.current(data.imageData, { reserved: true });
+                } catch (captureError) {
+                    console.error('[Scanner] Could not reserve the native capture:', captureError);
+                    captureProcessingRef.current = false;
+                    void api.setScannerProcessing(false);
+                }
             })();
         });
     }, []);

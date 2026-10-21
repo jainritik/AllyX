@@ -59,10 +59,12 @@ export interface ElectronAPI {
     captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{
         success: boolean;
         error?: string;
-        failureCode?: 'capture-in-progress' | 'display-changed' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';
+        failureCode?: 'capture-in-progress' | 'display-changed' | 'display-identity-unavailable' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';
         settingsRequired?: boolean;
         restartRequired?: boolean;
+        pickerFallbackAvailable?: boolean;
     }>;
+    deliverPickerCapture: (imageData: string) => Promise<{ success: boolean; error?: string }>;
     acknowledgeScannerCapture: (captureId: string) => Promise<{ success: boolean }>;
     setScannerProcessing: (active: boolean) => Promise<{ success: boolean; active: boolean }>;
     openScreenRecordingSettings: () => Promise<{ success: boolean; error?: string }>;

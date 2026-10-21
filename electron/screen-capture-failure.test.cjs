@@ -25,6 +25,17 @@ test('does not blame a granted macOS permission when no thumbnail is returned', 
     assert.match(result.error, /Screen & System Audio Recording is enabled/);
 });
 
+test('does not send customers to Screen Recording settings after pixels were already acquired', () => {
+    const result = screenCaptureFailure({
+        platform: 'darwin',
+        permissionStatus: 'denied',
+        capture: { reason: 'post-capture-error', attempts: 1, sourceCount: 1 },
+    });
+    assert.equal(result.failureCode, 'capture-api-error');
+    assert.equal(result.settingsRequired, undefined);
+    assert.equal(result.restartRequired, true);
+});
+
 test('keeps a changed display separate from a permission failure', () => {
     const result = screenCaptureFailure({
         platform: 'darwin',
@@ -34,6 +45,25 @@ test('keeps a changed display separate from a permission failure', () => {
     assert.equal(result.failureCode, 'display-changed');
     assert.equal(result.settingsRequired, undefined);
     assert.equal(result.restartRequired, undefined);
+});
+
+test('explains when macOS omits display identity instead of guessing a second monitor', () => {
+    const result = screenCaptureFailure({
+        platform: 'darwin',
+        permissionStatus: 'granted',
+        capture: {
+            reason: 'display-id-missing',
+            attempts: 2,
+            sourceCount: 1,
+            displayId: '69733442',
+            displayCount: 2,
+            sourceDisplayIdCount: 0,
+        },
+    });
+    assert.equal(result.failureCode, 'display-identity-unavailable');
+    assert.match(result.error, /did not identify the display/);
+    assert.equal(result.diagnostics.displayCount, 2);
+    assert.equal(result.diagnostics.sourceDisplayIdCount, 0);
 });
 
 test('returns a bounded-native-timeout recovery state', () => {

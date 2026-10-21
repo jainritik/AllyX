@@ -9,8 +9,10 @@ const { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallba
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
-const { getUsableScreenSource } = require('./screen-capture-source');
+const { constrainNativeCaptureImage } = require('./native-capture-image');
+const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
+const { validatePickerCaptureImage } = require('./screen-picker-image');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
 // AllyX currently presents the macOS Screen & System Audio Recording permission
@@ -94,6 +96,31 @@ const DEEP_LINK_SCHEME = 'allyx';
 let isQuitting = false;
 let pendingDesktopOAuthCallback = null;
 let isInitialized = false;
+
+function canUseMacOSSystemScreenPicker() {
+    if (process.platform !== 'darwin') return false;
+    const darwinMajor = Number.parseInt(os.release().split('.')[0], 10);
+    // Electron exposes the experimental system picker beginning on macOS 15
+    // (Darwin 24). It remains an explicit user selection, never a silent source.
+    return Number.isInteger(darwinMajor) && darwinMajor >= 24;
+}
+
+function isTrustedScannerDisplayRequest(request) {
+    try {
+        return Boolean(
+            request?.frame
+            && scannerFrameWindow
+            && !scannerFrameWindow.isDestroyed()
+            && request.frame === scannerFrameWindow.webContents.mainFrame
+            && request.securityOrigin === APP_ORIGIN
+            && request.videoRequested
+            && !request.audioRequested
+            && request.userGesture,
+        );
+    } catch {
+        return false;
+    }
+}
 
 function registerDesktopProtocol() {
     if (process.defaultApp && process.argv.length >= 2) {
@@ -677,7 +704,18 @@ function setupIpcHandlers() {
             // changes the current macOS Screen & System Audio toggle. Attempt the
             // actual capture first; its returned pixels are the only useful signal.
             const display = screen.getDisplayMatching(bounds);
-            calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
+            try {
+                calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
+            } catch (error) {
+                if (error instanceof Error && error.message === 'Select an area within one display.') {
+                    return {
+                        success: false,
+                        failureCode: 'display-changed',
+                        error: 'Keep the Screen Capture frame entirely on one display, then try Capture again.',
+                    };
+                }
+                return { success: false, failureCode: 'invalid-capture-area', error: 'The Screen Capture area is invalid. Reopen it and try again.' };
+            }
 
             // Hide the selection chrome for the native snapshot, then restore it.
             scannerFrameWindow?.hide();
@@ -687,6 +725,7 @@ function setupIpcHandlers() {
             const capture = await getUsableScreenSource({
                 getSources: options => desktopCapturer.getSources(options),
                 displayId: display.id,
+                displayCount: screen.getAllDisplays().length,
                 options: {
                     types: ['screen'],
                     thumbnailSize: {
@@ -703,33 +742,49 @@ function setupIpcHandlers() {
                     capture,
                 });
                 console.warn('[Scanner] No usable screen image:', result.diagnostics);
+                if (result.failureCode === 'no-pixels' && canUseMacOSSystemScreenPicker()) {
+                    result.pickerFallbackAvailable = true;
+                }
                 return result;
             }
-            const crop = calculateCaptureCrop(display.bounds, capture.size, bounds);
-            const imageData = capture.source.thumbnail.crop(crop).toDataURL();
-            const rendererAccepted = await deliverScannerCapture(imageData);
-            if (!rendererAccepted) {
-                return {
-                    success: false,
-                    failureCode: 'renderer-not-ready',
-                    error: 'AllyX was not ready to read the capture. Reopen Screen Capture and try again.',
-                };
+            try {
+                const crop = calculateCaptureCrop(display.bounds, capture.size, bounds);
+                // Retina-sized scans can otherwise create a very large data URL
+                // and stall the renderer while it receives and OCRs the image.
+                const imageData = constrainNativeCaptureImage(capture.source.thumbnail.crop(crop)).toDataURL();
+                const rendererAccepted = await deliverScannerCapture(imageData);
+                if (!rendererAccepted) {
+                    return {
+                        success: false,
+                        failureCode: 'renderer-not-ready',
+                        error: 'AllyX was not ready to read the capture. Reopen Screen Capture and try again.',
+                    };
+                }
+                floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured code…', tone: 'progress' });
+                closeScannerFrame();
+                return { success: true };
+            } catch (err) {
+                console.error('[Scanner] Could not prepare the captured screen image:', err);
+                return screenCaptureFailure({
+                    platform: process.platform,
+                    permissionStatus: getScreenCapturePermissionStatus(),
+                    capture: {
+                        reason: 'post-capture-error',
+                        attempts: capture.attempts,
+                        sourceCount: capture.sourceCount,
+                        displayId: String(display.id),
+                        displayCount: screen.getAllDisplays().length,
+                        sourceDisplayIdCount: capture.sourceDisplayIdCount,
+                    },
+                });
             }
-            floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured code…', tone: 'progress' });
-            closeScannerFrame();
-            return { success: true };
         } catch (err) {
             console.error('[Scanner] Native screen capture failed:', err);
-            const result = screenCaptureFailure({
-                platform: process.platform,
-                permissionStatus: getScreenCapturePermissionStatus(),
-                capture: {
-                    reason: 'capture-error',
-                    attempts: 0,
-                    sourceCount: 0,
-                },
-            });
-            return result;
+            return {
+                success: false,
+                failureCode: 'capture-api-error',
+                error: 'Screen Capture could not start. Close and reopen Screen Capture, then try again.',
+            };
         } finally {
             scannerCaptureInFlight = false;
             if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
@@ -739,6 +794,27 @@ function setupIpcHandlers() {
     handleTrusted('acknowledge-scanner-capture', async (_event, captureId) => ({
         success: typeof captureId === 'string' && settlePendingScannerCapture(captureId, true),
     }));
+
+    handleTrusted('deliver-picker-capture', async (_event, imageData) => {
+        if (scannerCaptureInFlight || scannerOcrInFlight || pendingScannerCapture) {
+            return {
+                success: false,
+                error: 'The previous screen capture is still being read. Wait for it to finish before trying again.',
+            };
+        }
+        const validation = validatePickerCaptureImage(imageData);
+        if (!validation.valid) return { success: false, error: validation.error };
+        const rendererAccepted = await deliverScannerCapture(imageData);
+        if (!rendererAccepted) {
+            return {
+                success: false,
+                error: 'AllyX was not ready to read the selected image. Reopen Screen Capture and try again.',
+            };
+        }
+        floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading selected text…', tone: 'progress' });
+        closeScannerFrame();
+        return { success: true };
+    });
 
     handleTrusted('set-scanner-processing', async (_event, active) => {
         scannerOcrInFlight = Boolean(active);
@@ -786,26 +862,54 @@ function setupIpcHandlers() {
     handleTrusted('toggle-presentation-safe-mode', () => ({ active: setPresentationSafeMode(!isPresentationSafeMode) }));
     onTrusted('can-go-back', (event) => { event.returnValue = mainAppWindow?.webContents.canGoBack() || false; });
 
+    const readSystemAudioSources = () => getScreenSourcesWithRetry({
+        getSources: options => desktopCapturer.getSources(options),
+        // Source IDs are sufficient for `getUserMedia`; requesting pixels here
+        // adds work without improving meeting-audio setup.
+        options: { types: ['screen'], thumbnailSize: { width: 0, height: 0 } },
+    });
+
+    const systemAudioSourceError = (result) => {
+        switch (result?.reason) {
+            case 'no-sources':
+                return 'macOS did not provide a display for meeting audio. Close System Settings and try again.';
+            case 'source-id-missing':
+                return 'macOS returned a display without a usable identifier. Close System Settings, then restart AllyX and try again.';
+            case 'capture-timeout':
+                return 'macOS took too long to list displays for meeting audio. Close System Settings and other screen-recording apps, then try again.';
+            default:
+                return 'macOS could not provide a display for meeting audio. Close System Settings and other screen-recording apps, then try again.';
+        }
+    };
+
     const listSystemAudioSources = async () => {
         if (isPresentationSafeMode) return { success: false, sources: [], error: 'Presentation Safe Mode is active.' };
-        try {
-            const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-            if (!sources.length) return { success: false, sources: [], error: 'macOS did not provide a display for meeting audio. Close System Settings and try again.' };
-            return {
-                success: true,
-                sources: sources.map((source, index) => ({
-                    id: source.id,
-                    name: String(source.name || `Display ${index + 1}`).slice(0, 120),
-                })),
-            };
-        } catch (error) {
-            console.error('[Meeting Audio] Could not list display sources:', error);
+        const result = await readSystemAudioSources();
+        if (!result.sources.length) {
+            console.warn('[Meeting Audio] No usable display sources:', {
+                reason: result.reason,
+                attempts: result.attempts,
+                sourceCount: result.sourceCount,
+                selectableSourceCount: result.selectableSourceCount,
+            });
             return {
                 success: false,
                 sources: [],
-                error: 'macOS could not provide a display for meeting audio. Close System Settings and other screen-recording apps, then try again.',
+                error: systemAudioSourceError(result),
+                diagnostics: {
+                    reason: result.reason,
+                    attempts: result.attempts,
+                    sourceCount: result.sourceCount,
+                },
             };
         }
+        return {
+            success: true,
+            sources: result.sources.map((source, index) => ({
+                id: source.id,
+                name: String(source.name || `Display ${index + 1}`).slice(0, 120),
+            })),
+        };
     };
 
     handleTrusted('list-system-audio-sources', listSystemAudioSources);
@@ -828,8 +932,16 @@ function setupIpcHandlers() {
             // capture result is authoritative for this running process.
             // Meeting audio uses an entire display source. Choosing explicitly
             // prevents a second monitor from being captured by accident.
-            const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-            if (!sources.length) return { success: false, error: 'No display source was available for meeting audio.' };
+            const sourceResult = await readSystemAudioSources();
+            const sources = sourceResult.sources;
+            if (!sources.length) {
+                return {
+                    success: false,
+                    failureCode: sourceResult.reason || 'no-sources',
+                    restartRequired: process.platform === 'darwin' && sourceResult.reason === 'capture-timeout',
+                    error: systemAudioSourceError(sourceResult),
+                };
+            }
             const selectedSource = typeof requestedSourceId === 'string'
                 ? sources.find(source => source.id === requestedSourceId)
                 : (sources.length === 1 ? sources[0] : undefined);
@@ -994,6 +1106,8 @@ async function initialize() {
         try {
             return isAllowedMainWindowMediaPermission({
                 isMainWindow: wc === mainAppWindow?.webContents,
+                isScannerWindow: wc === scannerFrameWindow?.webContents
+                    && new URL(wc.getURL()).pathname === '/scanner-frame',
                 isTrustedOrigin: new URL(wc.getURL()).origin === APP_ORIGIN,
                 permission,
             });
@@ -1002,6 +1116,19 @@ async function initialize() {
     };
     appSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowedPermission(wc, permission)));
     appSession.setPermissionCheckHandler((wc, permission) => allowedPermission(wc, permission));
+    if (canUseMacOSSystemScreenPicker()) {
+        // The native picker is the recovery path for an empty desktopCapturer
+        // thumbnail. Electron skips this handler when the picker is available.
+        // If the picker is unavailable, deny rather than silently selecting a
+        // display or collecting audio without the person's choice.
+        appSession.setDisplayMediaRequestHandler((request, callback) => {
+            if (!isTrustedScannerDisplayRequest(request)) {
+                callback(null);
+                return;
+            }
+            callback(null);
+        }, { useSystemPicker: true });
+    }
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     createMainAppWindow();
@@ -1045,5 +1172,8 @@ app.on('activate', () => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => {
     isQuitting = true;
-    globalShortcut.unregisterAll();
+    // A duplicate launch can be rejected before Electron finishes becoming
+    // ready. Calling globalShortcut in that state throws and replaces the
+    // normal quit with a customer-facing JavaScript error dialog.
+    if (app.isReady()) globalShortcut.unregisterAll();
 });

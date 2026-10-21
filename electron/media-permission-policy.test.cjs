@@ -7,6 +7,11 @@ test('trusted main window can use microphone, speech, and desktop capture', () =
         assert.equal(isAllowedMainWindowMediaPermission({ isMainWindow: true, isTrustedOrigin: true, permission }), true);
     }
 });
+
+test('only the trusted scanner route can request a user-selected display capture', () => {
+    assert.equal(isAllowedMainWindowMediaPermission({ isScannerWindow: true, isTrustedOrigin: true, permission: 'display-capture' }), true);
+    assert.equal(isAllowedMainWindowMediaPermission({ isScannerWindow: true, isTrustedOrigin: true, permission: 'media' }), false);
+});
 test('untrusted origins, auxiliary windows, and unrelated permissions are rejected', () => {
     assert.equal(isAllowedMainWindowMediaPermission({ isMainWindow: true, isTrustedOrigin: false, permission: 'display-capture' }), false);
     assert.equal(isAllowedMainWindowMediaPermission({ isMainWindow: false, isTrustedOrigin: true, permission: 'display-capture' }), false);

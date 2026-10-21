@@ -24,11 +24,32 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /getScreenCapturePermissionStatus\(\)/);
     assert.match(mainSource, /const rendererAccepted = await deliverScannerCapture\(imageData\)/);
     assert.match(mainSource, /acknowledge-scanner-capture/);
+    assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\.crop\(crop\)\)\.toDataURL\(\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
+    assert.match(preloadSource, /deliverPickerCapture:\s*\(imageData\)\s*=>\s*ipcRenderer\.invoke\('deliver-picker-capture', imageData\)/);
 });
 
 test('the OCR receiver stays subscribed while the interview renderer re-renders', () => {
     assert.match(interviewSource, /const processCapturedImageRef = useRef/);
     assert.match(interviewSource, /processCapturedImageRef\.current = processCapturedImage/);
-    assert.match(interviewSource, /await processCapturedImageRef\.current\(data\.imageData\)/);
+    assert.match(interviewSource, /await processCapturedImageRef\.current\(data\.imageData, \{ reserved: true \}\)/);
+    assert.match(interviewSource, /if \(!supportsCoordinatedScannerCapture\(api\)\) \{\s*await processCapturedImageRef\.current\(data\.imageData\);/s);
+    const reserveIndex = interviewSource.indexOf('const processing = await api.setScannerProcessing(true);');
+    const acknowledgeIndex = interviewSource.indexOf('await api.acknowledgeScannerCapture(data.id);');
+    assert.ok(reserveIndex >= 0 && acknowledgeIndex > reserveIndex, 'native processing is reserved before the capture ACK');
+});
+
+test('native source lookup is bounded and keeps scanner capture on its selected display', () => {
+    assert.match(mainSource, /getScreenSourcesWithRetry/);
+    assert.match(mainSource, /displayCount:\s*screen\.getAllDisplays\(\)\.length/);
+    assert.match(mainSource, /const readSystemAudioSources = \(\) => getScreenSourcesWithRetry/);
+    assert.match(mainSource, /const sourceResult = await readSystemAudioSources\(\)/);
+    assert.match(mainSource, /sources\.length > 1\n\s*\? 'Choose the display that contains your meeting/);
+});
+
+test('the macOS picker recovery never silently chooses a screen source', () => {
+    assert.match(mainSource, /setDisplayMediaRequestHandler/);
+    assert.match(mainSource, /useSystemPicker: true/);
+    assert.match(mainSource, /callback\(null\)/);
+    assert.match(mainSource, /validatePickerCaptureImage\(imageData\)/);
 });
