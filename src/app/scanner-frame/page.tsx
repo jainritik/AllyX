@@ -5,7 +5,7 @@ import { Scan, X, Loader2, Target, ChevronDown } from "lucide-react";
 
 export default function ScannerFrame() {
     const [isScanning, setIsScanning] = useState(false);
-    const [captureMessage, setCaptureMessage] = useState("Drag this window over text, then press Capture.");
+    const [captureMessage, setCaptureMessage] = useState("Drag this window onto the display you want to read, then capture it.");
     const [captureFailed, setCaptureFailed] = useState(false);
     const [settingsRequired, setSettingsRequired] = useState(false);
     const [restartRequired, setRestartRequired] = useState(false);
@@ -28,7 +28,7 @@ export default function ScannerFrame() {
         document.head.appendChild(style);
     }, []);
 
-    const handleScan = async () => {
+    const requestCapture = async (wholeDisplay: boolean) => {
         if (isScanning) return;
         setIsScanning(true);
         setCaptureFailed(false);
@@ -45,7 +45,9 @@ export default function ScannerFrame() {
             // The desktop process reads the native selection-frame bounds. It
             // avoids browser screen-coordinate scaling differences on Retina
             // and scaled macOS displays.
-            const result = await window.electronAPI.captureScannerArea();
+            const result = wholeDisplay
+                ? await window.electronAPI.captureScannerDisplay()
+                : await window.electronAPI.captureScannerArea();
             setCaptureFailed(!result.success);
             setSettingsRequired(Boolean(result.settingsRequired));
             setRestartRequired(Boolean(result.restartRequired));
@@ -61,6 +63,9 @@ export default function ScannerFrame() {
             setTimeout(() => setIsScanning(false), 2000);
         }
     };
+
+    const handleScan = () => requestCapture(false);
+    const handleDisplayCapture = () => requestCapture(true);
 
     const resetPickerPreview = () => {
         pickerSourceCanvasRef.current = null;
@@ -267,9 +272,9 @@ export default function ScannerFrame() {
                             </div>
                         </div>
                     ) : (
-                    <div className="z-40">
+                    <div className="z-40 flex flex-col items-center gap-3">
                         <button
-                            onClick={handleScan}
+                            onClick={handleDisplayCapture}
                             disabled={isScanning}
                             className={`
                                 flex items-center gap-3 px-10 py-3 rounded-full border-2 transition-all duration-300 shadow-2xl active:scale-95
@@ -281,8 +286,16 @@ export default function ScannerFrame() {
                         >
                             <Scan size={20} strokeWidth={3} />
                             <span className="text-[14px] font-mono font-black uppercase tracking-widest leading-none">
-                                {isScanning ? 'WAIT' : 'CAPTURE'}
+                                {isScanning ? 'WAIT' : 'CAPTURE THIS DISPLAY'}
                             </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleScan}
+                            disabled={isScanning}
+                            className="rounded-md border border-emerald-200/70 px-3 py-1.5 text-[11px] font-bold text-emerald-100 transition-colors hover:bg-emerald-500/20 disabled:opacity-60"
+                        >
+                            Capture selected area instead
                         </button>
                     </div>
                     )}

@@ -63,6 +63,14 @@ export interface ElectronAPI {
         restartRequired?: boolean;
         pickerFallbackAvailable?: boolean;
     }>;
+    captureScannerDisplay: () => Promise<{
+        success: boolean;
+        error?: string;
+        failureCode?: 'capture-in-progress' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';
+        settingsRequired?: boolean;
+        restartRequired?: boolean;
+        pickerFallbackAvailable?: boolean;
+    }>;
     deliverPickerCapture: (imageData: string) => Promise<{ success: boolean; error?: string }>;
     acknowledgeScannerCapture: (captureId: string) => Promise<{ success: boolean }>;
     setScannerProcessing: (active: boolean) => Promise<{ success: boolean; active: boolean }>;

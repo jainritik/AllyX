@@ -27,7 +27,8 @@ test('desktop setup reads permissions once and requests microphone access only f
 test('a stale macOS permission status does not block a real desktop capture attempt', () => {
     assert.doesNotMatch(mainSource, /shouldAttemptScreenCapturePermission/);
     assert.match(mainSource, /actual capture first; its returned pixels are the only useful signal/);
-    assert.match(mainSource, /const capture = await getUsableScreenSource/);
+    assert.match(mainSource, /async function getNativeDisplayCapture\(display\)/);
+    assert.match(mainSource, /return getUsableScreenSource\(\{/);
 });
 
 test('native capture failure keeps its recovery actions and waits for renderer delivery', () => {
@@ -36,8 +37,12 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /const rendererAccepted = await deliverScannerCapture\(imageData\)/);
     assert.match(mainSource, /acknowledge-scanner-capture/);
     assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\.crop\(crop\)\)\.toDataURL\(\)/);
+    assert.match(mainSource, /handleTrusted\('capture-scanner-display'/);
+    assert.match(mainSource, /screen\.getDisplayNearestPoint\(/);
+    assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\)\.toDataURL\(\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
     assert.match(preloadSource, /deliverPickerCapture:\s*\(imageData\)\s*=>\s*ipcRenderer\.invoke\('deliver-picker-capture', imageData\)/);
+    assert.match(preloadSource, /captureScannerDisplay:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-display'\)/);
 });
 
 test('native capture and scanner movement stay in Electron native coordinates', () => {
@@ -49,6 +54,7 @@ test('native capture and scanner movement stay in Electron native coordinates', 
     assert.match(preloadSource, /captureScannerArea:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-area'\)/);
     assert.doesNotMatch(preloadSource, /updateScannerBounds/);
     assert.match(scannerSource, /captureScannerArea\(\)/);
+    assert.match(scannerSource, /captureScannerDisplay\(\)/);
     assert.match(scannerSource, /-webkit-app-region:drag/);
     assert.doesNotMatch(scannerSource, /updateScannerBounds|window\.screenX|window\.screenY/);
 });

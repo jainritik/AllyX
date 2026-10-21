@@ -250,6 +250,34 @@ async function deliverScannerCapture(imageData) {
     return accepted;
 }
 
+async function getNativeDisplayCapture(display) {
+    return getUsableScreenSource({
+        getSources: options => desktopCapturer.getSources(options),
+        displayId: display.id,
+        displayCount: screen.getAllDisplays().length,
+        options: {
+            types: ['screen'],
+            thumbnailSize: {
+                width: Math.max(1, Math.round(display.bounds.width * display.scaleFactor)),
+                height: Math.max(1, Math.round(display.bounds.height * display.scaleFactor)),
+            },
+            fetchWindowIcons: false,
+        },
+    });
+}
+
+function nativeScreenCaptureFailure(capture) {
+    const result = screenCaptureFailure({
+        platform: process.platform,
+        permissionStatus: getScreenCapturePermissionStatus(),
+        capture,
+    });
+    if (result.failureCode === 'no-pixels' && canUseMacOSSystemScreenPicker()) {
+        result.pickerFallbackAvailable = true;
+    }
+    return result;
+}
+
 function setPresentationSafeMode(active) {
     isPresentationSafeMode = Boolean(active);
     sendSafeModeState(isPresentationSafeMode);
@@ -759,29 +787,10 @@ function setupIpcHandlers() {
             // Give macOS a compositor turn after hiding the selection frame.
             // This avoids a transient empty thumbnail immediately after focus.
             await new Promise(resolve => setTimeout(resolve, 350));
-            const capture = await getUsableScreenSource({
-                getSources: options => desktopCapturer.getSources(options),
-                displayId: display.id,
-                displayCount: screen.getAllDisplays().length,
-                options: {
-                    types: ['screen'],
-                    thumbnailSize: {
-                        width: Math.max(1, Math.round(display.bounds.width * display.scaleFactor)),
-                        height: Math.max(1, Math.round(display.bounds.height * display.scaleFactor)),
-                    },
-                    fetchWindowIcons: false,
-                },
-            });
+            const capture = await getNativeDisplayCapture(display);
             if (!capture.source || !capture.size) {
-                const result = screenCaptureFailure({
-                    platform: process.platform,
-                    permissionStatus: getScreenCapturePermissionStatus(),
-                    capture,
-                });
+                const result = nativeScreenCaptureFailure(capture);
                 console.warn('[Scanner] No usable screen image:', result.diagnostics);
-                if (result.failureCode === 'no-pixels' && canUseMacOSSystemScreenPicker()) {
-                    result.pickerFallbackAvailable = true;
-                }
                 return result;
             }
             try {
@@ -821,6 +830,71 @@ function setupIpcHandlers() {
                 success: false,
                 failureCode: 'capture-api-error',
                 error: 'Screen Capture could not start. Close and reopen Screen Capture, then try again.',
+            };
+        } finally {
+            scannerCaptureInFlight = false;
+            if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
+        }
+    });
+
+    // Full-display capture intentionally does not calculate an area crop.
+    // It provides the Cmd+Shift+3-style recovery path when a customer wants
+    // the complete display containing the scanner frame.
+    handleTrusted('capture-scanner-display', async () => {
+        if (scannerCaptureInFlight) {
+            return { success: false, failureCode: 'capture-in-progress', error: 'A screen capture is already being processed. Wait for it to finish.' };
+        }
+        scannerCaptureInFlight = true;
+        try {
+            if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
+            if (!scannerFrameWindow || scannerFrameWindow.isDestroyed()) {
+                return { success: false, error: 'Screen Capture is no longer open. Reopen it and try again.' };
+            }
+            const frameBounds = scannerFrameWindow.getBounds();
+            const display = screen.getDisplayNearestPoint({
+                x: frameBounds.x + Math.floor(frameBounds.width / 2),
+                y: frameBounds.y + Math.floor(frameBounds.height / 2),
+            });
+            if (!display) return { success: false, error: 'AllyX could not identify the display to capture. Reopen Screen Capture and try again.' };
+
+            scannerFrameWindow.hide();
+            await new Promise(resolve => setTimeout(resolve, 350));
+            const capture = await getNativeDisplayCapture(display);
+            if (!capture.source || !capture.size) {
+                const result = nativeScreenCaptureFailure(capture);
+                console.warn('[Scanner] No usable full-display image:', result.diagnostics);
+                return result;
+            }
+            try {
+                const imageData = constrainNativeCaptureImage(capture.source.thumbnail).toDataURL();
+                const rendererAccepted = await deliverScannerCapture(imageData);
+                if (!rendererAccepted) {
+                    return {
+                        success: false,
+                        failureCode: 'renderer-not-ready',
+                        error: 'AllyX was not ready to read the capture. Reopen Screen Capture and try again.',
+                    };
+                }
+                floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured display…', tone: 'progress' });
+                closeScannerFrame();
+                return { success: true };
+            } catch (err) {
+                console.error('[Scanner] Could not prepare the captured display image:', err);
+                return nativeScreenCaptureFailure({
+                    reason: 'post-capture-error',
+                    attempts: capture.attempts,
+                    sourceCount: capture.sourceCount,
+                    displayId: String(display.id),
+                    displayCount: screen.getAllDisplays().length,
+                    sourceDisplayIdCount: capture.sourceDisplayIdCount,
+                });
+            }
+        } catch (err) {
+            console.error('[Scanner] Full-display capture failed:', err);
+            return {
+                success: false,
+                failureCode: 'capture-api-error',
+                error: 'Full-display capture could not start. Close and reopen Screen Capture, then try again.',
             };
         } finally {
             scannerCaptureInFlight = false;
