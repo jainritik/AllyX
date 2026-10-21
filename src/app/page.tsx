@@ -89,7 +89,7 @@ export default function Home() {
     applicationCategory: "BusinessApplication",
     applicationSubCategory: "Interview preparation software",
     operatingSystem: "macOS, Windows 10, Windows 11",
-    softwareVersion: "1.3.25",
+    softwareVersion: "1.3.26",
     description: metadata.description,
     url: "https://allyx.vercel.app/",
     downloadUrl: "https://allyx.vercel.app/download",

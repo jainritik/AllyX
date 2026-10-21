@@ -293,7 +293,11 @@ function createScannerFrame() {
         transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
-        resizable: false,
+        // Keep scanner geometry in Electron's native coordinate space. The
+        // renderer's screen coordinates can differ on Retina/scaled displays.
+        resizable: true,
+        minWidth: 200,
+        minHeight: 150,
         movable: true,
         focusable: true,
         thickFrame: false,
@@ -662,18 +666,6 @@ function setupIpcHandlers() {
         if (!isTrustedPage(event, channel)) throw new Error('Untrusted desktop request');
         return handler(event, ...args);
     });
-    onTrusted('update-scanner-bounds', (event, { x, y, width, height }) => {
-        if (![x, y, width, height].every(Number.isFinite) || width < 50 || height < 50 || width > 4000 || height > 4000) return;
-        if (scannerFrameWindow && !scannerFrameWindow.isDestroyed()) {
-            scannerFrameWindow.setBounds({
-                x: Math.round(x),
-                y: Math.round(y),
-                width: Math.round(width),
-                height: Math.round(height)
-            });
-        }
-    });
-
     handleTrusted('toggle-scanner-frame', async () => {
         if (isPresentationSafeMode) return { active: false, error: 'Presentation Safe Mode is active.' };
         if (scannerCaptureInFlight || scannerOcrInFlight) {

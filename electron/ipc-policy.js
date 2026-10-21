@@ -1,5 +1,4 @@
 const SCANNER_CHANNELS = new Set([
-    'update-scanner-bounds',
     'capture-scanner-area',
     'deliver-picker-capture',
     'open-screen-recording-settings',

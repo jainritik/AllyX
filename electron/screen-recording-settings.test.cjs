@@ -40,12 +40,17 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(preloadSource, /deliverPickerCapture:\s*\(imageData\)\s*=>\s*ipcRenderer\.invoke\('deliver-picker-capture', imageData\)/);
 });
 
-test('native capture uses the selection window bounds instead of renderer screen coordinates', () => {
+test('native capture and scanner movement stay in Electron native coordinates', () => {
     assert.match(mainSource, /const selectionBounds = scannerFrameWindow\.getBounds\(\)/);
     assert.match(mainSource, /screen\.getDisplayMatching\(selectionBounds\)/);
     assert.match(mainSource, /different coordinate scale[\s\S]*same DIP space/);
+    assert.match(mainSource, /resizable:\s*true/);
+    assert.doesNotMatch(mainSource, /update-scanner-bounds/);
     assert.match(preloadSource, /captureScannerArea:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-area'\)/);
+    assert.doesNotMatch(preloadSource, /updateScannerBounds/);
     assert.match(scannerSource, /captureScannerArea\(\)/);
+    assert.match(scannerSource, /-webkit-app-region:drag/);
+    assert.doesNotMatch(scannerSource, /updateScannerBounds|window\.screenX|window\.screenY/);
 });
 
 test('the OCR receiver stays subscribed while the interview renderer re-renders', () => {

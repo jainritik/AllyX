@@ -55,7 +55,6 @@ export interface ElectronAPI {
     onUpdateReady: (callback: () => void) => () => void;
     // Screen capture
     toggleScannerFrame: () => Promise<{ active: boolean; error?: string }>;
-    updateScannerBounds: (bounds: { x: number, y: number, width: number, height: number }) => void;
     captureScannerArea: () => Promise<{
         success: boolean;
         error?: string;
