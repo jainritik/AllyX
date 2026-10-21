@@ -206,6 +206,16 @@ function getScreenCapturePermissionStatus() {
     }
 }
 
+function getMicrophonePermissionStatus() {
+    if (process.platform !== 'darwin') return 'not-applicable';
+    try {
+        return systemPreferences.getMediaAccessStatus('microphone');
+    } catch (error) {
+        console.warn('[Audio] Could not read macOS microphone permission status:', error);
+        return 'unknown';
+    }
+}
+
 function settlePendingScannerCapture(captureId, accepted) {
     if (!pendingScannerCapture || pendingScannerCapture.id !== captureId) return false;
     const pending = pendingScannerCapture;
@@ -689,6 +699,31 @@ function setupIpcHandlers() {
         } catch (error) {
             console.error('[Scanner] Could not open Screen & System Audio Recording settings:', error);
             return { success: false, error: 'Could not open System Settings. Open Privacy & Security → Screen & System Audio Recording.' };
+        }
+    });
+
+    // Keep the first-use setup in one place. This check does not request or
+    // infer consent: macOS remains the source of truth and the customer makes
+    // the final choice in its own prompt or Settings pane.
+    handleTrusted('get-desktop-permissions', async () => ({
+        screen: getScreenCapturePermissionStatus(),
+        microphone: getMicrophonePermissionStatus(),
+        platform: process.platform,
+    }));
+
+    handleTrusted('request-microphone-access', async () => {
+        if (process.platform !== 'darwin') {
+            return { status: 'not-applicable', granted: true };
+        }
+        const current = getMicrophonePermissionStatus();
+        if (current === 'granted') return { status: current, granted: true };
+        if (current !== 'not-determined') return { status: current, granted: false };
+        try {
+            const granted = await systemPreferences.askForMediaAccess('microphone');
+            return { status: getMicrophonePermissionStatus(), granted };
+        } catch (error) {
+            console.warn('[Audio] Could not request microphone access:', error);
+            return { status: getMicrophonePermissionStatus(), granted: false };
         }
     });
 

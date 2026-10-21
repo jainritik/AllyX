@@ -68,6 +68,8 @@ export interface ElectronAPI {
     acknowledgeScannerCapture: (captureId: string) => Promise<{ success: boolean }>;
     setScannerProcessing: (active: boolean) => Promise<{ success: boolean; active: boolean }>;
     openScreenRecordingSettings: () => Promise<{ success: boolean; error?: string }>;
+    getDesktopPermissions: () => Promise<{ screen: string; microphone: string; platform: string }>;
+    requestMicrophoneAccess: () => Promise<{ status: string; granted: boolean }>;
     onProcessOcr: (callback: (data: { id?: string; imageData: string }) => void) => () => void;
     onScannerStateChange: (callback: (active: boolean) => void) => () => void;
     isElectron: boolean;

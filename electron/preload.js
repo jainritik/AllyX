@@ -137,6 +137,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     acknowledgeScannerCapture: (captureId) => ipcRenderer.invoke('acknowledge-scanner-capture', captureId),
     setScannerProcessing: (active) => ipcRenderer.invoke('set-scanner-processing', active),
     openScreenRecordingSettings: () => ipcRenderer.invoke('open-screen-recording-settings'),
+    getDesktopPermissions: () => ipcRenderer.invoke('get-desktop-permissions'),
+    requestMicrophoneAccess: () => ipcRenderer.invoke('request-microphone-access'),
 
     onProcessOcr: (callback) => {
         const wrapper = (event, data) => callback(data);

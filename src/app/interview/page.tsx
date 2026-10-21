@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Video, VideoOff, Loader2, AlertCircle, Sparkles, Trash2, LogOut, Copy, RotateCcw, Monitor, MonitorOff, Scan } from "lucide-react";
+import { Mic, Video, VideoOff, Loader2, AlertCircle, Sparkles, Trash2, LogOut, Copy, RotateCcw, Monitor, MonitorOff, Scan, ShieldCheck, CircleAlert } from "lucide-react";
 import { createWorker } from 'tesseract.js';
 import { cn } from "@/lib/utils";
 import { supportsCoordinatedScannerCapture } from "@/lib/native-scanner-bridge";
@@ -54,6 +54,12 @@ type TranscriptionSegment = {
     epoch: number;
     sequence: number;
     finalizesQuestion: boolean;
+};
+
+type DesktopPermissions = {
+    screen: string;
+    microphone: string;
+    platform: string;
 };
 
 function compactContext(value: string, limit: number): string {
@@ -162,6 +168,9 @@ export default function InterviewPage() {
     const [selectedMeetingAudioSource, setSelectedMeetingAudioSource] = useState("");
     const [isLoadingMeetingAudioSources, setIsLoadingMeetingAudioSources] = useState(false);
     const [capturePermissionNeedsRestart, setCapturePermissionNeedsRestart] = useState(false);
+    const [desktopPermissions, setDesktopPermissions] = useState<DesktopPermissions | null>(null);
+    const [isCheckingDesktopPermissions, setIsCheckingDesktopPermissions] = useState(false);
+    const [isRequestingMicrophonePermission, setIsRequestingMicrophonePermission] = useState(false);
     const [audioCaptureStatus, setAudioCaptureStatus] = useState<"idle" | "waiting" | "hearing" | "transcribing" | "no-signal">("idle");
     const [isScreenCapturing, setIsScreenCapturing] = useState(false);
     const screenStreamRef = useRef<MediaStream | null>(null);
@@ -436,6 +445,40 @@ export default function InterviewPage() {
         };
     }, [isCameraOn, isCameraVisible]);
     const isElectron = hasMounted && typeof window !== 'undefined' && (window as unknown as { electronAPI?: { isElectron: boolean } }).electronAPI?.isElectron;
+
+    const refreshDesktopPermissions = useCallback(async () => {
+        if (!window.electronAPI?.isElectron || !window.electronAPI.getDesktopPermissions) return;
+        setIsCheckingDesktopPermissions(true);
+        try {
+            const permissions = await window.electronAPI.getDesktopPermissions();
+            setDesktopPermissions(permissions);
+        } catch {
+            setDesktopPermissions(null);
+        } finally {
+            setIsCheckingDesktopPermissions(false);
+        }
+    }, []);
+
+    const requestMicrophonePermission = useCallback(async () => {
+        if (!window.electronAPI?.requestMicrophoneAccess) return;
+        setIsRequestingMicrophonePermission(true);
+        try {
+            const result = await window.electronAPI.requestMicrophoneAccess();
+            await refreshDesktopPermissions();
+            if (!result.granted) setError("Microphone access is needed to transcribe your voice. Allow it in macOS Settings, then return here.");
+        } catch {
+            setError("AllyX could not request microphone access. Allow it in macOS Settings, then return here.");
+        } finally {
+            setIsRequestingMicrophonePermission(false);
+        }
+    }, [refreshDesktopPermissions]);
+
+    useEffect(() => {
+        if (isElectron) void refreshDesktopPermissions();
+    }, [isElectron, refreshDesktopPermissions]);
+
+    const screenPermissionReady = desktopPermissions?.screen === "granted" || desktopPermissions?.screen === "not-applicable";
+    const microphonePermissionReady = desktopPermissions?.microphone === "granted" || desktopPermissions?.microphone === "not-applicable";
 
     const getAiAnswer = useCallback(async (
         explicitQuestion?: string,
@@ -873,17 +916,25 @@ export default function InterviewPage() {
 
     const startMeetingAudio = useCallback(async (sourceId?: string) => {
         if (!isElectron || screenStreamRef.current) return Boolean(screenStreamRef.current);
+        // Avoid repeatedly showing a macOS setup prompt after the person has
+        // already completed it for this installed copy. A transient display
+        // enumeration failure is not evidence that permission was revoked.
+        if (desktopPermissions?.platform === "darwin" && !screenPermissionReady) {
+            setCapturePermissionNeedsRestart(true);
+            setError("Complete Screen & System Audio setup below, then restart AllyX once before starting interviewer audio.");
+            return false;
+        }
         const result = await window.electronAPI?.startSystemAudioCapture(sourceId);
         if (!result?.success || !result.sourceId) {
             const message = result?.error || "Meeting audio could not be started. Microphone listening is still available.";
-            setCapturePermissionNeedsRestart(Boolean(result?.restartRequired));
+            setCapturePermissionNeedsRestart(Boolean(result?.restartRequired) && !screenPermissionReady);
             setError(message);
             window.electronAPI?.sendOverlayStatus?.(message, "error");
             return false;
         }
         setCapturePermissionNeedsRestart(false);
         return connectScreenAudio(result.sourceId);
-    }, [connectScreenAudio, isElectron]);
+    }, [connectScreenAudio, desktopPermissions?.platform, isElectron, screenPermissionReady]);
 
     const toggleScreenAudio = async () => {
         if (!isElectron) return;
@@ -1504,13 +1555,13 @@ export default function InterviewPage() {
                 // listening control appear broken even though mic capture is ready.
                 const started = await startDesktopSTT();
                 if (!started) return;
-                if (sourceId && !isScreenAudioActive) void startMeetingAudio(sourceId);
+                if (sourceId && !isScreenAudioActive && screenPermissionReady) void startMeetingAudio(sourceId);
                 // Display enumeration is optional for microphone captions and can
                 // briefly stall after System Settings closes. Start recording first,
                 // then attach a sole meeting display when macOS has one ready.
                 if (!sourceId && availableSources.length === 0) {
                     void loadMeetingAudioSources(false).then(sources => {
-                        if (!isRecordingRef.current || sessionEndingRef.current || sources.length !== 1) return;
+                        if (!isRecordingRef.current || sessionEndingRef.current || sources.length !== 1 || !screenPermissionReady) return;
                         void startMeetingAudio(sources[0].id);
                     });
                 }
@@ -2203,13 +2254,14 @@ export default function InterviewPage() {
                         {isElectron && (
                             <button
                                 onClick={toggleScreenAudio}
+                                disabled={!isScreenAudioActive && !screenPermissionReady}
                                 className={cn(
-                                    "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-md",
+                                    "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-md disabled:cursor-not-allowed disabled:opacity-45",
                                     isScreenAudioActive
                                         ? "bg-blue-500 text-white scale-110 shadow-blue-500/30 ring-4 ring-blue-100 dark:ring-blue-900/30"
                                         : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                                 )}
-                                title={isScreenAudioActive ? "Stop interviewer audio" : "Start interviewer audio"}
+                                title={isScreenAudioActive ? "Stop interviewer audio" : screenPermissionReady ? "Start interviewer audio" : "Complete Screen & System Audio setup first"}
                             >
                                 {isScreenAudioActive ? <Monitor size={26} strokeWidth={2.5} /> : <MonitorOff size={26} strokeWidth={2} />}
                             </button>
@@ -2225,6 +2277,53 @@ export default function InterviewPage() {
                             {isSaving ? <Loader2 size={26} className="animate-spin" /> : <LogOut size={26} strokeWidth={2} />}
                         </button>
                     </div>
+                )}
+
+                {isElectron && (
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <ShieldCheck className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+                                    <h3 className="font-semibold text-slate-950 dark:text-white">One-time desktop setup</h3>
+                                </div>
+                                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-400">Set permissions once after installing AllyX. The app will not send you back to Settings while they are active.</p>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={() => void refreshDesktopPermissions()} disabled={isCheckingDesktopPermissions}>
+                                {isCheckingDesktopPermissions ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1 h-3.5 w-3.5" />}
+                                Check status
+                            </Button>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <div className={cn("rounded-xl border p-3", microphonePermissionReady ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20")}>
+                                <p className="font-semibold text-slate-900 dark:text-white">Microphone</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{microphonePermissionReady ? "Ready for your voice." : "Allow it now so Start listening works immediately."}</p>
+                                {!microphonePermissionReady && (
+                                    <Button type="button" size="sm" className="mt-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => void requestMicrophonePermission()} disabled={isRequestingMicrophonePermission}>
+                                        {isRequestingMicrophonePermission ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
+                                        Allow microphone
+                                    </Button>
+                                )}
+                            </div>
+                            <div className={cn("rounded-xl border p-3", screenPermissionReady ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20")}>
+                                <p className="font-semibold text-slate-900 dark:text-white">Screen &amp; system audio</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{screenPermissionReady ? "Ready for interviewer audio and Screen Capture." : "Enable AllyX once, then restart the app once."}</p>
+                                {!screenPermissionReady && (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        <Button type="button" size="sm" variant="outline" onClick={() => { void window.electronAPI?.openScreenRecordingSettings(); }}>
+                                            Open System Settings
+                                        </Button>
+                                        <Button type="button" size="sm" onClick={() => window.electronAPI?.relaunchApp()} className="bg-slate-800 text-white hover:bg-slate-700">
+                                            Restart AllyX
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {!screenPermissionReady && desktopPermissions?.platform === "darwin" && (
+                            <p className="mt-3 flex gap-2 text-xs leading-5 text-slate-600 dark:text-slate-400"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />After an AllyX update, macOS may retain approval for an older copy. Open the current AllyX from Applications, enable its AllyX entry, and restart once. Future updates keep the same permission identity.</p>
+                        )}
+                    </section>
                 )}
 
                 {isElectron && (
@@ -2250,11 +2349,11 @@ export default function InterviewPage() {
                                 <option value="">{meetingAudioSources.length > 1 ? "Choose the display with your meeting" : meetingAudioSources.length === 1 ? "Available meeting display" : "No displays found"}</option>
                                 {meetingAudioSources.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}
                             </select>
-                            <Button type="button" onClick={() => void toggleScreenAudio()} disabled={isLoadingMeetingAudioSources || (!isScreenAudioActive && !selectedMeetingAudioSource && meetingAudioSources.length !== 1)} className={cn("min-h-10", isScreenAudioActive ? "bg-slate-700 hover:bg-slate-800" : "bg-sky-600 hover:bg-sky-700")}>
+                            <Button type="button" onClick={() => void toggleScreenAudio()} disabled={isLoadingMeetingAudioSources || (!isScreenAudioActive && (!screenPermissionReady || (!selectedMeetingAudioSource && meetingAudioSources.length !== 1)))} className={cn("min-h-10", isScreenAudioActive ? "bg-slate-700 hover:bg-slate-800" : "bg-sky-600 hover:bg-sky-700")}>
                                 {isScreenAudioActive ? "Stop interviewer audio" : "Start interviewer audio"}
                             </Button>
                         </div>
-                        {!isScreenAudioActive && <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">If this is your first use, your computer may ask for Screen &amp; System Audio permission. Enable it only when you want AllyX to transcribe meeting audio.</p>}
+                        {!isScreenAudioActive && <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{screenPermissionReady ? "Choose the display playing the interviewer, then start interviewer audio." : "Complete Screen & System Audio setup above before starting interviewer audio."}</p>}
                     </section>
                 )}
 

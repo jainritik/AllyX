@@ -13,6 +13,16 @@ test('screen-capture recovery opens the macOS Screen Recording settings pane thr
     assert.match(preloadSource, /openScreenRecordingSettings:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('open-screen-recording-settings'\)/);
 });
 
+test('desktop setup reads permissions once and requests microphone access only from the customer action', () => {
+    assert.match(mainSource, /handleTrusted\('get-desktop-permissions'/);
+    assert.match(mainSource, /handleTrusted\('request-microphone-access'/);
+    assert.match(mainSource, /systemPreferences\.askForMediaAccess\('microphone'\)/);
+    assert.match(preloadSource, /getDesktopPermissions:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('get-desktop-permissions'\)/);
+    assert.match(preloadSource, /requestMicrophoneAccess:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('request-microphone-access'\)/);
+    assert.match(interviewSource, /One-time desktop setup/);
+    assert.match(interviewSource, /Future updates keep the same permission identity/);
+});
+
 test('a stale macOS permission status does not block a real desktop capture attempt', () => {
     assert.doesNotMatch(mainSource, /shouldAttemptScreenCapturePermission/);
     assert.match(mainSource, /actual capture first; its returned pixels are the only useful signal/);
