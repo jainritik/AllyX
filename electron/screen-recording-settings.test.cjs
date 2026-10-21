@@ -6,6 +6,7 @@ const path = require('node:path');
 const mainSource = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 const preloadSource = fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8');
 const interviewSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'interview', 'page.tsx'), 'utf8');
+const scannerSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'scanner-frame', 'page.tsx'), 'utf8');
 
 test('screen-capture recovery opens the macOS Screen Recording settings pane through a trusted IPC handler', () => {
     assert.match(mainSource, /handleTrusted\('open-screen-recording-settings'/);
@@ -37,6 +38,14 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\.crop\(crop\)\)\.toDataURL\(\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
     assert.match(preloadSource, /deliverPickerCapture:\s*\(imageData\)\s*=>\s*ipcRenderer\.invoke\('deliver-picker-capture', imageData\)/);
+});
+
+test('native capture uses the selection window bounds instead of renderer screen coordinates', () => {
+    assert.match(mainSource, /const selectionBounds = scannerFrameWindow\.getBounds\(\)/);
+    assert.match(mainSource, /screen\.getDisplayMatching\(selectionBounds\)/);
+    assert.match(mainSource, /different coordinate scale[\s\S]*same DIP space/);
+    assert.match(preloadSource, /captureScannerArea:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-area'\)/);
+    assert.match(scannerSource, /captureScannerArea\(\)/);
 });
 
 test('the OCR receiver stays subscribed while the interview renderer re-renders', () => {

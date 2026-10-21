@@ -727,20 +727,30 @@ function setupIpcHandlers() {
         }
     });
 
-    handleTrusted('capture-scanner-area', async (event, bounds) => {
+    handleTrusted('capture-scanner-area', async () => {
         if (scannerCaptureInFlight) {
             return { success: false, failureCode: 'capture-in-progress', error: 'A screen capture is already being processed. Wait for it to finish.' };
         }
         scannerCaptureInFlight = true;
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
-            if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width < 1 || bounds.height < 1) return { success: false, error: 'Invalid capture bounds.' };
+            if (!scannerFrameWindow || scannerFrameWindow.isDestroyed()) {
+                return { success: false, error: 'Screen Capture is no longer open. Reopen it and try again.' };
+            }
+            // Browser `screenX`/`screenY` can use a different coordinate scale
+            // than Electron's display bounds on Retina and scaled displays.
+            // Read the native BrowserWindow bounds here so the selected region
+            // and `screen.getDisplayMatching` always use the same DIP space.
+            const selectionBounds = scannerFrameWindow.getBounds();
+            if (![selectionBounds.x, selectionBounds.y, selectionBounds.width, selectionBounds.height].every(Number.isFinite) || selectionBounds.width < 1 || selectionBounds.height < 1) {
+                return { success: false, error: 'Invalid capture bounds.' };
+            }
             // `getMediaAccessStatus('screen')` can remain stale after the user
             // changes the current macOS Screen & System Audio toggle. Attempt the
             // actual capture first; its returned pixels are the only useful signal.
-            const display = screen.getDisplayMatching(bounds);
+            const display = screen.getDisplayMatching(selectionBounds);
             try {
-                calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, bounds);
+                calculateCaptureCrop(display.bounds, { width: display.bounds.width, height: display.bounds.height }, selectionBounds);
             } catch (error) {
                 if (error instanceof Error && error.message === 'Select an area within one display.') {
                     return {
@@ -783,7 +793,7 @@ function setupIpcHandlers() {
                 return result;
             }
             try {
-                const crop = calculateCaptureCrop(display.bounds, capture.size, bounds);
+                const crop = calculateCaptureCrop(display.bounds, capture.size, selectionBounds);
                 // Retina-sized scans can otherwise create a very large data URL
                 // and stall the renderer while it receives and OCRs the image.
                 const imageData = constrainNativeCaptureImage(capture.source.thumbnail.crop(crop)).toDataURL();

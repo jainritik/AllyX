@@ -56,7 +56,7 @@ export interface ElectronAPI {
     // Screen capture
     toggleScannerFrame: () => Promise<{ active: boolean; error?: string }>;
     updateScannerBounds: (bounds: { x: number, y: number, width: number, height: number }) => void;
-    captureScannerArea: (bounds: { x: number, y: number, width: number, height: number }) => Promise<{
+    captureScannerArea: () => Promise<{
         success: boolean;
         error?: string;
         failureCode?: 'capture-in-progress' | 'display-changed' | 'display-identity-unavailable' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';

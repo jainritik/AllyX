@@ -48,13 +48,10 @@ export default function ScannerFrame() {
                 setCaptureMessage("Screen Capture is available in the AllyX desktop app.");
                 return;
             }
-            const bounds = {
-                x: window.screenX,
-                y: window.screenY,
-                width: window.innerWidth,
-                height: window.innerHeight
-            };
-            const result = await window.electronAPI.captureScannerArea(bounds);
+            // The desktop process reads the native selection-frame bounds. It
+            // avoids browser screen-coordinate scaling differences on Retina
+            // and scaled macOS displays.
+            const result = await window.electronAPI.captureScannerArea();
             setCaptureFailed(!result.success);
             setSettingsRequired(Boolean(result.settingsRequired));
             setRestartRequired(Boolean(result.restartRequired));
