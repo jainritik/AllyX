@@ -44,7 +44,7 @@ test('native source lookup is bounded and keeps scanner capture on its selected 
     assert.match(mainSource, /displayCount:\s*screen\.getAllDisplays\(\)\.length/);
     assert.match(mainSource, /const readSystemAudioSources = \(\) => getScreenSourcesWithRetry/);
     assert.match(mainSource, /const sourceResult = await readSystemAudioSources\(\)/);
-    assert.match(mainSource, /sources\.length > 1\n\s*\? 'Choose the display that contains your meeting/);
+    assert.match(mainSource, /sources\.length > 1\r?\n\s*\? 'Choose the display that contains your meeting/);
 });
 
 test('the macOS picker recovery never silently chooses a screen source', () => {

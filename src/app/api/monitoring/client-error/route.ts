@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { billingAdminClient } from "@/lib/razorpay-server";
 import { sendProductionErrorAlert } from "@/lib/production-error-alert";
 
-const RELEASE = "1.3.21";
+const RELEASE = "1.3.22";
 const alertAttempts: number[] = [];
 
 function canSendAlert() {
