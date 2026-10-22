@@ -47,10 +47,13 @@ test('desktop microphone capture starts before optional display discovery and ac
     assert.match(interviewSource, /if \(isElectron && !accessReady\) \{/);
 });
 
-test('only a natural VAD pause can finalise an automatic answer', () => {
+test('a natural VAD pause or an explicit Stop listening can finalise an answer', () => {
     assert.match(interviewSource, /stopAndQueue\(false\)/);
     assert.match(interviewSource, /stopAndQueue\(true\)/);
     assert.match(interviewSource, /segment\.finalizesQuestion/);
+    assert.match(interviewSource, /await flush\(\{ finalizesQuestion: generateAnswer \}\)/);
+    assert.match(interviewSource, /await flushAndStopDesktopSTT\(true\)/);
+    assert.match(interviewSource, /pendingCapturedQuestionRef\.current = question;/);
     assert.doesNotMatch(interviewSource, /isElectron \? 550 : 1600/);
 });
 

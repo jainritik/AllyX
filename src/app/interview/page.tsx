@@ -56,6 +56,10 @@ type TranscriptionSegment = {
     finalizesQuestion: boolean;
 };
 
+type RecorderFlushOptions = {
+    finalizesQuestion?: boolean;
+};
+
 type DesktopPermissions = {
     screen: string;
     microphone: string;
@@ -99,7 +103,11 @@ export default function InterviewPage() {
     const vadSpeechActiveRef = useRef(false);
     const recordingStartRef = useRef(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const flushRecorderRef = useRef<(() => Promise<void>) | null>(null);
+    const flushRecorderRef = useRef<((options?: RecorderFlushOptions) => Promise<void>) | null>(null);
+    // A four-second recorder chunk can be held briefly while VAD decides whether
+    // speech continued. Stop listening must be able to release that held chunk
+    // immediately as the end of the customer’s question.
+    const finalizePendingRolloverRef = useRef<(() => void) | null>(null);
     const vadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     // Groq Whisper accepts completed audio files rather than a token stream. Keep
     // requests ordered and below the provider's free-tier rate limit so captions
@@ -1225,6 +1233,7 @@ export default function InterviewPage() {
                 pendingRollover = null;
                 void transcriptionDrainRef.current?.();
             };
+            finalizePendingRolloverRef.current = () => releaseRolloverSegment(true);
 
             const stopAndQueue = (finalizesQuestion: boolean) => {
                 if (!isSpeaking) return;
@@ -1272,7 +1281,17 @@ export default function InterviewPage() {
 
                 let resolveStopped: () => void = () => {};
                 const stopped = new Promise<void>(resolve => { resolveStopped = resolve; });
-                const flushOwned = async () => {
+                const flushOwned = async ({ finalizesQuestion = false }: RecorderFlushOptions = {}) => {
+                    // A customer can explicitly finish a question before the VAD
+                    // observes its normal silence window. Mark this recorder as a
+                    // complete question before stopping it, so the final audio is
+                    // retained rather than treated as a rolling caption chunk.
+                    if (finalizesQuestion) {
+                        isSpeaking = false;
+                        vadSpeechActiveRef.current = false;
+                        silenceStart = 0;
+                        setCurrentSegmentFinalization?.(true, false);
+                    }
                     if (ownedRecorder.state === 'recording') ownedRecorder.stop();
                     await stopped;
                 };
@@ -1422,6 +1441,7 @@ export default function InterviewPage() {
             mediaRecorderRef.current = null;
             flushRecorderRef.current = null;
         }
+        finalizePendingRolloverRef.current = null;
         if (screenSourceRef.current) {
             try { screenSourceRef.current.disconnect(); } catch { /* already disconnected */ }
             screenSourceRef.current = null;
@@ -1440,12 +1460,18 @@ export default function InterviewPage() {
         console.log("[Desktop STT] Stopped");
     }, [cancelDeviceRecovery, invalidateTranscriptionPipeline]);
 
-    const flushAndStopDesktopSTT = useCallback(async () => {
-        // Ending an interview preserves the recorder's final segment so it can be
-        // transcribed and saved. Explicit stops and device failures discard it.
+    const flushAndStopDesktopSTT = useCallback(async (generateAnswer = false) => {
+        // Stop is an intentional end-of-question action. Preserve and transcribe
+        // the current recorder segment before releasing desktop audio, then make
+        // one answer request from the completed text.
         autoAnswerEnabledRef.current = false;
+        if (vadTimerRef.current) {
+            clearInterval(vadTimerRef.current);
+            vadTimerRef.current = null;
+        }
         const flush = flushRecorderRef.current;
-        if (flush) await flush();
+        finalizePendingRolloverRef.current?.();
+        if (flush) await flush({ finalizesQuestion: generateAnswer });
         stopDesktopSTT(false);
         while (pendingTranscriptionsRef.current.length || activeTranscriptionTaskRef.current || isTranscriptionDrainActiveRef.current) {
             const drain = transcriptionDrainRef.current;
@@ -1457,6 +1483,23 @@ export default function InterviewPage() {
             }
             if (!pendingTranscriptionsRef.current.length && !activeTranscriptionTaskRef.current && !isTranscriptionDrainActiveRef.current) break;
         }
+        if (!generateAnswer || sessionEndingRef.current) return;
+
+        // The ordered recorder has now committed every final caption. Snapshot it
+        // here instead of depending on a natural VAD pause; this is what makes the
+        // Stop listening control immediately start the answer flow.
+        const question = questionStateRef.current.consume().trim() || liveCaptionRef.current.trim();
+        liveCaptionRef.current = "";
+        setInterimTranscript("");
+        if (!question) {
+            const message = "No speech was captured. Start listening, speak the full question, then press Stop listening.";
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return;
+        }
+        pendingCapturedQuestionRef.current = question;
+        window.electronAPI?.sendOverlayStatus?.("Generating answer…", "progress");
+        processPendingCapturedAnswerRef.current();
     }, [stopDesktopSTT]);
 
     useEffect(() => () => {
@@ -1506,6 +1549,8 @@ export default function InterviewPage() {
             autoAnswerEnabledRef.current = false;
             setIsRecording(false);
             setIsAutoMode(false);
+            setAudioCaptureStatus("transcribing");
+            window.electronAPI?.sendOverlayStatus?.("Transcribing the final audio and generating an answer…", "progress");
 
             // 1. Stop Browser Recognition
             if (recognitionRef.current) {
@@ -1514,7 +1559,23 @@ export default function InterviewPage() {
 
             // 2. Stop Desktop VAD (if running)
             try {
-                if (isElectron) await flushAndStopDesktopSTT();
+                if (isElectron) {
+                    await flushAndStopDesktopSTT(true);
+                } else {
+                    // Browser speech recognition returns its final caption just
+                    // after stop(). Give that event a brief turn, then answer the
+                    // complete visible question using the same manual workflow.
+                    await new Promise<void>(resolve => window.setTimeout(resolve, 120));
+                    const question = questionStateRef.current.consume().trim() || liveCaptionRef.current.trim();
+                    liveCaptionRef.current = "";
+                    setInterimTranscript("");
+                    if (question) {
+                        pendingCapturedQuestionRef.current = question;
+                        void processPendingCapturedAnswerRef.current();
+                    } else {
+                        setError("No speech was captured. Start listening, speak the full question, then press Stop listening.");
+                    }
+                }
             } finally {
                 setIsFinalizingCapture(false);
             }
@@ -2180,7 +2241,7 @@ export default function InterviewPage() {
                                         ? "bg-[#00D95A] text-white scale-110 shadow-green-500/40"
                                         : "bg-black/40 text-white hover:bg-black/60 border border-white/10"
                                 )}
-                                title={isFinalizingCapture ? "Finalizing transcription" : isRecording ? "Stop Recording" : "Start Recording"}
+                                title={isFinalizingCapture ? "Transcribing and generating answer" : isRecording ? "Stop listening and generate answer" : "Start listening"}
                             >
                                 {isFinalizingCapture ? <Loader2 size={26} className="animate-spin" /> : <Mic size={26} strokeWidth={isRecording ? 2.5 : 2} />}
                             </button>
@@ -2243,7 +2304,7 @@ export default function InterviewPage() {
                                     ? "bg-[#00D95A] text-white scale-110 shadow-green-500/30 ring-4 ring-green-100 dark:ring-green-900/30"
                                     : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                             )}
-                            title={isFinalizingCapture ? "Finalizing transcription" : isRecording ? "Stop Recording" : "Start Recording"}
+                            title={isFinalizingCapture ? "Transcribing and generating answer" : isRecording ? "Stop listening and generate answer" : "Start listening"}
                         >
                             {isFinalizingCapture ? <Loader2 size={26} className="animate-spin" /> : <Mic size={26} strokeWidth={isRecording ? 2.5 : 2} />}
                         </button>
