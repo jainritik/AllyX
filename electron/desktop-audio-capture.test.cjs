@@ -47,14 +47,22 @@ test('desktop microphone capture starts before optional display discovery and ac
     assert.match(interviewSource, /if \(isElectron && !accessReady\) \{/);
 });
 
-test('a natural VAD pause or an explicit Stop listening can finalise an answer', () => {
+test('only explicit Stop listening can finalise an answer', () => {
     assert.match(interviewSource, /stopAndQueue\(false\)/);
     assert.match(interviewSource, /stopAndQueue\(true\)/);
-    assert.match(interviewSource, /segment\.finalizesQuestion/);
     assert.match(interviewSource, /await flush\(\{ finalizesQuestion: generateAnswer \}\)/);
     assert.match(interviewSource, /await flushAndStopDesktopSTT\(true\)/);
     assert.match(interviewSource, /pendingCapturedQuestionRef\.current = question;/);
+    assert.match(interviewSource, /A pause only ends an audio chunk\. It never starts an/);
+    assert.doesNotMatch(interviewSource, /autoAnswer/);
     assert.doesNotMatch(interviewSource, /isElectron \? 550 : 1600/);
+});
+
+test('desktop answers use only verified transcription, not a browser caption preview', () => {
+    assert.match(interviewSource, /const question = confirmedQuestion \|\| \(!window\.electronAPI \? liveCaptionRef\.current\.trim\(\) : ""\)/);
+    assert.match(interviewSource, /const liveCaption = TRANSCRIPTION_ARTIFACTS\.has\(normalizedTranscript\(interim\)\)/);
+    assert.match(interviewSource, /const TRANSCRIPTION_ARTIFACTS = new Set/);
+    assert.doesNotMatch(interviewSource, /liveCaptionRef\.current = `\$\{liveCaptionRef\.current\} \$\{finalText\}`/);
 });
 
 

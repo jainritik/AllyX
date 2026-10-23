@@ -66,6 +66,21 @@ type DesktopPermissions = {
     platform: string;
 };
 
+// Whisper can occasionally return a stock outro for a quiet or noisy clip.
+// These exact phrases do not contain an interview question, so dropping them
+// prevents a false caption from becoming an answer request after Stop.
+const TRANSCRIPTION_ARTIFACTS = new Set([
+    "thank you",
+    "thanks",
+    "thank",
+    "thank you for watching",
+    "thanks for watching",
+]);
+
+function normalizedTranscript(text: string): string {
+    return text.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s']/gu, "").replace(/\s+/g, " ").trim();
+}
+
 function compactContext(value: string, limit: number): string {
     if (value.length <= limit) return value;
     const marker = "\n\n[Earlier context shortened]\n\n";
@@ -87,7 +102,6 @@ export default function InterviewPage() {
     const liveCaptionRef = useRef("");
     const isRecordingRef = useRef(false);
     const deviceRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const autoAnswerPreferenceRef = useRef(true);
     const isAiSpeakingRef = useRef(false);
     const isRecognitionActiveRef = useRef(false);
     const isSavingRef = useRef(false);
@@ -122,9 +136,6 @@ export default function InterviewPage() {
     const nextTranscriptionToProcessRef = useRef(1);
     const skippedTranscriptionSequencesRef = useRef(new Set<number>());
     const questionStateRef = useRef(createLiveQuestionState());
-    const autoAnswerEnabledRef = useRef(true);
-    const pendingAutoQuestionsRef = useRef<string[]>([]);
-    const processPendingAutoAnswersRef = useRef<() => void>(() => {});
     const pendingCapturedQuestionRef = useRef<string | null>(null);
     const processPendingCapturedAnswerRef = useRef<() => void>(() => {});
     const captureProcessingRef = useRef(false);
@@ -153,7 +164,7 @@ export default function InterviewPage() {
     const [transcript, setTranscript] = useState("");
     const [fullTranscript, setFullTranscript] = useState("");
     const [interimTranscript, setInterimTranscript] = useState("");
-    const [aiResponse, setAiResponse] = useState("## Ready to Assist\n\nI am your AllyX interview assistant. I will listen to your interview and provide real-time context.\n\n**Instructions:**\n1. Click the microphone to start listening.\n2. Speak your question or discussion point.\n3. When you need context, click **Get Answer**.");
+    const [aiResponse, setAiResponse] = useState("## Ready to Assist\n\nI will transcribe the audio you enable.\n\n**Instructions:**\n1. Press Start listening.\n2. Let the complete question finish and review the transcript.\n3. Press Stop & answer to generate one response.");
     const [isCameraOn, setIsCameraOn] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -164,7 +175,6 @@ export default function InterviewPage() {
     const [interviewContext, setInterviewContext] = useState({ type: "", jd: "", resume: "", lang: "en-US", model: "openai/gpt-oss-120b" });
     const [answerModel, setAnswerModel] = useState<string | null>(null);
     const [answerTruncated, setAnswerTruncated] = useState(false);
-    const [isAutoMode, setIsAutoMode] = useState(true); // Auto Answer ON by default
     const [lastTranscript, setLastTranscript] = useState<string>(""); // For retry functionality
     const [retryQuestion, setRetryQuestion] = useState("");
     const [allQAPairs, setAllQAPairs] = useState<{ question: string, answer: string }[]>([]); // Track Q&A pairs
@@ -222,7 +232,6 @@ export default function InterviewPage() {
         nextTranscriptionToProcessRef.current = 1;
         skippedTranscriptionSequencesRef.current.clear();
         pendingTranscriptionsRef.current = [];
-        pendingAutoQuestionsRef.current = [];
         questionStateRef.current.clear();
         retryQuestionRef.current = "";
         liveCaptionRef.current = "";
@@ -238,10 +247,6 @@ export default function InterviewPage() {
     useEffect(() => {
         isRecordingRef.current = isRecording;
     }, [isRecording]);
-
-    useEffect(() => {
-        autoAnswerEnabledRef.current = isAutoMode;
-    }, [isAutoMode]);
 
     useEffect(() => {
         if (!accountId || draftHydratedRef.current) return;
@@ -311,8 +316,6 @@ export default function InterviewPage() {
     useEffect(() => {
         if (accessRemaining !== 0 || !accessReady) return;
         setAccessReady(false);
-        autoAnswerEnabledRef.current = false;
-        setIsAutoMode(false);
         setError("Your 10-minute free trial has ended. End the interview to save your session.");
         answerAbortRef.current?.abort();
         if (isRecordingRef.current) {
@@ -509,7 +512,7 @@ export default function InterviewPage() {
 
         // No API key check needed - server has Groq configuration
         if (!transcriptToUse.trim()) {
-            if (!isAutoMode) setError("No transcript to analyze. Please speak first.");
+            setError("No confirmed transcript to analyze. Start listening, let the question finish, then press Stop & answer.");
             return;
         }
         if (answerInFlightRef.current) {
@@ -736,8 +739,6 @@ export default function InterviewPage() {
                 if (preserveForRetry) {
                     retryQuestionRef.current = currentTranscript;
                     setRetryQuestion(currentTranscript);
-                    autoAnswerEnabledRef.current = false;
-                    setIsAutoMode(false);
                 }
             }
             setError(errorMessage);
@@ -750,22 +751,10 @@ export default function InterviewPage() {
             if (!sessionEndingRef.current) {
                 setTimeout(() => {
                     processPendingCapturedAnswerRef.current();
-                    processPendingAutoAnswersRef.current();
                 }, 0);
             }
         }
-    }, [accessReady, aiResponse, allQAPairs, interviewContext, transcript, isAutoMode]);
-
-    const processPendingAutoAnswers = useCallback(() => {
-        if (!autoAnswerEnabledRef.current || sessionEndingRef.current || answerInFlightRef.current) return;
-        const question = pendingAutoQuestionsRef.current.shift();
-        if (!question) return;
-        // The VAD has already snapshotted and cleared this exact question. Pass it
-        // explicitly so another caller cannot merge it with speech that begins
-        // while the previous answer is still streaming.
-        void getAiAnswer(question, false, false, true);
-    }, [getAiAnswer]);
-    processPendingAutoAnswersRef.current = processPendingAutoAnswers;
+    }, [accessReady, aiResponse, allQAPairs, interviewContext, transcript]);
 
     const processPendingCapturedAnswer = useCallback(() => {
         if (sessionEndingRef.current || answerInFlightRef.current) return;
@@ -981,8 +970,8 @@ export default function InterviewPage() {
             formData.append('file', segment.audio, 'audio.webm');
             formData.append('model', 'whisper-large-v3-turbo');
             formData.append('language', langCode);
-            if (langCode === 'en') formData.append('prompt', 'This is an English professional practice interview conversation.');
-            if (langCode === 'ar') formData.append('prompt', 'هذه محادثة تدريبية مهنية باللغة العربية.');
+            if (langCode === 'en') formData.append('prompt', 'Transcribe only intelligible spoken English from this professional interview conversation. Do not add greetings, outros, translations, or text that is not audible. Return an empty transcript for silence, music, or unclear audio.');
+            if (langCode === 'ar') formData.append('prompt', 'انسخ فقط الكلام العربي الواضح من هذه المحادثة المهنية. لا تضف تحية أو خاتمة أو ترجمة أو نصاً غير مسموع. أعد نصاً فارغاً للصمت أو الموسيقى أو الصوت غير الواضح.');
             return formData;
         };
 
@@ -1050,7 +1039,8 @@ export default function InterviewPage() {
         }
         if (segment.epoch !== transcriptionEpochRef.current) return null;
         const newText = typeof data.text === 'string' ? data.text.trim() : '';
-        if (!newText || NON_SPEECH_CAPTIONS.has(newText.toLowerCase())) {
+        const normalized = normalizedTranscript(newText);
+        if (!newText || NON_SPEECH_CAPTIONS.has(newText.toLowerCase()) || TRANSCRIPTION_ARTIFACTS.has(normalized)) {
             setAudioCaptureStatus("waiting");
             return null;
         }
@@ -1099,20 +1089,9 @@ export default function InterviewPage() {
                     const text = await processGroqAudio(segment);
                     if (text) commitTranscriptSegment(segment, text);
 
-                    // Only a natural VAD pause can complete a question. A rolling
-                    // chunk from continuous speech never sends an early answer.
-                    if (
-                        segment.finalizesQuestion
-                        && segment.epoch === transcriptionEpochRef.current
-                        && autoAnswerEnabledRef.current
-                        && !sessionEndingRef.current
-                    ) {
-                        const question = questionStateRef.current.consume().trim();
-                        if (question) {
-                            pendingAutoQuestionsRef.current.push(question);
-                            processPendingAutoAnswersRef.current();
-                        }
-                    }
+                    // A pause only ends an audio chunk. It never starts an
+                    // answer: the customer explicitly chooses Stop & answer once
+                    // the complete conversation/question has been captured.
                 })();
                 activeTranscriptionTaskRef.current = task;
                 try {
@@ -1156,7 +1135,6 @@ export default function InterviewPage() {
                     if (captureEpoch !== captureEpochRef.current || sessionEndingRef.current || !isRecordingRef.current) return;
                     setError("The microphone disconnected. Reconnecting…");
                     setIsRecording(false);
-                    setIsAutoMode(false);
                     stopDesktopSTT();
                     const recoveryGeneration = ++recoveryGenerationRef.current;
                     deviceRecoveryTimerRef.current = setTimeout(async () => {
@@ -1169,9 +1147,7 @@ export default function InterviewPage() {
                             return;
                         }
                         if (recovered) {
-                            autoAnswerEnabledRef.current = autoAnswerPreferenceRef.current;
                             setIsRecording(true);
-                            setIsAutoMode(autoAnswerPreferenceRef.current);
                             setError(null);
                         } else {
                             setError("Microphone reconnection failed. Select an available microphone and press Start.");
@@ -1406,9 +1382,7 @@ export default function InterviewPage() {
             activeStreamsRef.current = [];
             void audioContextRef.current?.close().catch(() => undefined);
             audioContextRef.current = null;
-            autoAnswerEnabledRef.current = false;
             setIsRecording(false);
-            setIsAutoMode(false);
             const message = error.message || "Microphone recording could not start.";
             setError(message);
             window.electronAPI?.sendOverlayStatus?.(message, "error");
@@ -1424,7 +1398,6 @@ export default function InterviewPage() {
         cancelDeviceRecovery();
         captureEpochRef.current++;
         vadSpeechActiveRef.current = false;
-        autoAnswerEnabledRef.current = false;
         if (discardPendingTranscription) invalidateTranscriptionPipeline();
         if (vadTimerRef.current) {
             clearInterval(vadTimerRef.current);
@@ -1464,7 +1437,6 @@ export default function InterviewPage() {
         // Stop is an intentional end-of-question action. Preserve and transcribe
         // the current recorder segment before releasing desktop audio, then make
         // one answer request from the completed text.
-        autoAnswerEnabledRef.current = false;
         if (vadTimerRef.current) {
             clearInterval(vadTimerRef.current);
             vadTimerRef.current = null;
@@ -1488,7 +1460,11 @@ export default function InterviewPage() {
         // The ordered recorder has now committed every final caption. Snapshot it
         // here instead of depending on a natural VAD pause; this is what makes the
         // Stop listening control immediately start the answer flow.
-        const question = questionStateRef.current.consume().trim() || liveCaptionRef.current.trim();
+        const confirmedQuestion = questionStateRef.current.consume().trim();
+        // Electron's browser recognizer is visual-only. Never use its preview as
+        // an AI prompt: it cannot hear the selected meeting display and can emit
+        // a false caption for silence. Browser-only practice still uses it.
+        const question = confirmedQuestion || (!window.electronAPI ? liveCaptionRef.current.trim() : "");
         liveCaptionRef.current = "";
         setInterimTranscript("");
         if (!question) {
@@ -1514,7 +1490,6 @@ export default function InterviewPage() {
         const stopForPresentation = (active: boolean) => {
             if (!active) return;
             setIsRecording(false);
-            setIsAutoMode(false);
             setIsCameraOn(false);
             setIsCameraVisible(false);
             stopDesktopSTT();
@@ -1546,9 +1521,7 @@ export default function InterviewPage() {
         if (isRecording) {
             // STOP
             setIsFinalizingCapture(true);
-            autoAnswerEnabledRef.current = false;
             setIsRecording(false);
-            setIsAutoMode(false);
             setAudioCaptureStatus("transcribing");
             window.electronAPI?.sendOverlayStatus?.("Transcribing the final audio and generating an answer…", "progress");
 
@@ -1592,7 +1565,8 @@ export default function InterviewPage() {
         if (window.electronAPI?.isPresentationSafeMode()) return;
         recordingStartRef.current = true;
         cancelDeviceRecovery();
-        autoAnswerEnabledRef.current = autoAnswerPreferenceRef.current;
+        // Answers are deliberately manual: a VAD pause ends only an audio
+        // segment, while the explicit Stop action submits the final transcript.
         isAiSpeakingRef.current = false;
         setError(null);
         setTranscript("");
@@ -1654,7 +1628,6 @@ export default function InterviewPage() {
             }
 
             if (!isElectron) setIsRecording(true);
-            setIsAutoMode(autoAnswerPreferenceRef.current);
             console.log("[Interview] Recording started");
         } catch (err: unknown) {
             const error = err as Error;
@@ -1757,15 +1730,21 @@ export default function InterviewPage() {
                 }
 
                 if (window.electronAPI) {
-                    // Do not save this provisional microphone-only caption. The final
-                    // Whisper result below can include both the candidate and the
-                    // selected meeting display, so it replaces this preview safely.
-                    if (finalText) {
-                        liveCaptionRef.current = `${liveCaptionRef.current} ${finalText}`.trim();
-                    }
-                    const liveCaption = `${liveCaptionRef.current} ${interim}`.trim();
+                    // Do not save the browser recognizer's microphone-only text.
+                    // It is an immediate visual preview, not verified speech, and
+                    // must never become an AI prompt. Final Whisper segments replace
+                    // it with the mixed mic + selected meeting-audio transcript.
+                    const liveCaption = TRANSCRIPTION_ARTIFACTS.has(normalizedTranscript(interim))
+                        ? ""
+                        : interim.trim();
+                    liveCaptionRef.current = "";
                     setInterimTranscript(liveCaption);
-                    if (liveCaption) window.electronAPI.sendTranscript?.(liveCaption);
+                    if (liveCaption) {
+                        window.electronAPI.sendTranscript?.(liveCaption);
+                    } else {
+                        const confirmedCaption = questionStateRef.current.current().slice(-MAX_TRANSCRIPT_LENGTH);
+                        if (confirmedCaption) window.electronAPI.sendTranscript?.(confirmedCaption);
+                    }
                     return;
                 }
 
@@ -1804,7 +1783,6 @@ export default function InterviewPage() {
                         return;
                     }
                     setIsRecording(false);
-                    setIsAutoMode(false);
                     setError("The active microphone became unavailable. Check the device and press Start to reconnect.");
                     setSystemStatus(prev => ({ ...prev, mic: false }));
                     return;
@@ -2051,7 +2029,6 @@ export default function InterviewPage() {
         // Stop capture before saving, including when there is no session to save.
         isAiSpeakingRef.current = true;
         setIsRecording(false);
-        setIsAutoMode(false);
         setIsCameraOn(false);
         setIsCameraVisible(false);
         try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
@@ -2444,7 +2421,7 @@ export default function InterviewPage() {
                         </p>
                         <p className="mt-1 text-xs leading-5 opacity-80">
                             {isScreenAudioActive
-                                ? "Microphone and the selected meeting display are active. Confirmed captions update in short, ordered segments while the conversation continues; AllyX answers after a natural pause."
+                                ? "Microphone and the selected meeting display are active. Confirmed captions update in short, ordered segments while the conversation continues. Press Stop & answer when the question is complete."
                                 : "Your microphone is active. To transcribe the interviewer, select their display above and start interviewer audio."}
                         </p>
                     </div>
@@ -2458,22 +2435,19 @@ export default function InterviewPage() {
                             Live Transcript
                         </h3>
                         <div className="flex items-center gap-2">
-                            {!isAutoMode && (
-                                <Button
-                                    size="sm"
-                                    onClick={() => {
-                                        const question = retryQuestionRef.current || questionStateRef.current.current() || transcript;
-                                        void getAiAnswer(question || undefined);
-                                    }}
-                                    disabled={isLoading || !(retryQuestion || questionStateRef.current.current().trim() || transcript.trim())}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                >
-                                    <Sparkles size={14} className="mr-1" /> {retryQuestion ? "Retry answer" : "Get Answer"}
-                                </Button>
-                            )}
+                            <Button
+                                size="sm"
+                                onClick={() => {
+                                    const question = retryQuestionRef.current || questionStateRef.current.current() || transcript;
+                                    void getAiAnswer(question || undefined);
+                                }}
+                                disabled={isLoading || !(retryQuestion || questionStateRef.current.current().trim() || transcript.trim())}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                                <Sparkles size={14} className="mr-1" /> {retryQuestion ? "Retry answer" : "Get Answer"}
+                            </Button>
                             <Button variant="ghost" size="sm" onClick={() => {
                                 questionStateRef.current.clear();
-                                pendingAutoQuestionsRef.current = [];
                                 retryQuestionRef.current = "";
                                 liveCaptionRef.current = "";
                                 setRetryQuestion("");
@@ -2511,26 +2485,6 @@ export default function InterviewPage() {
                             </span>
                         )}
                         <div className="flex flex-wrap gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    const next = !isAutoMode;
-                                    autoAnswerPreferenceRef.current = next;
-                                    setIsAutoMode(next);
-                                }}
-                                className={cn(
-                                    "gap-2 text-xs sm:text-sm transition-all duration-300",
-                                    isAutoMode
-                                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-lg shadow-emerald-500/20"
-                                        : "bg-white dark:bg-zinc-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-zinc-700"
-                                )}
-                            >
-                                <Sparkles size={14} />
-                                <span className="hidden sm:inline">{isAutoMode ? "Auto Answer ON" : "Auto Answer OFF"}</span>
-                                <span className="sm:hidden">{isAutoMode ? "Auto ON" : "Auto OFF"}</span>
-                            </Button>
-
                             <Button
                                 onClick={async () => {
                                     if (window.electronAPI) {
@@ -2658,7 +2612,7 @@ export default function InterviewPage() {
 
                     {/* Debug Info */}
                     <div className="mt-4 text-xs text-center text-gray-400">
-                        {isAutoMode ? "AI will answer automatically after you stop speaking." : "Use Get Answer when the complete question is ready."}
+                        {isFinalizingCapture ? "Finalizing the complete transcript and generating an answer…" : "Press Stop & answer after the complete question is finished."}
                     </div>
                     {/* Debug Info */}
                     <div className="mt-2 text-[10px] text-gray-300 text-center">

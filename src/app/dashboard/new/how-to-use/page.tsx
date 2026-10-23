@@ -91,8 +91,8 @@ export default function HowToUsePage() {
             border: "border-green-600/20"
         },
         {
-            title: "AI Auto Answer",
-            description: "Auto Answer waits for a pause after the question, then generates a suggestion. Turn it off when you want manual control.",
+            title: "Stop & answer",
+            description: "Start listening to capture the complete question. When it is finished, press Stop & answer to generate one suggestion from the confirmed transcript.",
             icon: <Sparkles className="w-8 h-8" />,
             color: "from-lime-500 to-emerald-500",
             bg: "bg-lime-500/10",
