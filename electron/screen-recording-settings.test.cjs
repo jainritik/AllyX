@@ -41,6 +41,7 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /handleTrusted\('capture-scanner-display'/);
     assert.match(mainSource, /screen\.getDisplayNearestPoint\(/);
     assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\)\.toDataURL\(\)/);
+    assert.match(mainSource, /captureMacOSMainDisplay\(\{ nativeImage \}\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
     assert.doesNotMatch(preloadSource, /deliverPickerCapture/);
     assert.match(preloadSource, /captureScannerDisplay:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-display'\)/);

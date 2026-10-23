@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApi, commitApiQuota, refundApiQuota } from "@/lib/api-access";
 
+const TRANSCRIPTION_ARTIFACTS = new Set([
+    "thank you",
+    "thanks",
+    "thank",
+    "thank you for watching",
+    "thanks for watching",
+]);
+
+const TRANSCRIPTION_INSTRUCTION_ECHOES = [
+    "return an empty transcript for silence",
+    "return empty transcript for silence",
+    "transcribe only intelligible spoken english",
+    "do not add greetings outros translations or text that is not audible",
+];
+
+function isTranscriptionArtifact(text: string): boolean {
+    const normalized = text.toLocaleLowerCase()
+        .replace(/[^\p{L}\p{N}\s']/gu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    return TRANSCRIPTION_ARTIFACTS.has(normalized)
+        || TRANSCRIPTION_INSTRUCTION_ECHOES.some(instruction => normalized.startsWith(instruction));
+}
+
 export async function POST(request: NextRequest) {
     let quotaReserved = false;
     let reservationId = "";
@@ -90,7 +114,11 @@ export async function POST(request: NextRequest) {
                 if (response.ok) {
                     const data = await response.json();
                     const text = typeof data.text === "string" ? data.text.trim() : "";
-                    if (!text) {
+                    // Silence and known Whisper hallucinations are not a real
+                    // transcription. Refund them here before usage is committed
+                    // so an accidental quiet segment cannot consume an account
+                    // limit or become an interview answer.
+                    if (!text || isTranscriptionArtifact(text)) {
                         await refundApiQuota(request, reservationId);
                         quotaReserved = false;
                         return NextResponse.json({ text: "" });

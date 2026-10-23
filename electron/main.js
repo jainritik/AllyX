@@ -10,7 +10,7 @@ const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./wind
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
 const { constrainNativeCaptureImage } = require('./native-capture-image');
-const { captureMacOSRegion } = require('./macos-screen-capture');
+const { captureMacOSMainDisplay, captureMacOSRegion } = require('./macos-screen-capture');
 const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
@@ -319,6 +319,29 @@ async function getScannerDisplayCapture(display) {
                 isExactRegion: true,
             };
         } catch (error) {
+            // On the primary display, Cmd+Shift+3's native equivalent is a
+            // reliable fallback if a macOS update rejects the explicit region
+            // coordinates. It still uses the customer's one-time Screen &
+            // System Audio Recording approval and never opens Chromium's picker.
+            if (display.id === screen.getPrimaryDisplay().id) {
+                try {
+                    const { image, size } = await captureMacOSMainDisplay({ nativeImage });
+                    return {
+                        source: { thumbnail: image },
+                        size,
+                        reason: null,
+                        attempts: 2,
+                        error: null,
+                        sourceCount: 1,
+                        sourceDisplayIdCount: 1,
+                        displayId: String(display.id),
+                        displayCount: screen.getAllDisplays().length,
+                        isExactRegion: true,
+                    };
+                } catch (fallbackError) {
+                    return nativeCaptureFailure(display, fallbackError);
+                }
+            }
             return nativeCaptureFailure(display, error);
         }
     }

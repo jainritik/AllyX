@@ -77,8 +77,25 @@ const TRANSCRIPTION_ARTIFACTS = new Set([
     "thanks for watching",
 ]);
 
+// Groq Whisper can occasionally echo an instruction supplied through its
+// `prompt` parameter when the input contains only room noise. These phrases
+// are never interview speech, so they must not become a visible transcript or
+// cause an answer to be generated when the customer presses Stop.
+const TRANSCRIPTION_INSTRUCTION_ECHOES = [
+    "return an empty transcript for silence",
+    "return empty transcript for silence",
+    "transcribe only intelligible spoken english",
+    "do not add greetings outros translations or text that is not audible",
+];
+
 function normalizedTranscript(text: string): string {
     return text.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s']/gu, "").replace(/\s+/g, " ").trim();
+}
+
+function isTranscriptionArtifact(text: string): boolean {
+    const normalized = normalizedTranscript(text);
+    return TRANSCRIPTION_ARTIFACTS.has(normalized)
+        || TRANSCRIPTION_INSTRUCTION_ECHOES.some(instruction => normalized.startsWith(instruction));
 }
 
 function compactContext(value: string, limit: number): string {
@@ -970,8 +987,11 @@ export default function InterviewPage() {
             formData.append('file', segment.audio, 'audio.webm');
             formData.append('model', 'whisper-large-v3-turbo');
             formData.append('language', langCode);
-            if (langCode === 'en') formData.append('prompt', 'Transcribe only intelligible spoken English from this professional interview conversation. Do not add greetings, outros, translations, or text that is not audible. Return an empty transcript for silence, music, or unclear audio.');
-            if (langCode === 'ar') formData.append('prompt', 'انسخ فقط الكلام العربي الواضح من هذه المحادثة المهنية. لا تضف تحية أو خاتمة أو ترجمة أو نصاً غير مسموع. أعد نصاً فارغاً للصمت أو الموسيقى أو الصوت غير الواضح.');
+            // Do not send natural-language instructions in Whisper's prompt
+            // field. Whisper treats it as prior transcript context and can
+            // echo it when a quiet clip has no spoken words. Language is still
+            // passed explicitly above; client and server filters reject known
+            // non-speech artifacts before they reach the transcript.
             return formData;
         };
 
@@ -1039,8 +1059,7 @@ export default function InterviewPage() {
         }
         if (segment.epoch !== transcriptionEpochRef.current) return null;
         const newText = typeof data.text === 'string' ? data.text.trim() : '';
-        const normalized = normalizedTranscript(newText);
-        if (!newText || NON_SPEECH_CAPTIONS.has(newText.toLowerCase()) || TRANSCRIPTION_ARTIFACTS.has(normalized)) {
+        if (!newText || NON_SPEECH_CAPTIONS.has(newText.toLowerCase()) || isTranscriptionArtifact(newText)) {
             setAudioCaptureStatus("waiting");
             return null;
         }
@@ -1734,7 +1753,7 @@ export default function InterviewPage() {
                     // It is an immediate visual preview, not verified speech, and
                     // must never become an AI prompt. Final Whisper segments replace
                     // it with the mixed mic + selected meeting-audio transcript.
-                    const liveCaption = TRANSCRIPTION_ARTIFACTS.has(normalizedTranscript(interim))
+                    const liveCaption = isTranscriptionArtifact(interim)
                         ? ""
                         : interim.trim();
                     liveCaptionRef.current = "";
@@ -2033,12 +2052,10 @@ export default function InterviewPage() {
         setIsCameraVisible(false);
         try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
         isRecognitionActiveRef.current = false;
-        setIsFinalizingCapture(true);
-        try {
-            await flushAndStopDesktopSTT();
-        } finally {
-            setIsFinalizingCapture(false);
-        }
+        // Ending an interview discards its in-progress recorder segment. It is
+        // not a Stop & answer action, so the overlay must never say it is
+        // generating an answer or consume an answer request while closing.
+        await flushAndStopDesktopSTT();
         stopScreenAudio();
         if (window.electronAPI) {
             void window.electronAPI.stopSystemAudioCapture().catch(console.error);

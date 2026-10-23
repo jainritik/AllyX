@@ -23,7 +23,7 @@ test('macOS scanner recovery stays on the native screenshot route after a failed
 test('macOS uses the native screenshot utility for normal full-screen and area scans', () => {
     assert.match(mainSource, /await captureMacOSRegion\(\{/);
     assert.match(mainSource, /region: display\.bounds,/);
-    assert.match(scannerSource, /CAPTURE SELECTED AREA/);
-    assert.match(scannerSource, /Capture whole display instead/);
+    assert.match(scannerSource, /CAPTURE THIS DISPLAY/);
+    assert.match(scannerSource, /Capture selected area instead/);
     assert.doesNotMatch(scannerSource, /useMacOSPicker/);
 });

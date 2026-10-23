@@ -5,7 +5,7 @@ import { Scan, X, Loader2, Target, ChevronDown } from "lucide-react";
 
 export default function ScannerFrame() {
     const [isScanning, setIsScanning] = useState(false);
-    const [captureMessage, setCaptureMessage] = useState("Place this frame over the code, then capture the selected area. Full display is a fallback for broader context.");
+    const [captureMessage, setCaptureMessage] = useState("Capture this display for the simplest scan, or resize this frame to read only the selected code.");
     const [captureFailed, setCaptureFailed] = useState(false);
     const [settingsRequired, setSettingsRequired] = useState(false);
     const [restartRequired, setRestartRequired] = useState(false);
@@ -54,7 +54,7 @@ export default function ScannerFrame() {
         }
     };
 
-    const handleScan = () => { void requestCapture(false); };
+    const handleSelectedAreaCapture = () => { void requestCapture(false); };
     const handleDisplayCapture = () => { void requestCapture(true); };
 
     const openScreenRecordingSettings = async () => {
@@ -111,7 +111,7 @@ export default function ScannerFrame() {
 
                     <div className="z-40 flex flex-col items-center gap-3">
                         <button
-                            onClick={handleScan}
+                            onClick={handleDisplayCapture}
                             disabled={isScanning}
                             className={`
                                 flex items-center gap-3 px-10 py-3 rounded-full border-2 transition-all duration-300 shadow-2xl active:scale-95
@@ -123,16 +123,16 @@ export default function ScannerFrame() {
                         >
                             <Scan size={20} strokeWidth={3} />
                             <span className="text-[14px] font-mono font-black uppercase tracking-widest leading-none">
-                                {isScanning ? 'WAIT' : 'CAPTURE SELECTED AREA'}
+                                {isScanning ? 'WAIT' : 'CAPTURE THIS DISPLAY'}
                             </span>
                         </button>
                         <button
                             type="button"
-                            onClick={handleDisplayCapture}
+                            onClick={handleSelectedAreaCapture}
                             disabled={isScanning}
                             className="rounded-md border border-emerald-200/70 px-3 py-1.5 text-[11px] font-bold text-emerald-100 transition-colors hover:bg-emerald-500/20 disabled:opacity-60"
                         >
-                            Capture whole display instead
+                            Capture selected area instead
                         </button>
                     </div>
 

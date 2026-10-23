@@ -60,8 +60,10 @@ test('only explicit Stop listening can finalise an answer', () => {
 
 test('desktop answers use only verified transcription, not a browser caption preview', () => {
     assert.match(interviewSource, /const question = confirmedQuestion \|\| \(!window\.electronAPI \? liveCaptionRef\.current\.trim\(\) : ""\)/);
-    assert.match(interviewSource, /const liveCaption = TRANSCRIPTION_ARTIFACTS\.has\(normalizedTranscript\(interim\)\)/);
+    assert.match(interviewSource, /const liveCaption = isTranscriptionArtifact\(interim\)/);
     assert.match(interviewSource, /const TRANSCRIPTION_ARTIFACTS = new Set/);
+    assert.match(interviewSource, /const TRANSCRIPTION_INSTRUCTION_ECHOES = \[/);
+    assert.doesNotMatch(interviewSource, /formData\.append\('prompt'/);
     assert.doesNotMatch(interviewSource, /liveCaptionRef\.current = `\$\{liveCaptionRef\.current\} \$\{finalText\}`/);
 });
 
@@ -71,4 +73,14 @@ test('stopping invalidates stale work without dropping an intentional final flus
     assert.match(interviewSource, /if \(discardPendingTranscription\) invalidateTranscriptionPipeline\(\)/);
     assert.match(interviewSource, /stopDesktopSTT\(false\)/);
     assert.doesNotMatch(interviewSource, /mediaRecorderRef\.current\.onstop = null/);
+});
+
+test('ending an interview closes recording without triggering Stop & answer UI', () => {
+    const start = interviewSource.indexOf('const handleEndInterview = async () =>');
+    const end = interviewSource.indexOf('endInterviewActionRef.current', start);
+    assert.ok(start >= 0 && end > start, 'end interview handler must be present');
+    const source = interviewSource.slice(start, end);
+    assert.match(source, /await flushAndStopDesktopSTT\(\);/);
+    assert.doesNotMatch(source, /flushAndStopDesktopSTT\(true\)/);
+    assert.doesNotMatch(source, /setIsFinalizingCapture\(true\)/);
 });
