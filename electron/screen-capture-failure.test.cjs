@@ -75,3 +75,15 @@ test('returns a bounded-native-timeout recovery state', () => {
     assert.equal(result.failureCode, 'capture-timeout');
     assert.equal(result.restartRequired, true);
 });
+
+test('does not direct a file or image decoding failure to Screen Recording settings', () => {
+    const result = screenCaptureFailure({
+        platform: 'darwin',
+        permissionStatus: 'denied',
+        capture: { reason: 'native-capture-error', errorCode: 'CAPTURE_FILE_INVALID', attempts: 1 },
+    });
+    assert.equal(result.failureCode, 'capture-api-error');
+    assert.equal(result.settingsRequired, undefined);
+    assert.equal(result.restartRequired, undefined);
+    assert.equal(result.diagnostics.errorCode, 'CAPTURE_FILE_INVALID');
+});

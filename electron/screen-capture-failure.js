@@ -20,6 +20,7 @@ function screenCaptureFailure({ platform, permissionStatus, capture }) {
         displayCount: Number.isInteger(capture?.displayCount) ? capture.displayCount : null,
         sourceDisplayIdCount: Number.isFinite(capture?.sourceDisplayIdCount) ? capture.sourceDisplayIdCount : 0,
         thumbnailState: typeof capture?.thumbnailState === 'string' ? capture.thumbnailState : null,
+        errorCode: typeof capture?.errorCode === 'string' ? capture.errorCode : null,
     };
 
     if (diagnostics.reason === 'display-not-found') {
@@ -67,6 +68,15 @@ function screenCaptureFailure({ platform, permissionStatus, capture }) {
             failureCode: 'capture-timeout',
             restartRequired: platform === 'darwin',
             error: 'Screen capture did not respond in time. Close System Settings and other screen-recording apps, then try Capture again.',
+            diagnostics,
+        };
+    }
+
+    if (diagnostics.reason === 'native-capture-error') {
+        return {
+            success: false,
+            failureCode: 'capture-api-error',
+            error: 'macOS could not prepare a screen image. Try Capture again; if it keeps failing, restart AllyX.',
             diagnostics,
         };
     }

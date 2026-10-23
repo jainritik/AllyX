@@ -36,12 +36,13 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /getScreenCapturePermissionStatus\(\)/);
     assert.match(mainSource, /const rendererAccepted = await deliverScannerCapture\(imageData\)/);
     assert.match(mainSource, /acknowledge-scanner-capture/);
-    assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\.crop\(crop\)\)\.toDataURL\(\)/);
+    assert.match(mainSource, /const image = capture\.isExactRegion[\s\S]*?capture\.source\.thumbnail[\s\S]*?: capture\.source\.thumbnail\.crop\(calculateCaptureCrop\(display\.bounds, capture\.size, selectionBounds\)\);/);
+    assert.match(mainSource, /const imageData = constrainNativeCaptureImage\(image\)\.toDataURL\(\)/);
     assert.match(mainSource, /handleTrusted\('capture-scanner-display'/);
     assert.match(mainSource, /screen\.getDisplayNearestPoint\(/);
     assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\)\.toDataURL\(\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
-    assert.match(preloadSource, /deliverPickerCapture:\s*\(imageData\)\s*=>\s*ipcRenderer\.invoke\('deliver-picker-capture', imageData\)/);
+    assert.doesNotMatch(preloadSource, /deliverPickerCapture/);
     assert.match(preloadSource, /captureScannerDisplay:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-display'\)/);
 });
 
@@ -77,9 +78,8 @@ test('native source lookup is bounded and keeps scanner capture on its selected 
     assert.match(mainSource, /sources\.length > 1\r?\n\s*\? 'Choose the display that contains your meeting/);
 });
 
-test('the macOS picker recovery never silently chooses a screen source', () => {
-    assert.match(mainSource, /setDisplayMediaRequestHandler/);
-    assert.match(mainSource, /useSystemPicker: true/);
-    assert.match(mainSource, /callback\(null\)/);
-    assert.match(mainSource, /validatePickerCaptureImage\(imageData\)/);
+test('the macOS scanner does not fall back to Chromium’s unstable display-media picker', () => {
+    assert.doesNotMatch(mainSource, /setDisplayMediaRequestHandler/);
+    assert.doesNotMatch(mainSource, /validatePickerCaptureImage/);
+    assert.doesNotMatch(scannerSource, /navigator\.mediaDevices\?\.getDisplayMedia/);
 });

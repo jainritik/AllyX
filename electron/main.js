@@ -10,9 +10,9 @@ const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./wind
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
 const { constrainNativeCaptureImage } = require('./native-capture-image');
+const { captureMacOSRegion } = require('./macos-screen-capture');
 const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
-const { validatePickerCaptureImage } = require('./screen-picker-image');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
 // AllyX currently presents the macOS Screen & System Audio Recording permission
@@ -96,31 +96,6 @@ const DEEP_LINK_SCHEME = 'allyx';
 let isQuitting = false;
 let pendingDesktopOAuthCallback = null;
 let isInitialized = false;
-
-function canUseMacOSSystemScreenPicker() {
-    if (process.platform !== 'darwin') return false;
-    const darwinMajor = Number.parseInt(os.release().split('.')[0], 10);
-    // Electron exposes the experimental system picker beginning on macOS 15
-    // (Darwin 24). It remains an explicit user selection, never a silent source.
-    return Number.isInteger(darwinMajor) && darwinMajor >= 24;
-}
-
-function isTrustedScannerDisplayRequest(request) {
-    try {
-        return Boolean(
-            request?.frame
-            && scannerFrameWindow
-            && !scannerFrameWindow.isDestroyed()
-            && request.frame === scannerFrameWindow.webContents.mainFrame
-            && request.securityOrigin === APP_ORIGIN
-            && request.videoRequested
-            && !request.audioRequested
-            && request.userGesture,
-        );
-    } catch {
-        return false;
-    }
-}
 
 function registerDesktopProtocol() {
     if (process.defaultApp && process.argv.length >= 2) {
@@ -266,15 +241,99 @@ async function getNativeDisplayCapture(display) {
     });
 }
 
+function nativeCaptureFailure(display, error) {
+    const errorCode = typeof error?.code === 'string' ? error.code : null;
+    return {
+        source: null,
+        size: null,
+        // Only a failed screencapture command can reasonably be a macOS
+        // Screen Recording permission problem. File/decode/region failures
+        // have different remedies, so keep them out of the Settings loop.
+        reason: errorCode === 'CAPTURE_COMMAND_FAILED'
+            ? 'capture-error'
+            : errorCode === 'CAPTURE_TIMEOUT'
+                ? 'capture-timeout'
+                : 'native-capture-error',
+        errorCode,
+        attempts: 1,
+        error: error instanceof Error ? error : null,
+        sourceCount: 0,
+        sourceDisplayIdCount: 0,
+        displayId: String(display?.id ?? ''),
+        displayCount: screen.getAllDisplays().length,
+    };
+}
+
+async function getScannerAreaCapture(display, selectionBounds) {
+    // Chromium's getDisplayMedia system-picker stream can time out on macOS
+    // 26 despite a granted TCC permission. The macOS screenshot utility uses
+    // the same OS authorization but returns an image directly, so an explicit
+    // Capture click can keep working without a second picker or a stale
+    // desktopCapturer thumbnail. Its temporary PNG is read only in memory and
+    // deleted before this function returns.
+    if (process.platform === 'darwin') {
+        try {
+            const { image, size } = await captureMacOSRegion({
+                region: selectionBounds,
+                nativeImage,
+            });
+            return {
+                source: { thumbnail: image },
+                size,
+                reason: null,
+                attempts: 1,
+                error: null,
+                sourceCount: 1,
+                sourceDisplayIdCount: 1,
+                displayId: String(display.id),
+                displayCount: screen.getAllDisplays().length,
+                isExactRegion: true,
+            };
+        } catch (error) {
+            return nativeCaptureFailure(display, error);
+        }
+    }
+    return getNativeDisplayCapture(display);
+}
+
+async function getScannerDisplayCapture(display) {
+    if (process.platform === 'darwin') {
+        try {
+            // Capture the display containing the scanner frame. `-D 1` would
+            // always choose the primary monitor, which is incorrect when the
+            // user places the scanner on an external display.
+            const { image, size } = await captureMacOSRegion({
+                region: display.bounds,
+                nativeImage,
+            });
+            return {
+                source: { thumbnail: image },
+                size,
+                reason: null,
+                attempts: 1,
+                error: null,
+                sourceCount: 1,
+                sourceDisplayIdCount: 1,
+                displayId: String(display.id),
+                displayCount: screen.getAllDisplays().length,
+                isExactRegion: true,
+            };
+        } catch (error) {
+            return nativeCaptureFailure(display, error);
+        }
+    }
+    return getNativeDisplayCapture(display);
+}
+
 function nativeScreenCaptureFailure(capture) {
     const result = screenCaptureFailure({
         platform: process.platform,
         permissionStatus: getScreenCapturePermissionStatus(),
         capture,
     });
-    if (result.failureCode === 'no-pixels' && canUseMacOSSystemScreenPicker()) {
-        result.pickerFallbackAvailable = true;
-    }
+    // Do not send customers back to Chromium's getDisplayMedia picker here.
+    // That is the stream that timed out before returning video frames on
+    // macOS 26. Native capture is the normal and retryable path.
     return result;
 }
 
@@ -339,6 +398,9 @@ function createScannerFrame() {
             nodeIntegration: false,
             webSecurity: true,
             partition: 'persist:main',
+            // Keep capture status and retry controls responsive if macOS
+            // temporarily moves focus away from this compact window.
+            backgroundThrottling: false,
         }
     });
     scannerFrameWindow = frame;
@@ -752,6 +814,7 @@ function setupIpcHandlers() {
             return { success: false, failureCode: 'capture-in-progress', error: 'A screen capture is already being processed. Wait for it to finish.' };
         }
         scannerCaptureInFlight = true;
+        let floatingIconWasVisible = false;
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!scannerFrameWindow || scannerFrameWindow.isDestroyed()) {
@@ -782,22 +845,31 @@ function setupIpcHandlers() {
                 return { success: false, failureCode: 'invalid-capture-area', error: 'The Screen Capture area is invalid. Reopen it and try again.' };
             }
 
-            // Hide the selection chrome for the native snapshot, then restore it.
+            // Hide AllyX's own capture chrome for the native snapshot, then
+            // restore it. The captured image should contain the selected text,
+            // not the scanner or floating assistant controls.
+            floatingIconWasVisible = Boolean(floatingIconWindow && !floatingIconWindow.isDestroyed() && floatingIconWindow.isVisible());
             scannerFrameWindow?.hide();
+            if (floatingIconWasVisible) floatingIconWindow?.hide();
             // Give macOS a compositor turn after hiding the selection frame.
             // This avoids a transient empty thumbnail immediately after focus.
             await new Promise(resolve => setTimeout(resolve, 350));
-            const capture = await getNativeDisplayCapture(display);
+            const capture = await getScannerAreaCapture(display, selectionBounds);
             if (!capture.source || !capture.size) {
                 const result = nativeScreenCaptureFailure(capture);
                 console.warn('[Scanner] No usable screen image:', result.diagnostics);
                 return result;
             }
             try {
-                const crop = calculateCaptureCrop(display.bounds, capture.size, selectionBounds);
+                // The macOS utility has already captured the exact selection
+                // rectangle. Other platforms still receive a full thumbnail
+                // and need the geometry crop below.
+                const image = capture.isExactRegion
+                    ? capture.source.thumbnail
+                    : capture.source.thumbnail.crop(calculateCaptureCrop(display.bounds, capture.size, selectionBounds));
                 // Retina-sized scans can otherwise create a very large data URL
                 // and stall the renderer while it receives and OCRs the image.
-                const imageData = constrainNativeCaptureImage(capture.source.thumbnail.crop(crop)).toDataURL();
+                const imageData = constrainNativeCaptureImage(image).toDataURL();
                 const rendererAccepted = await deliverScannerCapture(imageData);
                 if (!rendererAccepted) {
                     return {
@@ -834,17 +906,18 @@ function setupIpcHandlers() {
         } finally {
             scannerCaptureInFlight = false;
             if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
+            if (!isPresentationSafeMode && floatingIconWasVisible && floatingIconWindow && !floatingIconWindow.isDestroyed()) floatingIconWindow.showInactive();
         }
     });
 
     // Full-display capture intentionally does not calculate an area crop.
-    // It provides the Cmd+Shift+3-style recovery path when a customer wants
-    // the complete display containing the scanner frame.
+    // It captures the complete display containing the scanner frame.
     handleTrusted('capture-scanner-display', async () => {
         if (scannerCaptureInFlight) {
             return { success: false, failureCode: 'capture-in-progress', error: 'A screen capture is already being processed. Wait for it to finish.' };
         }
         scannerCaptureInFlight = true;
+        let floatingIconWasVisible = false;
         try {
             if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
             if (!scannerFrameWindow || scannerFrameWindow.isDestroyed()) {
@@ -857,9 +930,11 @@ function setupIpcHandlers() {
             });
             if (!display) return { success: false, error: 'AllyX could not identify the display to capture. Reopen Screen Capture and try again.' };
 
+            floatingIconWasVisible = Boolean(floatingIconWindow && !floatingIconWindow.isDestroyed() && floatingIconWindow.isVisible());
             scannerFrameWindow.hide();
+            if (floatingIconWasVisible) floatingIconWindow?.hide();
             await new Promise(resolve => setTimeout(resolve, 350));
-            const capture = await getNativeDisplayCapture(display);
+            const capture = await getScannerDisplayCapture(display);
             if (!capture.source || !capture.size) {
                 const result = nativeScreenCaptureFailure(capture);
                 console.warn('[Scanner] No usable full-display image:', result.diagnostics);
@@ -899,33 +974,13 @@ function setupIpcHandlers() {
         } finally {
             scannerCaptureInFlight = false;
             if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
+            if (!isPresentationSafeMode && floatingIconWasVisible && floatingIconWindow && !floatingIconWindow.isDestroyed()) floatingIconWindow.showInactive();
         }
     });
 
     handleTrusted('acknowledge-scanner-capture', async (_event, captureId) => ({
         success: typeof captureId === 'string' && settlePendingScannerCapture(captureId, true),
     }));
-
-    handleTrusted('deliver-picker-capture', async (_event, imageData) => {
-        if (scannerCaptureInFlight || scannerOcrInFlight || pendingScannerCapture) {
-            return {
-                success: false,
-                error: 'The previous screen capture is still being read. Wait for it to finish before trying again.',
-            };
-        }
-        const validation = validatePickerCaptureImage(imageData);
-        if (!validation.valid) return { success: false, error: validation.error };
-        const rendererAccepted = await deliverScannerCapture(imageData);
-        if (!rendererAccepted) {
-            return {
-                success: false,
-                error: 'AllyX was not ready to read the selected image. Reopen Screen Capture and try again.',
-            };
-        }
-        floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading selected text…', tone: 'progress' });
-        closeScannerFrame();
-        return { success: true };
-    });
 
     handleTrusted('set-scanner-processing', async (_event, active) => {
         scannerOcrInFlight = Boolean(active);
@@ -1213,7 +1268,7 @@ async function initialize() {
     initPlatform();
     registerDesktopProtocol();
     const appSession = session.fromPartition('persist:main');
-    const allowedPermission = (wc, permission) => {
+    const allowedPermission = (wc, permission, details) => {
         try {
             return isAllowedMainWindowMediaPermission({
                 isMainWindow: wc === mainAppWindow?.webContents,
@@ -1221,25 +1276,13 @@ async function initialize() {
                     && new URL(wc.getURL()).pathname === '/scanner-frame',
                 isTrustedOrigin: new URL(wc.getURL()).origin === APP_ORIGIN,
                 permission,
+                details,
             });
         }
         catch { return false; }
     };
-    appSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowedPermission(wc, permission)));
-    appSession.setPermissionCheckHandler((wc, permission) => allowedPermission(wc, permission));
-    if (canUseMacOSSystemScreenPicker()) {
-        // The native picker is the recovery path for an empty desktopCapturer
-        // thumbnail. Electron skips this handler when the picker is available.
-        // If the picker is unavailable, deny rather than silently selecting a
-        // display or collecting audio without the person's choice.
-        appSession.setDisplayMediaRequestHandler((request, callback) => {
-            if (!isTrustedScannerDisplayRequest(request)) {
-                callback(null);
-                return;
-            }
-            callback(null);
-        }, { useSystemPicker: true });
-    }
+    appSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(allowedPermission(wc, permission, details)));
+    appSession.setPermissionCheckHandler((wc, permission, _requestingOrigin, details) => allowedPermission(wc, permission, details));
     session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     createMainAppWindow();
