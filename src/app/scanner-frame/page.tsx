@@ -42,7 +42,7 @@ export default function ScannerFrame() {
             setCaptureFailed(!result.success);
             setSettingsRequired(Boolean(result.settingsRequired));
             setRestartRequired(Boolean(result.restartRequired));
-            setCaptureMessage(result.success ? "Captured. Reading the selected text…" : (result.error || "Capture failed. Try again."));
+            setCaptureMessage(result.success ? (wholeDisplay ? "Captured. Reading this display…" : "Captured. Reading the selected text…") : (result.error || "Capture failed. Try again."));
         } catch (err) {
             console.error("Scan failed:", err);
             setCaptureFailed(true);

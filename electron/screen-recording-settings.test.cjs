@@ -42,6 +42,8 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /screen\.getDisplayNearestPoint\(/);
     assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\)\.toDataURL\(\)/);
     assert.match(mainSource, /captureMacOSMainDisplay\(\{ nativeImage \}\)/);
+    assert.match(mainSource, /const electronCapture = await getNativeDisplayCapture\(display\);[\s\S]*?if \(electronCapture\.source && electronCapture\.size\)\s*\{[\s\S]*?captureMethod: 'electron'/);
+    assert.match(mainSource, /if \(display\.id === primaryDisplay\.id\)[\s\S]*?captureMacOSMainDisplay\(\{ nativeImage \}\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
     assert.doesNotMatch(preloadSource, /deliverPickerCapture/);
     assert.match(preloadSource, /captureScannerDisplay:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-display'\)/);

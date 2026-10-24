@@ -1922,11 +1922,23 @@ export default function InterviewPage() {
                 window.electronAPI?.sendOverlayStatus?.(message, "error");
                 return;
             }
+            // Keep the extracted text visible in both the dashboard and native
+            // overlay, then treat a successful capture like a completed manual
+            // question. Customers should not have to repeat an Ask action after
+            // a capture they explicitly initiated.
             setManualQuestion(text);
             window.electronAPI?.sendCapturedText?.(text);
             setError(null);
-            window.electronAPI?.sendOverlayStatus?.("Text captured. Review it, then press Ask.", "success");
-            showToast("Text captured. Review it, then press Ask.", "success");
+            if (!contextReady || !accessReady) {
+                const message = "Text captured. Finish interview setup before generating an answer.";
+                window.electronAPI?.sendOverlayStatus?.(message, "error");
+                showToast(message, "info");
+                return;
+            }
+            pendingCapturedQuestionRef.current = text;
+            window.electronAPI?.sendOverlayStatus?.("Text captured. Generating answer…", "progress");
+            showToast("Text captured. Generating answer…", "success");
+            processPendingCapturedAnswerRef.current();
         } catch (err) {
             console.error("[Scanner] OCR processing failed:", err);
             const message = err instanceof Error
@@ -1942,7 +1954,7 @@ export default function InterviewPage() {
             setIsScreenCapturing(false);
             void window.electronAPI?.setScannerProcessing?.(false);
         }
-    }, [showToast]);
+    }, [accessReady, contextReady, showToast]);
     processCapturedImageRef.current = processCapturedImage;
 
     const captureBrowserScreen = useCallback(async () => {

@@ -265,12 +265,15 @@ function nativeCaptureFailure(display, error) {
 }
 
 async function getScannerAreaCapture(display, selectionBounds) {
-    // Chromium's getDisplayMedia system-picker stream can time out on macOS
-    // 26 despite a granted TCC permission. The macOS screenshot utility uses
-    // the same OS authorization but returns an image directly, so an explicit
-    // Capture click can keep working without a second picker or a stale
-    // desktopCapturer thumbnail. Its temporary PNG is read only in memory and
-    // deleted before this function returns.
+    // Request pixels from Electron first. `desktopCapturer` runs in the AllyX
+    // process, so macOS evaluates the Screen & System Audio Recording approval
+    // shown for AllyX in System Settings. A spawned `/usr/sbin/screencapture`
+    // helper can have a different TCC identity and must only be a fallback.
+    const electronCapture = await getNativeDisplayCapture(display);
+    if (electronCapture.source && electronCapture.size) {
+        return { ...electronCapture, isExactRegion: false, captureMethod: 'electron' };
+    }
+
     if (process.platform === 'darwin') {
         try {
             const { image, size } = await captureMacOSRegion({
@@ -281,27 +284,75 @@ async function getScannerAreaCapture(display, selectionBounds) {
                 source: { thumbnail: image },
                 size,
                 reason: null,
-                attempts: 1,
+                attempts: (electronCapture.attempts || 0) + 1,
                 error: null,
                 sourceCount: 1,
                 sourceDisplayIdCount: 1,
                 displayId: String(display.id),
                 displayCount: screen.getAllDisplays().length,
                 isExactRegion: true,
+                captureMethod: 'macos-fallback',
             };
         } catch (error) {
             return nativeCaptureFailure(display, error);
         }
     }
-    return getNativeDisplayCapture(display);
+    return electronCapture;
 }
 
 async function getScannerDisplayCapture(display) {
+    // This is the primary path for the full-display Capture button. It keeps
+    // the read inside the signed Electron application instead of delegating it
+    // to a separately-authorized macOS command-line process.
+    const electronCapture = await getNativeDisplayCapture(display);
+    if (electronCapture.source && electronCapture.size) {
+        return { ...electronCapture, isExactRegion: false, captureMethod: 'electron' };
+    }
+
     if (process.platform === 'darwin') {
+        const primaryDisplay = screen.getPrimaryDisplay();
+        if (display.id === primaryDisplay.id) {
+            try {
+                // Cmd+Shift+3-equivalent fallback for a primary display.
+                const { image, size } = await captureMacOSMainDisplay({ nativeImage });
+                return {
+                    source: { thumbnail: image },
+                    size,
+                    reason: null,
+                    attempts: (electronCapture.attempts || 0) + 1,
+                    error: null,
+                    sourceCount: 1,
+                    sourceDisplayIdCount: 1,
+                    displayId: String(display.id),
+                    displayCount: screen.getAllDisplays().length,
+                    isExactRegion: true,
+                    captureMethod: 'macos-fallback',
+                };
+            } catch (primaryCaptureError) {
+                try {
+                    const { image, size } = await captureMacOSRegion({
+                        region: display.bounds,
+                        nativeImage,
+                    });
+                    return {
+                        source: { thumbnail: image },
+                        size,
+                        reason: null,
+                        attempts: (electronCapture.attempts || 0) + 2,
+                        error: null,
+                        sourceCount: 1,
+                        sourceDisplayIdCount: 1,
+                        displayId: String(display.id),
+                        displayCount: screen.getAllDisplays().length,
+                        isExactRegion: true,
+                        captureMethod: 'macos-fallback',
+                    };
+                } catch (regionCaptureError) {
+                    return nativeCaptureFailure(display, regionCaptureError);
+                }
+            }
+        }
         try {
-            // Capture the display containing the scanner frame. `-D 1` would
-            // always choose the primary monitor, which is incorrect when the
-            // user places the scanner on an external display.
             const { image, size } = await captureMacOSRegion({
                 region: display.bounds,
                 nativeImage,
@@ -310,42 +361,20 @@ async function getScannerDisplayCapture(display) {
                 source: { thumbnail: image },
                 size,
                 reason: null,
-                attempts: 1,
+                attempts: (electronCapture.attempts || 0) + 1,
                 error: null,
                 sourceCount: 1,
                 sourceDisplayIdCount: 1,
                 displayId: String(display.id),
                 displayCount: screen.getAllDisplays().length,
                 isExactRegion: true,
+                captureMethod: 'macos-fallback',
             };
         } catch (error) {
-            // On the primary display, Cmd+Shift+3's native equivalent is a
-            // reliable fallback if a macOS update rejects the explicit region
-            // coordinates. It still uses the customer's one-time Screen &
-            // System Audio Recording approval and never opens Chromium's picker.
-            if (display.id === screen.getPrimaryDisplay().id) {
-                try {
-                    const { image, size } = await captureMacOSMainDisplay({ nativeImage });
-                    return {
-                        source: { thumbnail: image },
-                        size,
-                        reason: null,
-                        attempts: 2,
-                        error: null,
-                        sourceCount: 1,
-                        sourceDisplayIdCount: 1,
-                        displayId: String(display.id),
-                        displayCount: screen.getAllDisplays().length,
-                        isExactRegion: true,
-                    };
-                } catch (fallbackError) {
-                    return nativeCaptureFailure(display, fallbackError);
-                }
-            }
             return nativeCaptureFailure(display, error);
         }
     }
-    return getNativeDisplayCapture(display);
+    return electronCapture;
 }
 
 function nativeScreenCaptureFailure(capture) {

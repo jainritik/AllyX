@@ -20,9 +20,20 @@ test('macOS scanner recovery stays on the native screenshot route after a failed
     assert.doesNotMatch(recoveryControls, /captureFailed && !settingsRequired && !restartRequired/);
 });
 
-test('macOS uses the native screenshot utility for normal full-screen and area scans', () => {
-    assert.match(mainSource, /await captureMacOSRegion\(\{/);
-    assert.match(mainSource, /region: display\.bounds,/);
+test('macOS captures through AllyX first, with the native screenshot utility as recovery', () => {
+    const areaStart = mainSource.indexOf('async function getScannerAreaCapture');
+    const displayStart = mainSource.indexOf('async function getScannerDisplayCapture');
+    const recoveryStart = mainSource.indexOf('function nativeScreenCaptureFailure');
+    assert.ok(areaStart >= 0 && displayStart > areaStart && recoveryStart > displayStart);
+    const areaCapture = mainSource.slice(areaStart, displayStart);
+    const displayCapture = mainSource.slice(displayStart, recoveryStart);
+
+    assert.match(areaCapture, /const electronCapture = await getNativeDisplayCapture\(display\);/);
+    assert.match(displayCapture, /const electronCapture = await getNativeDisplayCapture\(display\);/);
+    assert.match(areaCapture, /captureMethod: 'electron'/);
+    assert.match(displayCapture, /captureMethod: 'electron'/);
+    assert.match(areaCapture, /await captureMacOSRegion\(\{/);
+    assert.match(displayCapture, /captureMacOSMainDisplay\(\{ nativeImage \}\)/);
     assert.match(scannerSource, /CAPTURE THIS DISPLAY/);
     assert.match(scannerSource, /Capture selected area instead/);
     assert.doesNotMatch(scannerSource, /useMacOSPicker/);

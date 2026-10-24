@@ -14,7 +14,7 @@ function captureProcessingSource() {
     return interviewSource.slice(start, end);
 }
 
-test('screen capture keeps recognized text for review and does not spend an AI request automatically', () => {
+test('a successful screen capture preserves recognized text and immediately queues an answer', () => {
     const source = captureProcessingSource();
     const successStart = source.indexOf('setManualQuestion(text);');
     const successEnd = source.indexOf('} catch (err)', successStart);
@@ -23,8 +23,10 @@ test('screen capture keeps recognized text for review and does not spend an AI r
 
     assert.match(successPath, /setManualQuestion\(text\);/);
     assert.match(successPath, /sendCapturedText\?\.\(text\)/);
-    assert.match(successPath, /Text captured\. Review it, then press Ask\./);
-    assert.doesNotMatch(successPath, /getAiAnswer\(/, 'capturing text must not automatically invoke AI');
+    assert.match(successPath, /pendingCapturedQuestionRef\.current = text;/);
+    assert.match(successPath, /Text captured\. Generating answer…/);
+    assert.match(successPath, /processPendingCapturedAnswerRef\.current\(\);/);
+    assert.match(successPath, /Finish interview setup before generating an answer\./);
 });
 
 test('screen capture reports live OCR progress and allows a full-display read enough time to finish', () => {
@@ -35,11 +37,11 @@ test('screen capture reports live OCR progress and allows a full-display read en
     assert.match(source, /\), 60000,/);
 });
 
-test('the overlay exposes captured text in its editable Ask workflow', () => {
+test('the overlay shows captured text and the automatic-answer state', () => {
     assert.match(overlaySource, /api\.onOverlayCapturedText\(text=>\{manual\.value=text;/);
-    assert.match(overlaySource, /Text captured\. Review it, then press Ask\./);
+    assert.match(overlaySource, /Text captured\. Generating answer…/);
     assert.match(overlaySource, /askButton\.onclick=ask/);
-    assert.doesNotMatch(overlaySource, /result\.success\)\{setStatus\('Generating answer…','progress'\);manual\.value=''/);
+    assert.doesNotMatch(overlaySource, /Review it, then press Ask/);
 });
 
 test('the bundled local OCR worker, core, and English language data are available to the interview renderer', () => {
