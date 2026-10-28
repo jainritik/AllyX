@@ -44,6 +44,11 @@ test('the overlay shows captured text and the automatic-answer state', () => {
     assert.doesNotMatch(overlaySource, /Review it, then press Ask/);
 });
 
+test('the overlay explains a pending screen-capture setup instead of calling it a closed scanner', () => {
+    assert.match(overlaySource, /const message=result\.error\|\|result\.message\|\|\(result\.active\?'Position the frame and press Capture\.'\:'Scanner closed\.'\);/);
+    assert.match(overlaySource, /result\.setupState\?'progress':'success'/);
+});
+
 test('the bundled local OCR worker, core, and English language data are available to the interview renderer', () => {
     const assets = [
         ['tesseract/worker.min.js', 100_000],
