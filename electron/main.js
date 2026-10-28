@@ -13,6 +13,7 @@ const { constrainNativeCaptureImage } = require('./native-capture-image');
 const { captureMacOSMainDisplay, captureMacOSRegion } = require('./macos-screen-capture');
 const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
+const { resolveScreenCaptureSetup } = require('./screen-capture-setup');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
 // AllyX currently presents the macOS Screen & System Audio Recording permission
@@ -79,6 +80,8 @@ let scannerCaptureInFlight = false;
 let scannerOcrInFlight = false;
 let pendingScannerCapture = null;
 let scannerCaptureSequence = 0;
+let screenCaptureSetupProbePromise = null;
+let screenCaptureVerifiedInProcess = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -179,6 +182,115 @@ function getScreenCapturePermissionStatus() {
         console.warn('[Scanner] Could not read macOS Screen Recording status:', error);
         return 'unknown';
     }
+}
+
+function isRunningFromMountedDmg() {
+    if (process.platform !== 'darwin') return false;
+    try {
+        // A TCC decision made for a temporary copy on a mounted installer can
+        // belong to a different path than the installed application. Never
+        // request Screen Recording from that temporary copy.
+        return app.getAppPath().startsWith('/Volumes/');
+    } catch (error) {
+        console.warn('[Scanner] Could not read the app path for capture setup:', error);
+        return false;
+    }
+}
+
+function getScreenCaptureSetup(options = {}) {
+    const permissionStatus = getScreenCapturePermissionStatus();
+    return resolveScreenCaptureSetup({
+        platform: process.platform,
+        permissionStatus,
+        isRunningFromMountedDmg: isRunningFromMountedDmg(),
+        // A source returned by the native service is stronger evidence than a
+        // short-lived stale `not-determined` value. Keep it only for this app
+        // process and never let it override an explicit later denial.
+        sourceAvailable: screenCaptureVerifiedInProcess
+            && permissionStatus !== 'denied'
+            && permissionStatus !== 'restricted',
+        ...options,
+    });
+}
+
+function getPassiveScreenCaptureSetup() {
+    return getScreenCaptureSetup();
+}
+
+function screenCaptureSetupMessage(state) {
+    switch (state) {
+        case 'install-required':
+            return 'Install AllyX in Applications before enabling Screen Capture.';
+        case 'awaiting-consent':
+            return 'macOS is waiting for your Screen & System Audio Recording decision.';
+        case 'restart-required':
+            return 'Screen & System Audio Recording was enabled. Restart AllyX once to finish setup.';
+        case 'settings-required':
+            return 'Allow AllyX in System Settings → Privacy & Security → Screen & System Audio Recording, then restart AllyX.';
+        case 'capture-unavailable':
+            return 'macOS could not prepare Screen Capture yet. Close System Settings and try again.';
+        default:
+            return 'Screen Capture setup is not ready yet.';
+    }
+}
+
+async function prepareScreenCaptureSetup() {
+    // An explicit scanner action verifies that a "granted" status can really
+    // enumerate a display. Passive setup/status checks deliberately skip this
+    // probe so they never create a surprise macOS consent request.
+    const beforeProbe = getScreenCaptureSetup({ probeOnGranted: true });
+    if (!beforeProbe.shouldProbe) return beforeProbe;
+    if (screenCaptureSetupProbePromise) return screenCaptureSetupProbePromise;
+
+    const initialPermissionStatus = beforeProbe.permissionStatus;
+    screenCaptureSetupProbePromise = (async () => {
+        let capture = null;
+        try {
+            // This is intentionally a single, tiny native request. Its only
+            // job is to let macOS show its own first-use consent dialog before
+            // we create any scanner UI. It never retries behind that dialog.
+            // Any selectable display is enough to validate the macOS capture
+            // service here. The later, real capture still maps the scanner
+            // frame to its exact display before it reads pixels.
+            capture = await getScreenSourcesWithRetry({
+                getSources: options => desktopCapturer.getSources(options),
+                options: {
+                    types: ['screen'],
+                    thumbnailSize: { width: 16, height: 16 },
+                    fetchWindowIcons: false,
+                },
+                attempts: 1,
+                retryDelays: [],
+                timeoutMs: 4500,
+            });
+        } catch (error) {
+            console.warn('[Scanner] Native capture setup probe failed:', error);
+        }
+
+        const permissionStatus = getScreenCapturePermissionStatus();
+        if (capture?.sources?.length) screenCaptureVerifiedInProcess = true;
+        const setup = resolveScreenCaptureSetup({
+            platform: process.platform,
+            permissionStatus,
+            isRunningFromMountedDmg: isRunningFromMountedDmg(),
+            probeComplete: true,
+            sourceAvailable: Boolean(capture?.sources?.length),
+            grantedDuringProbe: initialPermissionStatus === 'not-determined' && permissionStatus === 'granted',
+            probeOnGranted: true,
+        });
+        return {
+            ...setup,
+            diagnostics: capture ? {
+                reason: capture.reason || null,
+                attempts: capture.attempts || 0,
+                sourceCount: capture.sourceCount || 0,
+            } : undefined,
+        };
+    })().finally(() => {
+        screenCaptureSetupProbePromise = null;
+    });
+
+    return screenCaptureSetupProbePromise;
 }
 
 function getMicrophonePermissionStatus() {
@@ -378,6 +490,7 @@ async function getScannerDisplayCapture(display) {
 }
 
 function nativeScreenCaptureFailure(capture) {
+    if (!capture?.source) screenCaptureVerifiedInProcess = false;
     const result = screenCaptureFailure({
         platform: process.platform,
         permissionStatus: getScreenCapturePermissionStatus(),
@@ -817,6 +930,19 @@ function setupIpcHandlers() {
             closeScannerFrame();
             return { active: false };
         }
+        // Ask macOS for consent before creating the always-on-top scanner.
+        // In particular, a not-determined status must leave the native consent
+        // dialog unobstructed instead of opening a scanner that immediately
+        // reports a red capture failure behind it.
+        const setup = await prepareScreenCaptureSetup();
+        if (setup.state !== 'ready') {
+            return {
+                active: false,
+                setupState: setup.state,
+                permissionStatus: setup.permissionStatus,
+                message: screenCaptureSetupMessage(setup.state),
+            };
+        }
         return createScannerFrame();
     });
 
@@ -839,11 +965,16 @@ function setupIpcHandlers() {
     // Keep the first-use setup in one place. This check does not request or
     // infer consent: macOS remains the source of truth and the customer makes
     // the final choice in its own prompt or Settings pane.
-    handleTrusted('get-desktop-permissions', async () => ({
-        screen: getScreenCapturePermissionStatus(),
-        microphone: getMicrophonePermissionStatus(),
-        platform: process.platform,
-    }));
+    handleTrusted('get-desktop-permissions', async () => {
+        const screenCaptureSetup = getPassiveScreenCaptureSetup();
+        return {
+            screen: screenCaptureSetup.permissionStatus,
+            microphone: getMicrophonePermissionStatus(),
+            platform: process.platform,
+            screenCaptureSetup: screenCaptureSetup.state,
+            isRunningFromMountedDmg: isRunningFromMountedDmg(),
+        };
+    });
 
     handleTrusted('request-microphone-access', async () => {
         if (process.platform !== 'darwin') {
@@ -1102,6 +1233,18 @@ function setupIpcHandlers() {
 
     const listSystemAudioSources = async () => {
         if (isPresentationSafeMode) return { success: false, sources: [], error: 'Presentation Safe Mode is active.' };
+        // Background display enumeration should never create a second macOS
+        // consent request. The explicit Screen Capture action owns first-use
+        // consent; this handler only runs after the passive status is ready.
+        const setup = getPassiveScreenCaptureSetup();
+        if (setup.state !== 'ready') {
+            return {
+                success: false,
+                sources: [],
+                setupState: setup.state,
+                error: screenCaptureSetupMessage(setup.state),
+            };
+        }
         const result = await readSystemAudioSources();
         if (!result.sources.length) {
             console.warn('[Meeting Audio] No usable display sources:', {

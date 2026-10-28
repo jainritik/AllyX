@@ -54,13 +54,20 @@ export interface ElectronAPI {
     onUpdateAvailable: (callback: (version: string) => void) => () => void;
     onUpdateReady: (callback: () => void) => () => void;
     // Screen capture
-    toggleScannerFrame: () => Promise<{ active: boolean; error?: string }>;
+    toggleScannerFrame: () => Promise<{
+        active: boolean;
+        error?: string;
+        message?: string;
+        permissionStatus?: string;
+        setupState?: 'ready' | 'install-required' | 'consent-probe' | 'capture-probe' | 'awaiting-consent' | 'restart-required' | 'settings-required' | 'capture-unavailable';
+    }>;
     captureScannerArea: () => Promise<{
         success: boolean;
         error?: string;
         failureCode?: 'capture-in-progress' | 'display-changed' | 'display-identity-unavailable' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';
         settingsRequired?: boolean;
         restartRequired?: boolean;
+        setupPending?: boolean;
     }>;
     captureScannerDisplay: () => Promise<{
         success: boolean;
@@ -68,11 +75,18 @@ export interface ElectronAPI {
         failureCode?: 'capture-in-progress' | 'permission-denied' | 'permission-required' | 'capture-timeout' | 'no-pixels' | 'capture-api-error' | 'renderer-not-ready';
         settingsRequired?: boolean;
         restartRequired?: boolean;
+        setupPending?: boolean;
     }>;
     acknowledgeScannerCapture: (captureId: string) => Promise<{ success: boolean }>;
     setScannerProcessing: (active: boolean) => Promise<{ success: boolean; active: boolean }>;
     openScreenRecordingSettings: () => Promise<{ success: boolean; error?: string }>;
-    getDesktopPermissions: () => Promise<{ screen: string; microphone: string; platform: string }>;
+    getDesktopPermissions: () => Promise<{
+        screen: string;
+        microphone: string;
+        platform: string;
+        screenCaptureSetup?: 'ready' | 'install-required' | 'consent-probe' | 'capture-probe' | 'awaiting-consent' | 'restart-required' | 'settings-required' | 'capture-unavailable';
+        isRunningFromMountedDmg?: boolean;
+    }>;
     requestMicrophoneAccess: () => Promise<{ status: string; granted: boolean }>;
     onProcessOcr: (callback: (data: { id?: string; imageData: string }) => void) => () => void;
     onScannerStateChange: (callback: (active: boolean) => void) => () => void;

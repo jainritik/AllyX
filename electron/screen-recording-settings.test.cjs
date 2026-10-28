@@ -21,7 +21,24 @@ test('desktop setup reads permissions once and requests microphone access only f
     assert.match(preloadSource, /getDesktopPermissions:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('get-desktop-permissions'\)/);
     assert.match(preloadSource, /requestMicrophoneAccess:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('request-microphone-access'\)/);
     assert.match(interviewSource, /One-time desktop setup/);
-    assert.match(interviewSource, /Future updates keep the same permission identity/);
+    assert.match(interviewSource, /Use the copy of AllyX in Applications when granting permission\. macOS can require a new approval after an unsigned update\./);
+    assert.doesNotMatch(interviewSource, /Future updates keep the same permission identity/);
+});
+
+test('an explicit Capture action completes macOS consent setup before opening the scanner', () => {
+    assert.match(mainSource, /const \{ resolveScreenCaptureSetup \} = require\('\.\/screen-capture-setup'\)/);
+    assert.match(mainSource, /const beforeProbe = getScreenCaptureSetup\(\{ probeOnGranted: true \}\);/);
+    assert.match(mainSource, /attempts:\s*1,/);
+    assert.match(mainSource, /if \(setup\.state !== 'ready'\) \{[\s\S]*?setupState: setup\.state,/);
+
+    const toggleStart = mainSource.indexOf("handleTrusted('toggle-scanner-frame'");
+    const scannerOpen = mainSource.indexOf('return createScannerFrame();', toggleStart);
+    const setupProbe = mainSource.indexOf('const setup = await prepareScreenCaptureSetup();', toggleStart);
+    assert.ok(toggleStart >= 0 && setupProbe > toggleStart && scannerOpen > setupProbe, 'setup probe must finish before scanner UI is created');
+
+    assert.match(interviewSource, /const toggleScreenCapture = useCallback[\s\S]*?if \(result\.setupState\) \{[\s\S]*?setScreenCaptureSetupState\(result\.setupState\);[\s\S]*?setError\(null\);/);
+    assert.match(interviewSource, /if \(window\.electronAPI\) \{\s*void toggleScreenCapture\(\);/);
+    assert.match(interviewSource, /if \(isMacDesktop && !screenCaptureReady\) \{[\s\S]*?return \[\] as Array<\{ id: string; name: string \}>;/);
 });
 
 test('a stale macOS permission status does not block a real desktop capture attempt', () => {

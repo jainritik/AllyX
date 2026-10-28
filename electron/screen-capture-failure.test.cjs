@@ -13,6 +13,20 @@ test('reports a missing macOS screen permission only after the capture attempt f
     assert.equal(result.restartRequired, true);
 });
 
+test('keeps an undecided macOS consent request out of the red Settings recovery path', () => {
+    const result = screenCaptureFailure({
+        platform: 'darwin',
+        permissionStatus: 'not-determined',
+        capture: { reason: 'capture-timeout', attempts: 1, sourceCount: 0 },
+    });
+
+    assert.equal(result.failureCode, 'permission-required');
+    assert.equal(result.setupPending, true);
+    assert.equal(result.settingsRequired, undefined);
+    assert.equal(result.restartRequired, undefined);
+    assert.match(result.error, /waiting for your Screen/);
+});
+
 test('does not blame a granted macOS permission when no thumbnail is returned', () => {
     const result = screenCaptureFailure({
         platform: 'darwin',

@@ -26,7 +26,7 @@ test('continuous desktop speech uses an ordered, rate-safe caption pipeline', ()
 
 test('a one-display desktop starts meeting audio with listening while multiple displays remain explicit', () => {
     assert.match(interviewSource, /availableSources\.length === 1 \? availableSources\[0\]\.id : ""/);
-    assert.match(interviewSource, /if \(sourceId && !isScreenAudioActive && screenPermissionReady\) void startMeetingAudio\(sourceId\)/);
+    assert.match(interviewSource, /if \(sourceId && !isScreenAudioActive && screenCaptureReady\) void startMeetingAudio\(sourceId\)/);
     assert.match(interviewSource, /const availableSources = meetingAudioSources;/);
     assert.match(interviewSource, /void loadMeetingAudioSources\(false\)\.then\(sources =>/);
 });

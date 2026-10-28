@@ -1,4 +1,4 @@
-const SCREEN_PERMISSION_ACTIONABLE = new Set(['not-determined', 'denied', 'restricted']);
+const SCREEN_PERMISSION_ACTIONABLE = new Set(['denied', 'restricted']);
 // Only a failure while asking macOS for screen pixels can be attributed to
 // Screen Recording consent. Crop, image conversion, or renderer delivery can
 // fail after pixels were already available; sending customers to Settings in
@@ -41,9 +41,26 @@ function screenCaptureFailure({ platform, permissionStatus, capture }) {
         };
     }
 
-    // macOS owns the consent decision. We only inspect it after the real
-    // capture attempt has failed, because a freshly changed TCC toggle can
-    // briefly report a stale state.
+    // A first native desktopCapturer request can leave macOS's consent dialog
+    // visible while the source request times out. Treat that as a neutral
+    // pending state, never as our red "open Settings" scanner failure.
+    if (
+        platform === 'darwin'
+        && permissionStatus === 'not-determined'
+        && NATIVE_SCREEN_ACQUISITION_FAILURES.has(diagnostics.reason)
+    ) {
+        return {
+            success: false,
+            failureCode: 'permission-required',
+            setupPending: true,
+            error: 'macOS is waiting for your Screen & System Audio Recording decision.',
+            diagnostics,
+        };
+    }
+
+    // macOS owns the consent decision. We only inspect an explicit denial
+    // after the real capture attempt has failed, because a freshly changed TCC
+    // toggle can briefly report a stale state.
     if (
         platform === 'darwin'
         && SCREEN_PERMISSION_ACTIONABLE.has(permissionStatus)

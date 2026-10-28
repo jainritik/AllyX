@@ -7,6 +7,7 @@ export default function ScannerFrame() {
     const [isScanning, setIsScanning] = useState(false);
     const [captureMessage, setCaptureMessage] = useState("Capture this display for the simplest scan, or resize this frame to read only the selected code.");
     const [captureFailed, setCaptureFailed] = useState(false);
+    const [setupPending, setSetupPending] = useState(false);
     const [settingsRequired, setSettingsRequired] = useState(false);
     const [restartRequired, setRestartRequired] = useState(false);
 
@@ -24,6 +25,7 @@ export default function ScannerFrame() {
         if (isScanning) return;
         setIsScanning(true);
         setCaptureFailed(false);
+        setSetupPending(false);
         setSettingsRequired(false);
         setRestartRequired(false);
         setCaptureMessage("Capturing…");
@@ -39,13 +41,16 @@ export default function ScannerFrame() {
             const result = wholeDisplay
                 ? await window.electronAPI.captureScannerDisplay()
                 : await window.electronAPI.captureScannerArea();
-            setCaptureFailed(!result.success);
+            const waitingForConsent = Boolean(result.setupPending);
+            setCaptureFailed(!result.success && !waitingForConsent);
+            setSetupPending(waitingForConsent);
             setSettingsRequired(Boolean(result.settingsRequired));
             setRestartRequired(Boolean(result.restartRequired));
             setCaptureMessage(result.success ? (wholeDisplay ? "Captured. Reading this display…" : "Captured. Reading the selected text…") : (result.error || "Capture failed. Try again."));
         } catch (err) {
             console.error("Scan failed:", err);
             setCaptureFailed(true);
+            setSetupPending(false);
             setSettingsRequired(false);
             setRestartRequired(false);
             setCaptureMessage(err instanceof Error ? err.message : "Capture failed.");
@@ -137,7 +142,8 @@ export default function ScannerFrame() {
                     </div>
 
                     <div aria-live="polite" className={`absolute bottom-3 left-3 right-3 flex flex-col items-center rounded-lg px-3 py-2 ${captureFailed ? 'border border-red-400/70 bg-red-950/90' : 'bg-black/70'}`}>
-                        <span className={`max-w-full text-center text-[11px] font-semibold leading-4 ${captureFailed ? 'text-red-100' : 'text-emerald-200'}`}>{captureMessage}</span>
+                        <span className={`max-w-full text-center text-[11px] font-semibold leading-4 ${captureFailed ? 'text-red-100' : setupPending ? 'text-amber-200' : 'text-emerald-200'}`}>{captureMessage}</span>
+                        {setupPending && <span className="mt-1 text-center text-[10px] font-medium text-amber-100/90">Finish the macOS permission dialog, then restart AllyX.</span>}
                         {captureFailed && (
                             <div className="mt-2 flex flex-col items-center gap-2">
                                 {(settingsRequired || restartRequired) && (
