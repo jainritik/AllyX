@@ -55,7 +55,11 @@ export default function ScannerFrame() {
             setRestartRequired(false);
             setCaptureMessage(err instanceof Error ? err.message : "Capture failed.");
         } finally {
-            setTimeout(() => setIsScanning(false), 2000);
+            // A source lookup can legitimately take several seconds while
+            // macOS wakes ScreenCaptureKit. Keep the controls disabled until
+            // its IPC request actually finishes; an arbitrary two-second
+            // timeout let customers start a conflicting second capture.
+            setIsScanning(false);
         }
     };
 

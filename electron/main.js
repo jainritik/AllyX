@@ -601,6 +601,18 @@ function createScannerFrame() {
                 fail('Screen Capture is not available right now.');
                 return;
             }
+            // A timed-out or expired hosted session can redirect this compact
+            // window to login. Never present that page as a working scanner:
+            // the scanner must be on its dedicated, trusted capture route.
+            try {
+                if (new URL(frame.webContents.getURL()).pathname !== '/scanner-frame') {
+                    fail('Your interview session changed before Screen Capture opened. Return to AllyX and start the interview again.');
+                    return;
+                }
+            } catch {
+                fail('Screen Capture opened an invalid page. Return to AllyX and try again.');
+                return;
+            }
             isScannerFrameOpen = true;
             frame.show();
             broadcastScannerState(true);

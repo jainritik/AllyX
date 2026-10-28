@@ -55,6 +55,14 @@ test('scanner startup preserves its real load failure instead of replacing it wi
     assert.match(scannerSource, /if \(!settled\) \{\s*settle\(\{ active: false, error: 'Screen Capture was closed before it finished opening\.'/);
 });
 
+test('scanner startup rejects an authentication redirect instead of presenting it as a capture window', () => {
+    const scannerStart = mainSource.indexOf('function createScannerFrame()');
+    const scannerEnd = mainSource.indexOf('function broadcastScannerState', scannerStart);
+    const scannerSource = mainSource.slice(scannerStart, scannerEnd);
+    assert.match(scannerSource, /new URL\(frame\.webContents\.getURL\(\)\)\.pathname !== '\/scanner-frame'/);
+    assert.match(scannerSource, /Your interview session changed before Screen Capture opened/);
+});
+
 test('a stale macOS permission status does not block a real desktop capture attempt', () => {
     assert.doesNotMatch(mainSource, /shouldAttemptScreenCapturePermission/);
     assert.match(mainSource, /actual capture first; its returned pixels are the only useful signal/);

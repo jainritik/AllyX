@@ -6,6 +6,7 @@ const path = require('node:path');
 const projectRoot = path.join(__dirname, '..');
 const interviewSource = fs.readFileSync(path.join(projectRoot, 'src', 'app', 'interview', 'page.tsx'), 'utf8');
 const overlaySource = fs.readFileSync(path.join(projectRoot, 'electron', 'overlay.html'), 'utf8');
+const scannerSource = fs.readFileSync(path.join(projectRoot, 'src', 'app', 'scanner-frame', 'page.tsx'), 'utf8');
 
 function captureProcessingSource() {
     const start = interviewSource.indexOf('const processCapturedImage = useCallback');
@@ -47,6 +48,11 @@ test('the overlay shows captured text and the automatic-answer state', () => {
 test('the overlay explains a pending screen-capture setup instead of calling it a closed scanner', () => {
     assert.match(overlaySource, /const message=result\.error\|\|result\.message\|\|\(result\.active\?'Position the frame and press Capture\.'\:'Scanner closed\.'\);/);
     assert.match(overlaySource, /result\.setupState\?'progress':'success'/);
+});
+
+test('the scanner stays busy until macOS capture IPC completes', () => {
+    assert.match(scannerSource, /finally \{\s*\/\/ A source lookup can legitimately take several seconds[\s\S]*?setIsScanning\(false\);\s*\}/);
+    assert.doesNotMatch(scannerSource, /setTimeout\(\(\) => setIsScanning\(false\), 2000\)/);
 });
 
 test('the bundled local OCR worker, core, and English language data are available to the interview renderer', () => {
