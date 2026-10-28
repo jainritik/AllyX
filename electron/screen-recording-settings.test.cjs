@@ -27,8 +27,10 @@ test('desktop setup reads permissions once and requests microphone access only f
 
 test('an explicit Capture action completes macOS consent setup before opening the scanner', () => {
     assert.match(mainSource, /const \{ resolveScreenCaptureSetup \} = require\('\.\/screen-capture-setup'\)/);
+    assert.match(mainSource, /const \{ effectiveScreenCapturePermissionStatus \} = require\('\.\/screen-capture-permission'\)/);
     assert.match(mainSource, /const beforeProbe = getScreenCaptureSetup\(\{ probeOnGranted: true \}\);/);
-    assert.match(mainSource, /attempts:\s*1,/);
+    assert.match(mainSource, /const sourceAvailable = Boolean\(capture\?\.source && capture\?\.size\);/);
+    assert.match(mainSource, /displayId: display\.id,/);
     assert.match(mainSource, /if \(setup\.state !== 'ready'\) \{[\s\S]*?setupState: setup\.state,/);
 
     const toggleStart = mainSource.indexOf("handleTrusted('toggle-scanner-frame'");

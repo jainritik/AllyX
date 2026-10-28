@@ -14,6 +14,7 @@ const { captureMacOSMainDisplay, captureMacOSRegion } = require('./macos-screen-
 const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
 const { resolveScreenCaptureSetup } = require('./screen-capture-setup');
+const { effectiveScreenCapturePermissionStatus } = require('./screen-capture-permission');
 const { isAllowedMainWindowMediaPermission } = require('./media-permission-policy');
 
 // AllyX currently presents the macOS Screen & System Audio Recording permission
@@ -198,17 +199,18 @@ function isRunningFromMountedDmg() {
 }
 
 function getScreenCaptureSetup(options = {}) {
-    const permissionStatus = getScreenCapturePermissionStatus();
+    const permissionStatus = effectiveScreenCapturePermissionStatus({
+        reportedStatus: getScreenCapturePermissionStatus(),
+        captureVerifiedInProcess: screenCaptureVerifiedInProcess,
+    });
     return resolveScreenCaptureSetup({
         platform: process.platform,
         permissionStatus,
         isRunningFromMountedDmg: isRunningFromMountedDmg(),
         // A source returned by the native service is stronger evidence than a
-        // short-lived stale `not-determined` value. Keep it only for this app
-        // process and never let it override an explicit later denial.
-        sourceAvailable: screenCaptureVerifiedInProcess
-            && permissionStatus !== 'denied'
-            && permissionStatus !== 'restricted',
+        // short-lived stale permission read. Keep it only for this app
+        // process; a managed `restricted` state still takes precedence.
+        sourceAvailable: screenCaptureVerifiedInProcess && permissionStatus !== 'restricted',
         ...options,
     });
 }
@@ -249,11 +251,15 @@ async function prepareScreenCaptureSetup() {
             // This is intentionally a single, tiny native request. Its only
             // job is to let macOS show its own first-use consent dialog before
             // we create any scanner UI. It never retries behind that dialog.
-            // Any selectable display is enough to validate the macOS capture
-            // service here. The later, real capture still maps the scanner
-            // frame to its exact display before it reads pixels.
-            capture = await getScreenSourcesWithRetry({
+            // A source identifier alone is not proof that macOS will give the
+            // app pixels. Require a real, tiny thumbnail from the primary
+            // display so that this proof can safely suppress a later stale
+            // TCC status rather than creating a Settings loop.
+            const display = screen.getPrimaryDisplay();
+            capture = await getUsableScreenSource({
                 getSources: options => desktopCapturer.getSources(options),
+                displayId: display.id,
+                displayCount: screen.getAllDisplays().length,
                 options: {
                     types: ['screen'],
                     thumbnailSize: { width: 16, height: 16 },
@@ -267,15 +273,20 @@ async function prepareScreenCaptureSetup() {
             console.warn('[Scanner] Native capture setup probe failed:', error);
         }
 
-        const permissionStatus = getScreenCapturePermissionStatus();
-        if (capture?.sources?.length) screenCaptureVerifiedInProcess = true;
+        const rawPermissionStatus = getScreenCapturePermissionStatus();
+        const sourceAvailable = Boolean(capture?.source && capture?.size);
+        if (sourceAvailable) screenCaptureVerifiedInProcess = true;
+        const permissionStatus = effectiveScreenCapturePermissionStatus({
+            reportedStatus: rawPermissionStatus,
+            captureVerifiedInProcess: screenCaptureVerifiedInProcess,
+        });
         const setup = resolveScreenCaptureSetup({
             platform: process.platform,
             permissionStatus,
             isRunningFromMountedDmg: isRunningFromMountedDmg(),
             probeComplete: true,
-            sourceAvailable: Boolean(capture?.sources?.length),
-            grantedDuringProbe: initialPermissionStatus === 'not-determined' && permissionStatus === 'granted',
+            sourceAvailable,
+            grantedDuringProbe: initialPermissionStatus === 'not-determined' && rawPermissionStatus === 'granted',
             probeOnGranted: true,
         });
         return {
@@ -490,10 +501,16 @@ async function getScannerDisplayCapture(display) {
 }
 
 function nativeScreenCaptureFailure(capture) {
-    if (!capture?.source) screenCaptureVerifiedInProcess = false;
+    // Keep a prior real thumbnail as proof for this process. A later empty
+    // source can be a transient ScreenCaptureKit gap; clearing the proof here
+    // made the UI treat an already enabled toggle as a fresh denial.
+    if (capture?.source && capture?.size) screenCaptureVerifiedInProcess = true;
     const result = screenCaptureFailure({
         platform: process.platform,
-        permissionStatus: getScreenCapturePermissionStatus(),
+        permissionStatus: effectiveScreenCapturePermissionStatus({
+            reportedStatus: getScreenCapturePermissionStatus(),
+            captureVerifiedInProcess: screenCaptureVerifiedInProcess,
+        }),
         capture,
     });
     // Do not send customers back to Chromium's getDisplayMedia picker here.
