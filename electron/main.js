@@ -586,8 +586,11 @@ function createScannerFrame() {
             resolve(result);
         };
         const fail = (error) => {
-            if (scannerFrameWindow === frame) closeScannerFrame();
             settle({ active: false, error });
+            // Closing the window synchronously emits `closed`. Settle first
+            // so that event cannot replace a useful load/timeout error with
+            // the generic "closed before opening" message.
+            if (scannerFrameWindow === frame) closeScannerFrame();
         };
         const loadTimeout = setTimeout(() => {
             fail('Screen Capture took too long to open. Check your connection and try again.');
@@ -614,7 +617,9 @@ function createScannerFrame() {
                 isScannerFrameOpen = false;
                 broadcastScannerState(false);
             }
-            settle({ active: false, error: 'Screen Capture was closed before it finished opening.' });
+            if (!settled) {
+                settle({ active: false, error: 'Screen Capture was closed before it finished opening.' });
+            }
         });
         frame.loadURL(`${APP_URL}/scanner-frame?isScanner=true`, {
             extraHeaders: "x-is-scanner: true\n"

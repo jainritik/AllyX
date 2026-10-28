@@ -41,6 +41,20 @@ test('an explicit Capture action completes macOS consent setup before opening th
     assert.match(interviewSource, /if \(isMacDesktop && !screenCaptureReady\) \{[\s\S]*?return \[\] as Array<\{ id: string; name: string \}>;/);
 });
 
+test('scanner startup preserves its real load failure instead of replacing it with a closed-window message', () => {
+    const scannerStart = mainSource.indexOf('function createScannerFrame()');
+    const scannerEnd = mainSource.indexOf('function broadcastScannerState', scannerStart);
+    assert.ok(scannerStart >= 0 && scannerEnd > scannerStart, 'scanner startup must be present');
+    const scannerSource = mainSource.slice(scannerStart, scannerEnd);
+
+    const failStart = scannerSource.indexOf('const fail = (error) => {');
+    const failEnd = scannerSource.indexOf('};', failStart) + 2;
+    const failSource = scannerSource.slice(failStart, failEnd);
+    assert.ok(failStart >= 0 && failEnd > failStart, 'scanner failure handler must be present');
+    assert.ok(failSource.indexOf('settle({ active: false, error });') < failSource.indexOf('closeScannerFrame()'), 'failure must settle before closing the scanner window');
+    assert.match(scannerSource, /if \(!settled\) \{\s*settle\(\{ active: false, error: 'Screen Capture was closed before it finished opening\.'/);
+});
+
 test('a stale macOS permission status does not block a real desktop capture attempt', () => {
     assert.doesNotMatch(mainSource, /shouldAttemptScreenCapturePermission/);
     assert.match(mainSource, /actual capture first; its returned pixels are the only useful signal/);
