@@ -26,10 +26,13 @@ export async function signOutAndClear() {
 function clearPrivateContext() {
     if (typeof localStorage === 'undefined') return;
     try {
-        for (const key of ['interview_context_jd', 'interview_context_resume', 'interview_context_type', 'interview_context_lang', 'allyx_interview_context', 'selected_ai_model', 'interview_draft']) {
+        for (const key of ['interview_context_jd', 'interview_context_resume', 'interview_context_type', 'interview_context_lang', 'allyx_interview_context', 'selected_ai_model', 'interview_draft', 'allyx_pending_finish']) {
             localStorage.removeItem(key);
         }
-        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('allyx_resume_handoff');
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.removeItem('allyx_resume_handoff');
+            sessionStorage.removeItem('allyx_access_session');
+        }
     } catch {
         // Authentication must still complete when browser storage is unavailable.
     }

@@ -24,7 +24,7 @@ test('a successful screen capture preserves recognized text and immediately queu
 
     assert.match(successPath, /setManualQuestion\(text\);/);
     assert.match(successPath, /sendCapturedText\?\.\(text\)/);
-    assert.match(successPath, /pendingCapturedQuestionRef\.current = text;/);
+    assert.match(successPath, /pendingCapturedQuestionRef\.current\.push\(text\);/);
     assert.match(successPath, /Text captured\. Generating answer…/);
     assert.match(successPath, /processPendingCapturedAnswerRef\.current\(\);/);
     assert.match(successPath, /Finish interview setup before generating an answer\./);
@@ -38,9 +38,9 @@ test('screen capture reports live OCR progress and allows a full-display read en
     assert.match(source, /\), 60000,/);
 });
 
-test('the overlay shows captured text and the automatic-answer state', () => {
+test('the overlay shows captured text without prematurely claiming an answer is generating', () => {
     assert.match(overlaySource, /api\.onOverlayCapturedText\(text=>\{manual\.value=text;/);
-    assert.match(overlaySource, /Text captured\. Generating answer…/);
+    assert.match(overlaySource, /setStatus\('Text captured\.','progress'\)/);
     assert.match(overlaySource, /askButton\.onclick=ask/);
     assert.doesNotMatch(overlaySource, /Review it, then press Ask/);
 });

@@ -15,8 +15,8 @@ test('macOS desktop audio stays on the Screen & System Audio permission path des
 
 test('continuous desktop speech uses an ordered, rate-safe caption pipeline', () => {
     assert.match(interviewSource, /await audioContext\.resume\(\)/);
-    assert.match(interviewSource, /const MAX_RECORDING_TIME = 4000/);
-    assert.match(interviewSource, /const MIN_SEGMENT_DURATION = 2500/);
+    assert.match(interviewSource, /const MAX_RECORDING_TIME = 3000/);
+    assert.match(interviewSource, /const MIN_SEGMENT_DURATION = 800/);
     assert.match(interviewSource, /getByteTimeDomainData/);
     assert.match(interviewSource, /No audible signal detected yet\./);
     assert.match(interviewSource, /const drainTranscriptions = async/);
@@ -52,7 +52,7 @@ test('only explicit Stop listening can finalise an answer', () => {
     assert.match(interviewSource, /stopAndQueue\(true\)/);
     assert.match(interviewSource, /await flush\(\{ finalizesQuestion: generateAnswer \}\)/);
     assert.match(interviewSource, /await flushAndStopDesktopSTT\(true\)/);
-    assert.match(interviewSource, /pendingCapturedQuestionRef\.current = question;/);
+    assert.match(interviewSource, /pendingCapturedQuestionRef\.current\.push\(question\);/);
     assert.match(interviewSource, /A pause only ends an audio chunk\. It never starts an/);
     assert.doesNotMatch(interviewSource, /autoAnswer/);
     assert.doesNotMatch(interviewSource, /isElectron \? 550 : 1600/);

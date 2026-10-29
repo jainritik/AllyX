@@ -1,4 +1,4 @@
-const MAX_NATIVE_CAPTURE_EDGE = 2400;
+const MAX_NATIVE_CAPTURE_EDGE = 4096;
 
 function getConstrainedCaptureSize(size, maxEdge = MAX_NATIVE_CAPTURE_EDGE) {
     const width = Number(size?.width);

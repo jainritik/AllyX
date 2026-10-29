@@ -10,18 +10,31 @@ function credentials() {
 
 async function razorpayRequest(path: string, init?: RequestInit) {
     const { keyId, keySecret } = credentials();
-    const response = await fetch(`https://api.razorpay.com/v1${path}`, {
-        ...init,
-        headers: {
-            Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
-            "Content-Type": "application/json",
-            ...init?.headers,
-        },
-        cache: "no-store",
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error("Payment provider timed out. Please check your payment status before retrying."));
+        }, 12000);
     });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.error?.description || `Razorpay request failed (${response.status})`);
-    return body;
+    try {
+        return await Promise.race([timeout, (async () => {
+            const response = await fetch(`https://api.razorpay.com/v1${path}`, {
+                ...init,
+                signal: controller.signal,
+                headers: {
+                    Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
+                    "Content-Type": "application/json",
+                    ...init?.headers,
+                },
+                cache: "no-store",
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body?.error?.description || `Razorpay request failed (${response.status})`);
+            return body;
+        })()]);
+    } finally { clearTimeout(timer); }
 }
 
 export function publicRazorpayKey() {

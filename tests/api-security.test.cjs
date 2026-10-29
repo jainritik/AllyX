@@ -5,10 +5,10 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const { NextRequest } = require('next/server');
 
-function load(file, mocks = {}, fetchMock = global.fetch) {
+function load(file, mocks = {}, fetchMock = global.fetch, extraGlobals = {}) {
     const exports = {};
     const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-    vm.runInNewContext(source, { exports, require: name => mocks[name] || require(name), process, console, fetch: fetchMock, Request, Response, Headers, FormData, File, TransformStream, TextEncoder, TextDecoder, AbortController, setTimeout, clearTimeout });
+    vm.runInNewContext(source, { exports, require: name => mocks[name] || (name === 'next/server' ? { ...require(name), after: callback => { void callback(); } } : require(name)), process, console, fetch: fetchMock, Request, Response, Headers, FormData, File, TransformStream, ReadableStream, TextEncoder, TextDecoder, AbortController, setTimeout, clearTimeout, ...extraGlobals });
     return exports;
 }
 
@@ -319,4 +319,102 @@ test('failed provider requests authorize and reserve generation quota once, then
         assert.deepEqual(authorizationKinds, ['generate']);
         assert.equal(refunds, 1);
     } finally { delete process.env.GROQ_API_KEY; }
+});
+
+
+test('a stalled answer provider falls back after the startup deadline and preserves fallback stream bytes', async () => {
+    const api = load('src/lib/api-access.ts');
+    const originalKey = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = 'mock-only';
+    let calls = 0;
+    let timerCalls = 0;
+    const deadlines = [];
+    const route = load(paths.stream, { '@/lib/api-access': {
+        authorizeApi: async () => ({ reservationId: 'r1' }),
+        refundApiQuota: async () => {}, commitApiQuota: async () => {},
+        isOpenAiModel: api.isOpenAiModel, parseGenerationBody: api.parseGenerationBody, GROQ_MODELS: api.GROQ_MODELS,
+    } }, async (_url, options) => {
+        if (++calls === 1) {
+            return new Response(new ReadableStream({ start(controller) {
+                options.signal.addEventListener('abort', () => controller.error(new DOMException('Timeout', 'AbortError')), { once: true });
+            } }));
+        }
+        return new Response('data: {"choices":[{"delta":{"content":"fast complete answer"},"finish_reason":"stop"}]}\n\n');
+    }, {
+        setTimeout: (callback, ms) => {
+            deadlines.push(ms);
+            if (++timerCalls === 1) return setTimeout(callback, 5);
+            return setTimeout(callback, ms);
+        },
+    });
+    try {
+        const response = await route.POST(request());
+        const body = await response.text();
+        assert.equal(calls, 2);
+        assert.equal(deadlines[0], 12000);
+        assert.match(body, /fast complete answer/);
+        assert.match(body, /"finishReason":"stop"/);
+        assert.equal(response.headers.get('Cache-Control'), 'no-cache, no-transform');
+        assert.equal(response.headers.get('X-Accel-Buffering'), 'no');
+    } finally {
+        if (originalKey === undefined) delete process.env.GROQ_API_KEY;
+        else process.env.GROQ_API_KEY = originalKey;
+    }
+});
+
+test('broken provider streams settle usage reservations instead of leaking them', async () => {
+    const api = load('src/lib/api-access.ts');
+    const oldKey = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = 'mock-only';
+    try {
+        for (const hasContent of [true, false]) {
+            let controller, commits = 0, refunds = 0;
+            const upstream = new ReadableStream({ start(output) {
+                controller = output;
+                output.enqueue(new TextEncoder().encode(hasContent
+                    ? 'data: {"choices":[{"delta":{"content":"retained answer"}}]}\n\n'
+                    : ': heartbeat\n\n'));
+            } });
+            const route = load(paths.stream, { '@/lib/api-access': {
+                ...api, authorizeApi: async () => ({ reservationId: 'reservation' }),
+                commitApiQuota: async () => { commits++; }, refundApiQuota: async () => { refunds++; },
+            } }, async () => new Response(upstream));
+            const response = await route.POST(request());
+            const reading = response.text();
+            await new Promise(resolve => setImmediate(resolve));
+            controller.error(new Error('simulated network disconnect'));
+            await assert.rejects(reading, /network disconnect/);
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(commits, hasContent ? 1 : 0);
+            assert.equal(refunds, hasContent ? 0 : 1);
+        }
+    } finally { if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; }
+});
+
+ test('canceling an answer stops its provider and settles usage once', async () => {
+    const api = load('src/lib/api-access.ts');
+    const oldKey = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = 'mock-only';
+    try {
+        let signal, canceled = 0, commits = 0, refunds = 0;
+        const route = load(paths.stream, { '@/lib/api-access': {
+            ...api, authorizeApi: async () => ({ reservationId: 'reservation' }),
+            commitApiQuota: async () => { commits++; }, refundApiQuota: async () => { refunds++; },
+        } }, async (_url, options) => {
+            signal = options.signal;
+            return new Response(new ReadableStream({
+                start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"answer"}}]}\n\n')); },
+                cancel() { canceled++; },
+            }));
+        });
+        const response = await route.POST(request());
+        const reader = response.body.getReader();
+        await reader.read();
+        await reader.cancel('user stopped');
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(signal.aborted, true);
+        assert.equal(canceled, 1);
+        assert.equal(commits, 1);
+        assert.equal(refunds, 0);
+    } finally { if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; }
 });

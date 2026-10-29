@@ -9,10 +9,22 @@ import { interviewService, Interview } from "@/lib/interview-service";
 import { useRouter } from "next/navigation";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { interviewAccess } from "@/lib/interview-access";
+import { useAuth } from "@/lib/auth";
+import { readInterviewContext } from "@/lib/interview-context";
+import { readRecoverableInterview } from "@/lib/interview-recovery";
 import { DesktopAppNotice } from "@/components/desktop-app-notice";
 
 export default function DashboardPage() {
     const router = useRouter();
+    const accountId = useAuth(state => state.user?.id);
+    const [recoverableSession, setRecoverableSession] = useState<string | null>(null);
+    useEffect(() => {
+        if (!accountId) { setRecoverableSession(null); return; }
+        try {
+            const context = readInterviewContext(accountId);
+            setRecoverableSession(readRecoverableInterview(accountId, context?.savedAt)?.sessionId ?? null);
+        } catch { setRecoverableSession(null); }
+    }, [accountId]);
     const { confirm, showToast } = useConfirmDialog();
     const [stats, setStats] = useState({ totalInterviews: 0, totalMinutes: 0 });
     const [recentSessions, setRecentSessions] = useState<Interview[]>([]);
@@ -103,6 +115,17 @@ export default function DashboardPage() {
                 </Button>
             </div>
 
+            {recoverableSession && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                    <span className="flex-1">An unfinished interview is saved on this device. Resume it to continue or save it to history.</span>
+                    <Button variant="outline" onClick={() => {
+                        try {
+                            sessionStorage.setItem("allyx_access_session", recoverableSession);
+                            router.push("/interview");
+                        } catch { setError("Could not restore the interview. Browser storage is unavailable."); }
+                    }}>Resume interview</Button>
+                </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
                     <div className="flex items-center gap-4 mb-4">

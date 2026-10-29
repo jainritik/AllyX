@@ -5,7 +5,7 @@ import { Scan, X, Loader2, Target, ChevronDown } from "lucide-react";
 
 export default function ScannerFrame() {
     const [isScanning, setIsScanning] = useState(false);
-    const [captureMessage, setCaptureMessage] = useState("Capture this display for the simplest scan, or resize this frame to read only the selected code.");
+    const [captureMessage, setCaptureMessage] = useState("Move and resize this frame around the question. Only the area inside this frame will be read. Full-display captures require text review before Ask.");
     const [captureFailed, setCaptureFailed] = useState(false);
     const [setupPending, setSetupPending] = useState(false);
     const [settingsRequired, setSettingsRequired] = useState(false);
@@ -120,7 +120,7 @@ export default function ScannerFrame() {
 
                     <div className="z-40 flex flex-col items-center gap-3">
                         <button
-                            onClick={handleDisplayCapture}
+                            onClick={handleSelectedAreaCapture}
                             disabled={isScanning}
                             className={`
                                 flex items-center gap-3 px-10 py-3 rounded-full border-2 transition-all duration-300 shadow-2xl active:scale-95
@@ -132,16 +132,16 @@ export default function ScannerFrame() {
                         >
                             <Scan size={20} strokeWidth={3} />
                             <span className="text-[14px] font-mono font-black uppercase tracking-widest leading-none">
-                                {isScanning ? 'WAIT' : 'CAPTURE THIS DISPLAY'}
+                                {isScanning ? 'WAIT' : 'CAPTURE SELECTED AREA'}
                             </span>
                         </button>
                         <button
                             type="button"
-                            onClick={handleSelectedAreaCapture}
+                            onClick={handleDisplayCapture}
                             disabled={isScanning}
                             className="rounded-md border border-emerald-200/70 px-3 py-1.5 text-[11px] font-bold text-emerald-100 transition-colors hover:bg-emerald-500/20 disabled:opacity-60"
                         >
-                            Capture selected area instead
+                            Capture entire display instead
                         </button>
                     </div>
 

@@ -11,6 +11,16 @@ export type InterviewAccess = {
     reason?: string;
 };
 
+class SessionRequestError extends Error {
+    constructor(message: string, readonly retryable: boolean, readonly status: number) {
+        super(message);
+    }
+}
+
+export function isSessionAuthenticationError(error: unknown): boolean {
+    return error instanceof SessionRequestError && [401, 403].includes(error.status);
+}
+
 async function requestAccess(method: "GET" | "POST" | "DELETE", sessionId?: string, source?: "auto" | "trial" | "credit"): Promise<InterviewAccess> {
     let lastError: unknown;
     const attempts = method === "DELETE" ? 3 : 2;
@@ -27,13 +37,14 @@ async function requestAccess(method: "GET" | "POST" | "DELETE", sessionId?: stri
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                const error = new Error(payload.error || "Could not verify interview access.");
+                const error = new SessionRequestError(payload.error || "Could not verify interview access.", response.status >= 500, response.status);
                 if (response.status < 500 || attempt === attempts - 1) throw error;
                 lastError = error;
             } else {
                 return payload as InterviewAccess;
             }
         } catch (error) {
+            if (error instanceof SessionRequestError && !error.retryable) throw error;
             lastError = error;
             if (attempt === attempts - 1) break;
         } finally {
@@ -52,6 +63,14 @@ async function requestAccess(method: "GET" | "POST" | "DELETE", sessionId?: stri
 
 export const interviewAccess = {
     status: () => requestAccess("GET"),
+    check: async (sessionId: string): Promise<InterviewAccess> => {
+        const access = await requestAccess("GET");
+        if (access.sessionId !== sessionId) return {
+            ...access, allowed: false,
+            reason: "This interview session is no longer active. End it to save your transcript before starting another.",
+        };
+        return access;
+    },
     start: (sessionId: string, source: "auto" | "trial" | "credit" = "auto") => requestAccess("POST", sessionId, source),
     finish: (sessionId: string) => requestAccess("DELETE", sessionId),
     recoverPendingFinish: async () => {

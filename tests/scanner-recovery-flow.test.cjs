@@ -34,7 +34,7 @@ test('macOS captures through AllyX first, with the native screenshot utility as 
     assert.match(displayCapture, /captureMethod: 'electron'/);
     assert.match(areaCapture, /await captureMacOSRegion\(\{/);
     assert.match(displayCapture, /captureMacOSMainDisplay\(\{ nativeImage \}\)/);
-    assert.match(scannerSource, /CAPTURE THIS DISPLAY/);
-    assert.match(scannerSource, /Capture selected area instead/);
+    assert.match(scannerSource, /CAPTURE SELECTED AREA/);
+    assert.match(scannerSource, /Capture entire display instead/);
     assert.doesNotMatch(scannerSource, /useMacOSPicker/);
 });

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { GROQ_MODELS, authorizeApi, commitApiQuota, isOpenAiModel, parseGenerationBody, refundApiQuota } from "@/lib/api-access";
 
 export const runtime = "nodejs";
@@ -29,16 +29,59 @@ export async function POST(request: NextRequest) {
                 stream: true,
             };
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 55000);
+            // Bound startup only: a healthy long answer can continue streaming.
+            const timeout = setTimeout(() => controller.abort(), 12000);
+            const abort = () => controller.abort();
+            request.signal.addEventListener("abort", abort, { once: true });
+            if (request.signal.aborted) controller.abort();
             try {
-                return await fetch(openAi ? "https://api.openai.com/v1/chat/completions" : "https://api.groq.com/openai/v1/chat/completions", {
+                const upstream = await fetch(openAi ? "https://api.openai.com/v1/chat/completions" : "https://api.groq.com/openai/v1/chat/completions", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${providerApiKey}` },
                     body: JSON.stringify(body),
                     signal: controller.signal,
                 });
+                if (!upstream.ok || !upstream.body) return upstream;
+                // Some providers send headers long before any stream data.
+                // Include that wait in startup time, preserving the first bytes.
+                const reader = upstream.body.getReader();
+                let first: ReadableStreamReadResult<Uint8Array>;
+                try {
+                    first = await reader.read();
+                    if (first.done) throw new Error("Provider returned an empty stream");
+                } catch (error) {
+                    await reader.cancel().catch(() => undefined);
+                    reader.releaseLock();
+                    throw error;
+                }
+                let streamClosed = false;
+                let released = false;
+                const release = () => {
+                    if (!released) { released = true; reader.releaseLock(); }
+                };
+                const streamedBody = new ReadableStream<Uint8Array>({
+                    start(output) { output.enqueue(first.value!); },
+                    async pull(output) {
+                        try {
+                            const next = await reader.read();
+                            if (streamClosed) return;
+                            if (next.done) { streamClosed = true; output.close(); release(); }
+                            else output.enqueue(next.value);
+                        } catch (error) {
+                            if (!streamClosed) { streamClosed = true; release(); output.error(error); }
+                        }
+                    },
+                    async cancel(reason) {
+                        streamClosed = true;
+                        controller.abort();
+                        await reader.cancel(reason).catch(() => undefined);
+                        release();
+                    },
+                });
+                return new Response(streamedBody, { status: upstream.status, headers: upstream.headers });
             } finally {
                 clearTimeout(timeout);
+                request.signal.removeEventListener("abort", abort);
             }
         };
 
@@ -50,6 +93,7 @@ export async function POST(request: NextRequest) {
         let response: Response | null = null;
         let lastStatus = 503;
         for (const candidate of [...new Set(candidates)]) {
+            if (request.signal.aborted) break;
             effectiveModel = candidate;
             const candidateUsesOpenAi = isOpenAiModel(candidate);
             try {
@@ -128,10 +172,24 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        return new Response(response.body?.pipeThrough(transformStream), {
+        // TransformStream.flush is not called on cancellation or network errors.
+        // Observe pipe failure explicitly so every reservation is settled once.
+        const settlement = response.body!.pipeTo(transformStream.writable, { signal: request.signal }).catch(async () => {
+            if (!shouldRefund) return;
+            shouldRefund = false;
+            try {
+                if (deliveredContent) await commitApiQuota(request, reservationId);
+                else await refundApiQuota(request, reservationId);
+            } catch (accountingError) {
+                console.error("[Stream API] Interrupted usage settlement failed:", accountingError);
+            }
+        });
+        after(() => settlement);
+        return new Response(transformStream.readable, {
             headers: {
                 "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
                 Connection: "keep-alive",
                 "X-ALLYX-Model": effectiveModel,
             },

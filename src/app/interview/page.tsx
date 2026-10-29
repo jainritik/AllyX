@@ -4,6 +4,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Video, VideoOff, Loader2, AlertCircle, Sparkles, Trash2, LogOut, Copy, RotateCcw, Monitor, MonitorOff, Scan, ShieldCheck, CircleAlert } from "lucide-react";
 import { createWorker } from 'tesseract.js';
+import { createTranscriptionPool } from "@/lib/transcription-pool";
+import { readAnswerStream } from '@/lib/answer-stream';
+import { buildAnswerContinuationMessages, shouldContinueAnswer } from '@/lib/answer-continuation';
 import { cn } from "@/lib/utils";
 import { supportsCoordinatedScannerCapture } from "@/lib/native-scanner-bridge";
 import ReactMarkdown from 'react-markdown';
@@ -12,10 +15,14 @@ import { useRouter } from "next/navigation";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { interviewService } from "@/lib/interview-service";
+import { interviewSaveErrorMessage } from "@/lib/interview-save-error";
 import { useAuth } from "@/lib/auth";
 import { loadInterviewContext, readInterviewContext } from "@/lib/interview-context";
-import { interviewAccess } from "@/lib/interview-access";
+import { interviewAccess, isSessionAuthenticationError } from "@/lib/interview-access";
 import { createLiveQuestionState } from "@/lib/live-question-state";
+
+import { includeActiveAnswer, ActiveAnswerSnapshot } from "@/lib/interview-recovery";
+import { startSessionHeartbeat } from "@/lib/session-heartbeat";
 
 // --- Types for Web Speech API ---
 interface SpeechRecognitionEvent extends Event {
@@ -50,6 +57,7 @@ interface SpeechRecognition extends EventTarget {
 }
 
 type TranscriptionSegment = {
+    transcription?: Promise<string | null>;
     audio: Blob;
     epoch: number;
     sequence: number;
@@ -148,6 +156,8 @@ export default function InterviewPage() {
     const isRecognitionActiveRef = useRef(false);
     const isSavingRef = useRef(false);
     const answerInFlightRef = useRef(false);
+    const transcriptionPoolRef = useRef(createTranscriptionPool(2));
+    const activeAnswerSnapshotRef = useRef<ActiveAnswerSnapshot | null>(null);
     const answerAbortRef = useRef<AbortController | null>(null);
     const pendingQuestionRef = useRef("");
     const sessionEndingRef = useRef(false);
@@ -178,13 +188,14 @@ export default function InterviewPage() {
     const nextTranscriptionToProcessRef = useRef(1);
     const skippedTranscriptionSequencesRef = useRef(new Set<number>());
     const questionStateRef = useRef(createLiveQuestionState());
-    const pendingCapturedQuestionRef = useRef<string | null>(null);
+    const pendingCapturedQuestionRef = useRef<string[]>([]);
+    const failedTranscriptionSequencesRef = useRef(new Set<number>());
     const processPendingCapturedAnswerRef = useRef<() => void>(() => {});
     const captureProcessingRef = useRef(false);
     // Keep the native IPC subscription stable while React re-renders during an
     // answer stream. The subscription dispatches to this current callback so a
     // screenshot cannot arrive in the brief unsubscribe/re-subscribe gap.
-    const processCapturedImageRef = useRef<(imageData: string, options?: { reserved?: boolean }) => Promise<void>>(async () => {});
+    const processCapturedImageRef = useRef<(imageData: string, options?: { reserved?: boolean; captureMode?: "area" | "display" }) => Promise<void>>(async () => {});
     const retryQuestionRef = useRef("");
     // Electron uses the MediaRecorder pipeline as the canonical transcript.
     // Chromium SpeechRecognition is a provisional microphone caption preview:
@@ -274,6 +285,7 @@ export default function InterviewPage() {
         nextTranscriptionSequenceRef.current = 0;
         nextTranscriptionToProcessRef.current = 1;
         skippedTranscriptionSequencesRef.current.clear();
+        failedTranscriptionSequencesRef.current.clear();
         pendingTranscriptionsRef.current = [];
         questionStateRef.current.clear();
         retryQuestionRef.current = "";
@@ -325,11 +337,9 @@ export default function InterviewPage() {
 
     useEffect(() => {
         if (!accountId || !sessionIdRef.current || !contextReady || !window.electronAPI?.isElectron) return;
-        let cancelled = false;
-        const verify = async () => {
-            try {
-                const access = await interviewAccess.start(sessionIdRef.current);
-                if (cancelled) return;
+        return startSessionHeartbeat(
+            () => interviewAccess.check(sessionIdRef.current),
+            access => {
                 if (!access.allowed) {
                     setError(access.reason || "Your interview access has ended.");
                     setAccessReady(false);
@@ -338,16 +348,14 @@ export default function InterviewPage() {
                 }
                 setAccessReady(true);
                 setAccessRemaining(access.source === "trial" ? access.remainingSeconds : null);
-            } catch (accessError) {
-                if (!cancelled) {
-                    setAccessReady(false);
-                    setError(accessError instanceof Error ? accessError.message : "Could not verify interview access.");
-                }
-            }
-        };
-        void verify();
-        const heartbeat = window.setInterval(verify, 15000);
-        return () => { cancelled = true; window.clearInterval(heartbeat); };
+            },
+            accessError => {
+                // Keep an already verified session's UI alive on transient network
+                // failures. Every AI request still verifies access on the server.
+                if (isSessionAuthenticationError(accessError)) setAccessReady(false);
+                setError(accessError instanceof Error ? accessError.message : "Could not verify interview access.");
+            },
+        );
     }, [accountId, contextReady]);
 
     useEffect(() => {
@@ -370,8 +378,9 @@ export default function InterviewPage() {
     }, [accessRemaining, accessReady]);
 
     useEffect(() => {
-        if (!accountId || !draftHydratedRef.current) return;
+        if (!accountId || !draftHydratedRef.current || sessionEndingRef.current) return;
         const saveTimer = window.setTimeout(() => {
+            if (sessionEndingRef.current) return;
             try {
                 const contextSavedAt = readInterviewContext(accountId)?.savedAt;
                 localStorage.setItem('interview_draft', JSON.stringify({
@@ -392,7 +401,7 @@ export default function InterviewPage() {
             } catch { /* Saving can still be retried on this screen. */ }
         }, 500);
         return () => window.clearTimeout(saveTimer);
-    }, [accountId, transcript, fullTranscript, interimTranscript, allQAPairs, manualQuestion, aiResponse, answerModel, answerTruncated, interviewStartTime]);
+    }, [accountId, transcript, fullTranscript, interimTranscript, allQAPairs, manualQuestion, aiResponse, answerModel, answerTruncated, interviewStartTime, isSaving]);
 
     // --- DESK_TOP STT ---
 
@@ -627,10 +636,16 @@ export default function InterviewPage() {
             setError("No confirmed transcript to analyze. Start listening, let the question finish, then press Stop & answer.");
             return;
         }
+        if (transcriptToUse.length > MAX_QUESTION_LENGTH) {
+            const message = "This question exceeds 12,000 characters. Split it into smaller questions; no text has been submitted.";
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return;
+        }
         if (answerInFlightRef.current) {
             if (queueIfBusy && explicitQuestion?.trim()) {
-                pendingCapturedQuestionRef.current = explicitQuestion.trim();
-                window.electronAPI?.sendOverlayStatus?.("Code captured. The current answer will finish before this one starts.", "progress");
+                pendingCapturedQuestionRef.current.push(explicitQuestion.trim());
+                window.electronAPI?.sendOverlayStatus?.("Question queued. The current answer will finish before this one starts.", "progress");
                 return;
             }
             window.electronAPI?.sendOverlayStatus?.("An answer is already being generated. Wait for it to finish, then retry.", "error");
@@ -641,6 +656,7 @@ export default function InterviewPage() {
         // Preserve both the prompt and constraints when a pasted question or
         // code sample is larger than the live transcript window.
         const currentTranscript = compactContext(transcriptToUse, MAX_QUESTION_LENGTH);
+        activeAnswerSnapshotRef.current = { question: currentTranscript.trim(), answer: "", continuation };
         if (!continuation) {
             pendingQuestionRef.current = currentTranscript;
             setLastTranscript(currentTranscript);
@@ -651,6 +667,7 @@ export default function InterviewPage() {
         }
 
         setIsLoading(true);
+        setAnswerTruncated(false);
         setError(null);
         window.electronAPI?.sendOverlayStatus?.("Generating answer…", "progress");
 
@@ -663,7 +680,7 @@ export default function InterviewPage() {
         try {
             const controller = new AbortController();
             answerAbortRef.current = controller;
-            requestTimeout = setTimeout(() => controller.abort(), 60000);
+
             const jobContext = compactContext(interviewContext.jd, 3500);
             const resumeContext = compactContext(interviewContext.resume, 6500);
             const recentMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
@@ -696,8 +713,8 @@ export default function InterviewPage() {
            - For technical or general questions, provide accurate, practical explanations.
         3. **DYNAMIC LENGTH (CRITICAL)**:
            - Adjust your length based on the question. 
-           - For a simple factual question, give a complete answer in roughly 3-6 spoken sentences.
-           - For technical questions, give the complete answer, not an outline or a shortened summary. Explain the approach, key trade-offs, edge cases, and a concrete example. Aim for a natural 60-90 second spoken answer unless the user requested another length.
+           - For a simple factual question, give a complete, direct answer without unnecessary detail.
+           - For technical questions, give the complete answer, not an outline or a shortened summary. Explain the approach, key trade-offs, edge cases, and a concrete example. Use as much space as needed to finish the explanation; do not impose a speaking-time or sentence limit unless the user asks for one.
            - For coding questions, state the algorithm, provide correct readable code when useful, then explain why it works and finish with time/space complexity and edge cases.
            - For architecture and system-design questions, clarify assumptions, describe components and data flow, then cover scaling, reliability, security, observability, and trade-offs.
            - Answer every distinct part of a multi-part question. Lead with the conclusion, use short spoken paragraphs, and never add filler, a preamble, or meta-commentary about being an assistant.
@@ -716,83 +733,96 @@ export default function InterviewPage() {
         - Resume: ${resumeContext || "Not provided"}
         `;
 
-            const requestBody = JSON.stringify({
-                model: interviewContext.model,
-                systemPrompt,
-                messages: [...recentMessages, { role: "user", content: currentTranscript }]
-            });
-            let response: Response | null = null;
-            for (let attempt = 0; attempt < 2; attempt++) {
-                try {
-                    response = await fetch("/api/generate-stream", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "X-ALLYX-Session-ID": sessionIdRef.current },
-                        signal: controller.signal,
-                        body: requestBody,
-                    });
-                    break;
-                } catch (fetchError) {
-                    if (attempt === 1 || controller.signal.aborted) throw fetchError;
-                    await new Promise(resolve => setTimeout(resolve, 350));
-                }
-            }
-            if (!response) throw new Error("The AI service could not be reached.");
-            if (!response.ok) {
-                let message = `AI request failed (${response.status}).`;
-                try {
-                    const data = await response.json();
-                    message = data.error?.message || data.error || message;
-                } catch { /* Keep HTTP fallback. */ }
-                throw new Error(message);
-            }
-            if (!response.body) throw new Error("The AI response stream was empty.");
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
+            let requestMessages: Array<{ role: "user" | "assistant"; content: string }> = [
+                ...recentMessages, { role: "user", content: currentTranscript },
+            ];
             let finishReason = "";
-            let lastOverlayUpdate = 0;
-            while (true) {
-                const { value, done } = await reader.read();
-                buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-                const events = buffer.split("\n\n");
-                buffer = events.pop() || "";
-                for (const event of events) {
-                    for (const line of event.split("\n")) {
-                        if (!line.startsWith("data: ")) continue;
-                        const payload = line.slice(6);
-                        if (payload === "[DONE]") continue;
-                        try {
-                            const eventData = JSON.parse(payload);
-                            streamedText += eventData.content || "";
-                            if (eventData.finishReason) finishReason = eventData.finishReason;
-                        } catch { /* Ignore malformed event. */ }
+            let effectiveModel = interviewContext.model;
+            let streamRecoveries = 0;
+            // Keep the busy lock and accumulated answer across requests. Each
+            // segment gets its own timeout and server-side access/quota check.
+            for (let segment = 0; ; segment++) {
+                if (sessionEndingRef.current || controller.signal.aborted) return;
+                requestTimeout = setTimeout(() => controller.abort(), 60000);
+                const segmentStart = streamedText.length;
+                const requestBody = JSON.stringify({
+                    model: interviewContext.model,
+                    systemPrompt,
+                    messages: requestMessages
+                });
+                let response: Response | null = null;
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try {
+                        response = await fetch("/api/generate-stream", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "X-ALLYX-Session-ID": sessionIdRef.current },
+                            signal: controller.signal,
+                            body: requestBody,
+                        });
+                        break;
+                    } catch (fetchError) {
+                        if (attempt === 1 || controller.signal.aborted) throw fetchError;
+                        await new Promise(resolve => setTimeout(resolve, 350));
                     }
-                    if (streamedText) {
+                }
+                if (!response) throw new Error("The AI service could not be reached.");
+                if (!response.ok) {
+                    let message = `AI request failed (${response.status}).`;
+                    try {
+                        const data = await response.json();
+                        message = data.error?.message || data.error || message;
+                    } catch { /* Keep HTTP fallback. */ }
+                    throw new Error(message);
+                }
+                if (!response.body) throw new Error("The AI response stream was empty.");
+
+                let lastOverlayUpdate = 0;
+                try {
+                    finishReason = await readAnswerStream(response, content => {
+                        streamedText += content;
+                        if (activeAnswerSnapshotRef.current) activeAnswerSnapshotRef.current.answer = streamedText;
                         const liveAnswer = `${answerPrefix}${streamedText}`;
-                        setAiResponse(liveAnswer);
                         const now = Date.now();
-                        if (now - lastOverlayUpdate > 80) {
+                        if (!lastOverlayUpdate || now - lastOverlayUpdate >= 50) {
+                            setAiResponse(liveAnswer);
                             window.electronAPI?.sendAnswer?.(liveAnswer);
                             lastOverlayUpdate = now;
                         }
-                    }
+                    }, () => {
+                        // An active response is not a timeout. Measure silence
+                        // on the connection, rather than total answer duration.
+                        if (requestTimeout) clearTimeout(requestTimeout);
+                        requestTimeout = setTimeout(() => controller.abort(), 60000);
+                    });
+                } catch (streamError) {
+                    if (controller.signal.aborted || !streamedText.trim() || streamRecoveries >= 2) throw streamError;
+                    streamRecoveries++;
+                    finishReason = "length";
+                    window.electronAPI?.sendOverlayStatus?.("Connection interrupted. Resuming the answer…", "progress");
                 }
-                if (done) break;
+                if (requestTimeout) clearTimeout(requestTimeout);
+                requestTimeout = null;
+                effectiveModel = response.headers.get("X-ALLYX-Model") || interviewContext.model;
+                if (!streamedText.slice(segmentStart).trim() && finishReason !== "length") throw new Error("Empty response from AI.");
+                if (!shouldContinueAnswer(finishReason, segment + 1)) break;
+                requestMessages = buildAnswerContinuationMessages(
+                    continuation ? (allQAPairs.at(-1)?.question || currentTranscript) : currentTranscript,
+                    `${answerPrefix}${streamedText}`,
+                );
+                window.electronAPI?.sendOverlayStatus?.("Finishing the complete answer…", "progress");
             }
             if (!streamedText.trim()) throw new Error("Empty response from AI.");
             if (sessionEndingRef.current) return;
 
             const completeAnswer = `${answerPrefix}${streamedText}`;
             setAiResponse(completeAnswer);
-            const effectiveModel = response.headers.get("X-ALLYX-Model") || interviewContext.model;
             setAnswerModel(effectiveModel);
             setAnswerTruncated(finishReason === "length");
             const fallbackMessage = effectiveModel !== interviewContext.model
                 ? `Answered by ${effectiveModel} because the selected model was unavailable.`
                 : "";
             window.electronAPI?.sendOverlayStatus?.(
-                finishReason === "length" ? "The answer reached its limit. Press Continue to finish it." : fallbackMessage,
+                finishReason === "length" ? "This unusually long answer paused after automatic continuation. Press Continue to resume." : fallbackMessage,
                 finishReason === "length" ? "progress" : "success",
                 finishReason === "length" ? "continue" : undefined,
             );
@@ -857,6 +887,7 @@ export default function InterviewPage() {
             if (!streamedText.trim()) window.electronAPI?.sendOverlayStatus?.(errorMessage, "error");
         } finally {
             if (requestTimeout) clearTimeout(requestTimeout);
+            activeAnswerSnapshotRef.current = null;
             answerAbortRef.current = null;
             answerInFlightRef.current = false;
             setIsLoading(false);
@@ -870,9 +901,8 @@ export default function InterviewPage() {
 
     const processPendingCapturedAnswer = useCallback(() => {
         if (sessionEndingRef.current || answerInFlightRef.current) return;
-        const question = pendingCapturedQuestionRef.current;
+        const question = pendingCapturedQuestionRef.current.shift();
         if (!question) return;
-        pendingCapturedQuestionRef.current = null;
         void getAiAnswer(question, false, false, false, true);
     }, [getAiAnswer]);
     processPendingCapturedAnswerRef.current = processPendingCapturedAnswer;
@@ -884,7 +914,7 @@ export default function InterviewPage() {
         }
         const question = manualQuestion.trim() || retryQuestionRef.current;
         if (!question) return;
-        getAiAnswer(question);
+        getAiAnswer(question, false, false, true, true);
     };
 
     useEffect(() => window.electronAPI?.onOverlayManualQuestion?.((question: string) => {
@@ -893,7 +923,7 @@ export default function InterviewPage() {
             window.electronAPI?.sendOverlayStatus?.("Finish interview setup before asking a question.", "error");
             return;
         }
-        void getAiAnswer(question);
+        void getAiAnswer(question, false, false, true, true);
     }), [contextReady, getAiAnswer]);
 
     useEffect(() => window.electronAPI?.onOverlayContinueAnswer?.(() => {
@@ -1090,6 +1120,7 @@ export default function InterviewPage() {
         setAudioCaptureStatus("transcribing");
         let response: Response | null = null;
         let lastFailure: unknown = null;
+        let data: { text?: string } | null = null;
         const waitWhileCurrent = async (milliseconds: number) => {
             const deadline = Date.now() + milliseconds;
             while (Date.now() < deadline) {
@@ -1103,7 +1134,8 @@ export default function InterviewPage() {
             if (segment.epoch !== transcriptionEpochRef.current) return null;
             const controller = new AbortController();
             transcriptionAbortControllersRef.current.add(controller);
-            const timeout = window.setTimeout(() => controller.abort(), 25000);
+            const timeout = window.setTimeout(() => controller.abort(), 35000);
+            response = null;
             try {
                 response = await fetch('/api/transcribe', {
                     method: 'POST',
@@ -1111,7 +1143,10 @@ export default function InterviewPage() {
                     body: buildFormData(),
                     signal: controller.signal,
                 });
-                if (response.ok) break;
+                if (response.ok) {
+                    data = await response.json() as { text?: string };
+                    break;
+                }
                 lastFailure = new Error(`Transcription request returned ${response.status}`);
             } catch (error) {
                 lastFailure = error;
@@ -1121,7 +1156,7 @@ export default function InterviewPage() {
             }
 
             if (segment.epoch !== transcriptionEpochRef.current) return null;
-            const retryable = !response || response.status === 429 || response.status === 503;
+            const retryable = !response || (response.ok && !data) || response.status === 429 || response.status >= 500;
             if (!retryable || attempt === 2) break;
             const retryAfter = response?.headers.get('retry-after') ?? null;
             const seconds = retryAfter ? Number(retryAfter) : Number.NaN;
@@ -1132,7 +1167,8 @@ export default function InterviewPage() {
         }
 
         if (segment.epoch !== transcriptionEpochRef.current) return null;
-        if (!response?.ok) {
+        if (!response?.ok || !data) {
+            failedTranscriptionSequencesRef.current.add(segment.sequence);
             console.error("[Desktop STT] transcription request failed", lastFailure);
             setAudioCaptureStatus("waiting");
             setError("Live captions could not reconnect. Check your connection, then stop and start listening.");
@@ -1140,22 +1176,22 @@ export default function InterviewPage() {
             return null;
         }
 
-        let data: { text?: string };
-        try {
-            data = await response.json() as { text?: string };
-        } catch (error) {
-            console.error("[Desktop STT] transcription response could not be read", error);
-            setAudioCaptureStatus("waiting");
-            setError("Live captions received an unreadable response. Stop and start listening to retry.");
-            return null;
-        }
-        if (segment.epoch !== transcriptionEpochRef.current) return null;
         const newText = typeof data.text === 'string' ? data.text.trim() : '';
         if (!newText || NON_SPEECH_CAPTIONS.has(newText.toLowerCase()) || isTranscriptionArtifact(newText)) {
             setAudioCaptureStatus("waiting");
             return null;
         }
         return newText;
+    };
+
+    const prefetchTranscription = (segment: TranscriptionSegment) => {
+        // Start bounded work immediately, but let drainTranscriptions publish it
+        // in sequence. Every task rechecks its epoch before uploading.
+        segment.transcription = transcriptionPoolRef.current.run(() => processGroqAudio(segment)).catch(error => {
+            if (segment.epoch === transcriptionEpochRef.current) failedTranscriptionSequencesRef.current.add(segment.sequence);
+            console.error("[Desktop STT] Transcription failed:", error);
+            return null;
+        });
     };
 
     const commitTranscriptSegment = (segment: TranscriptionSegment, text: string) => {
@@ -1197,7 +1233,7 @@ export default function InterviewPage() {
                 if (!segment) continue;
 
                 const task = (async () => {
-                    const text = await processGroqAudio(segment);
+                    const text = await (segment.transcription ?? processGroqAudio(segment));
                     if (text) commitTranscriptSegment(segment, text);
 
                     // A pause only ends an audio chunk. It never starts an
@@ -1209,6 +1245,7 @@ export default function InterviewPage() {
                     await task;
                 } catch (error) {
                     console.error("[Desktop STT] Unexpected transcription task error:", error);
+                    if (drainEpoch === transcriptionEpochRef.current) failedTranscriptionSequencesRef.current.add(segment.sequence);
                 } finally {
                     if (activeTranscriptionTaskRef.current === task) activeTranscriptionTaskRef.current = null;
                 }
@@ -1218,7 +1255,13 @@ export default function InterviewPage() {
             }
         } finally {
             isTranscriptionDrainActiveRef.current = false;
-            if (pendingTranscriptionsRef.current.length) void drainTranscriptions();
+            // A later chunk may exist while the expected recorder has not
+            // stopped yet. Its onstop callback will resume the drain; recursing
+            // now would spin synchronously without making any progress.
+            if (pendingTranscriptionsRef.current.some(segment =>
+                segment.epoch === transcriptionEpochRef.current
+                && segment.sequence === nextTranscriptionToProcessRef.current
+            )) void drainTranscriptions();
         }
     };
     transcriptionDrainRef.current = drainTranscriptions;
@@ -1294,12 +1337,12 @@ export default function InterviewPage() {
             // its visible OS permission is available.
             const SPEECH_RMS_THRESHOLD = 0.9;
             const SPEECH_SPECTRUM_THRESHOLD = 2.4;
-            const SILENCE_DURATION = 750;
-            // Four-second rolling chunks keep confirmed captions close to live
-            // while staying inside the provider request rate available to every
-            // account. A natural pause can finish a question after 2.5 seconds.
-            const MIN_SEGMENT_DURATION = 2500;
-            const MAX_RECORDING_TIME = 4000;
+            const SILENCE_DURATION = 350;
+            // Keep three seconds of context during continuous speech, but send
+            // short phrases promptly after a pause. Stop & answer remains the
+            // only action that submits the complete spoken question.
+            const MIN_SEGMENT_DURATION = 800;
+            const MAX_RECORDING_TIME = 3000;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
@@ -1315,6 +1358,7 @@ export default function InterviewPage() {
                 pendingRollover.decision = finalizesQuestion;
                 if (!deferredRolloverSegment || deferredRolloverSegment.sequence !== pendingRollover.sequence) return;
                 deferredRolloverSegment.finalizesQuestion = finalizesQuestion;
+                prefetchTranscription(deferredRolloverSegment);
                 pendingTranscriptionsRef.current.push(deferredRolloverSegment);
                 deferredRolloverSegment = null;
                 pendingRollover = null;
@@ -1327,11 +1371,9 @@ export default function InterviewPage() {
                 isSpeaking = false;
                 vadSpeechActiveRef.current = !finalizesQuestion;
                 silenceStart = 0;
-                // At the four-second rollover we wait one silence window before
-                // deciding whether the chunk was the end of the question. This
-                // prevents a long question from being answered halfway through,
-                // while still answering if speech ends on the chunk boundary.
-                setCurrentSegmentFinalization?.(finalizesQuestion, !finalizesQuestion);
+                // Chunk boundaries no longer generate answers, so there is no
+                // need to hold a completed recording for another silence window.
+                setCurrentSegmentFinalization?.(finalizesQuestion, false);
                 if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
             };
 
@@ -1403,6 +1445,7 @@ export default function InterviewPage() {
                                 releaseRolloverSegment(pendingRollover.decision);
                             }
                         } else {
+                            prefetchTranscription(queuedSegment);
                             pendingTranscriptionsRef.current.push(queuedSegment);
                             void transcriptionDrainRef.current?.();
                         }
@@ -1450,6 +1493,9 @@ export default function InterviewPage() {
                     else if (now - speechStart >= MAX_RECORDING_TIME) {
                         // This is a rolling chunk, not the end of the question.
                         stopAndQueue(false);
+                        // Begin the next recorder now instead of losing the next
+                        // 50ms of speech while waiting for another VAD tick.
+                        startSegment();
                     }
                 } else if (isSpeaking) {
                     if (!silenceStart) silenceStart = now;
@@ -1556,17 +1602,36 @@ export default function InterviewPage() {
         finalizePendingRolloverRef.current?.();
         if (flush) await flush({ finalizesQuestion: generateAnswer });
         stopDesktopSTT(false);
+        let missingSequenceSince = 0;
         while (pendingTranscriptionsRef.current.length || activeTranscriptionTaskRef.current || isTranscriptionDrainActiveRef.current) {
             const drain = transcriptionDrainRef.current;
             if (pendingTranscriptionsRef.current.length && drain) await drain();
             const activeTask = activeTranscriptionTaskRef.current;
             if (activeTask) await activeTask.catch(() => undefined);
-            else if (isTranscriptionDrainActiveRef.current) {
+            else if (isTranscriptionDrainActiveRef.current || pendingTranscriptionsRef.current.length) {
+                // Yield to recorder onstop events instead of starving the task
+                // queue while an earlier segment is still being delivered.
+                if (!isTranscriptionDrainActiveRef.current) {
+                    missingSequenceSince ||= Date.now();
+                    if (Date.now() - missingSequenceSince > 5000) {
+                        const sequence = nextTranscriptionToProcessRef.current++;
+                        failedTranscriptionSequencesRef.current.add(sequence);
+                        missingSequenceSince = 0;
+                    }
+                }
                 await new Promise<void>(resolve => window.setTimeout(resolve, 20));
             }
+            if (activeTask) missingSequenceSince = 0;
             if (!pendingTranscriptionsRef.current.length && !activeTranscriptionTaskRef.current && !isTranscriptionDrainActiveRef.current) break;
         }
         if (!generateAnswer || sessionEndingRef.current) return;
+        if (failedTranscriptionSequencesRef.current.size) {
+            const message = "Some audio could not be transcribed. No answer was generated from the incomplete question. Copy and correct the captured text in the question box, or record the full question again.";
+            setManualQuestion(questionStateRef.current.current());
+            setError(message);
+            window.electronAPI?.sendOverlayStatus?.(message, "error");
+            return;
+        }
 
         // The ordered recorder has now committed every final caption. Snapshot it
         // here instead of depending on a natural VAD pause; this is what makes the
@@ -1584,7 +1649,7 @@ export default function InterviewPage() {
             window.electronAPI?.sendOverlayStatus?.(message, "error");
             return;
         }
-        pendingCapturedQuestionRef.current = question;
+        pendingCapturedQuestionRef.current.push(question);
         window.electronAPI?.sendOverlayStatus?.("Generating answer…", "progress");
         processPendingCapturedAnswerRef.current();
     }, [stopDesktopSTT]);
@@ -1654,7 +1719,7 @@ export default function InterviewPage() {
                     liveCaptionRef.current = "";
                     setInterimTranscript("");
                     if (question) {
-                        pendingCapturedQuestionRef.current = question;
+                        pendingCapturedQuestionRef.current.push(question);
                         void processPendingCapturedAnswerRef.current();
                     } else {
                         setError("No speech was captured. Start listening, speak the full question, then press Stop listening.");
@@ -1964,7 +2029,7 @@ export default function InterviewPage() {
     }, [appendFullTranscript, interviewContext.lang]);
 
 
-    const processCapturedImage = useCallback(async (imageData: string, options?: { reserved?: boolean }) => {
+    const processCapturedImage = useCallback(async (imageData: string, options?: { reserved?: boolean; captureMode?: "area" | "display" }) => {
         let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
         let lastProgressMessage = "";
         let lastProgressAt = 0;
@@ -1980,10 +2045,17 @@ export default function InterviewPage() {
         try {
             if (!imageData?.startsWith('data:image/')) throw new Error('The captured image was invalid.');
             window.electronAPI?.sendOverlayStatus?.("Reading captured code…", "progress");
-            const deadline = <T,>(promise: Promise<T>, ms: number, message: string) => Promise.race<T>([
-                promise,
-                new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
-            ]);
+            const deadline = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                try {
+                    return await Promise.race<T>([
+                        promise,
+                        new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
+                    ]);
+                } finally {
+                    if (timer) clearTimeout(timer);
+                }
+            };
             worker = await deadline(createWorker('eng', 1, {
                 workerPath: '/tesseract/worker.min.js',
                 corePath: '/tesseract-core',
@@ -2021,13 +2093,25 @@ export default function InterviewPage() {
             setManualQuestion(text);
             window.electronAPI?.sendCapturedText?.(text);
             setError(null);
+            if (!Number.isFinite(ret.data.confidence) || ret.data.confidence < 60) {
+                const message = "Captured text may be inaccurate. Review and correct it, then press Ask. For a clearer scan, capture only the question without browser text highlighting.";
+                window.electronAPI?.sendOverlayStatus?.(message, "error");
+                showToast(message, "info");
+                return;
+            }
+            if (options?.captureMode === "display") {
+                const message = "Full-display text captured. Remove unrelated desktop text, review the question, then press Ask. Use selected-area capture for automatic answers.";
+                window.electronAPI?.sendOverlayStatus?.(message, "success");
+                showToast(message, "info");
+                return;
+            }
             if (!contextReady || !accessReady) {
                 const message = "Text captured. Finish interview setup before generating an answer.";
                 window.electronAPI?.sendOverlayStatus?.(message, "error");
                 showToast(message, "info");
                 return;
             }
-            pendingCapturedQuestionRef.current = text;
+            pendingCapturedQuestionRef.current.push(text);
             window.electronAPI?.sendOverlayStatus?.("Text captured. Generating answer…", "progress");
             showToast("Text captured. Generating answer…", "success");
             processPendingCapturedAnswerRef.current();
@@ -2071,7 +2155,7 @@ export default function InterviewPage() {
             await video.play();
             if (!video.videoWidth || !video.videoHeight) throw new Error("The selected screen returned an empty image.");
 
-            const maxDimension = 2400;
+            const maxDimension = 4096;
             const scale = Math.min(1, maxDimension / Math.max(video.videoWidth, video.videoHeight));
             const canvas = document.createElement("canvas");
             canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
@@ -2079,7 +2163,7 @@ export default function InterviewPage() {
             const context = canvas.getContext("2d");
             if (!context) throw new Error("Screen capture could not initialize.");
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            await processCapturedImage(canvas.toDataURL("image/png"));
+            await processCapturedImage(canvas.toDataURL("image/png"), { captureMode: "display" });
         } catch (captureError) {
             const cancelled = captureError instanceof DOMException && ["NotAllowedError", "AbortError"].includes(captureError.name);
             const message = cancelled
@@ -2105,7 +2189,7 @@ export default function InterviewPage() {
                 // IPC methods. Let those builds use the established renderer
                 // OCR path instead of silently dropping the capture.
                 if (!supportsCoordinatedScannerCapture(api)) {
-                    await processCapturedImageRef.current(data.imageData);
+                    await processCapturedImageRef.current(data.imageData, { captureMode: data.captureMode });
                     return;
                 }
 
@@ -2130,7 +2214,7 @@ export default function InterviewPage() {
                             return;
                         }
                     }
-                    await processCapturedImageRef.current(data.imageData, { reserved: true });
+                    await processCapturedImageRef.current(data.imageData, { reserved: true, captureMode: data.captureMode });
                 } catch (captureError) {
                     console.error('[Scanner] Could not reserve the native capture:', captureError);
                     captureProcessingRef.current = false;
@@ -2145,54 +2229,57 @@ export default function InterviewPage() {
         if (isSavingRef.current) return;
         isSavingRef.current = true;
         sessionEndingRef.current = true;
+        const pairsToSave = includeActiveAnswer(allQAPairs, activeAnswerSnapshotRef.current);
+        if (pairsToSave !== allQAPairs) setAllQAPairs(pairsToSave);
+        activeAnswerSnapshotRef.current = null;
         answerAbortRef.current?.abort();
         setIsSaving(true);
         setError(null);
 
-        // Stop capture before saving, including when there is no session to save.
-        isAiSpeakingRef.current = true;
-        setIsRecording(false);
-        setIsCameraOn(false);
-        setIsCameraVisible(false);
-        try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
-        isRecognitionActiveRef.current = false;
-        // Ending an interview discards its in-progress recorder segment. It is
-        // not a Stop & answer action, so the overlay must never say it is
-        // generating an answer or consume an answer request while closing.
-        await flushAndStopDesktopSTT();
-        stopScreenAudio();
-        if (window.electronAPI) {
-            void window.electronAPI.stopSystemAudioCapture().catch(console.error);
-            if (isScannerActive) void window.electronAPI.toggleScannerFrame().catch(console.error);
-        }
-
-        const pendingQuestion = pendingQuestionRef.current.trim();
-        const completeSpeech = fullTranscriptRef.current.trim();
-        const remainingTranscript = [
-            completeSpeech,
-            pendingQuestion && !completeSpeech.includes(pendingQuestion) ? pendingQuestion : "",
-            interimTranscript.trim(),
-        ].filter(Boolean).join(" ");
-        // Only save if there's meaningful content
-        if (remainingTranscript.length < 10 && allQAPairs.length === 0) {
-            try {
-                try {
-                    await interviewAccess.finish(sessionIdRef.current);
-                } catch (finishError) {
-                    console.warn("Session close will retry from the dashboard:", finishError);
-                    localStorage.setItem("allyx_pending_finish", sessionIdRef.current);
-                }
-                sessionStorage.removeItem("allyx_access_session");
-                localStorage.removeItem('interview_draft');
-                router.push("/dashboard");
-            } finally {
-                isSavingRef.current = false;
-                setIsSaving(false);
-            }
-            return;
-        }
-
         try {
+            // Stop capture before saving, including when there is no session to save.
+            isAiSpeakingRef.current = true;
+            setIsRecording(false);
+            setIsCameraOn(false);
+            setIsCameraVisible(false);
+            try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
+            isRecognitionActiveRef.current = false;
+            // Ending an interview flushes the final audio into its transcript. It is
+            // not a Stop & answer action, so the overlay must never say it is
+            // generating an answer or consume an answer request while closing.
+            await flushAndStopDesktopSTT();
+            stopScreenAudio();
+            if (window.electronAPI) {
+                void window.electronAPI.stopSystemAudioCapture().catch(console.error);
+                if (isScannerActive) void window.electronAPI.toggleScannerFrame().catch(console.error);
+            }
+
+            const pendingQuestion = pendingQuestionRef.current.trim();
+            const completeSpeech = fullTranscriptRef.current.trim();
+            const remainingTranscript = [
+                completeSpeech,
+                pendingQuestion && !completeSpeech.includes(pendingQuestion) ? pendingQuestion : "",
+                interimTranscript.trim(),
+            ].filter(Boolean).join(" ");
+            // Only save if there's meaningful content
+            if (remainingTranscript.length < 10 && pairsToSave.length === 0) {
+                try {
+                    try {
+                        await interviewAccess.finish(sessionIdRef.current);
+                    } catch (finishError) {
+                        console.warn("Session close will retry from the dashboard:", finishError);
+                        localStorage.setItem("allyx_pending_finish", sessionIdRef.current);
+                    }
+                    sessionStorage.removeItem("allyx_access_session");
+                    localStorage.removeItem('interview_draft');
+                    router.push("/dashboard");
+                } finally {
+                    isSavingRef.current = false;
+                    setIsSaving(false);
+                }
+                return;
+            }
+
             const title = interviewContext.type
                 ? `${interviewContext.type} Interview`
                 : "Interview Session";
@@ -2202,7 +2289,7 @@ export default function InterviewPage() {
 
             // Format transcript with Q&A pairs for better history display
             const formattedTranscript = [
-                allQAPairs.map((qa, idx) => `Q${idx + 1}: ${qa.question}\n\nA${idx + 1}: ${qa.answer}`).join('\n\n---\n\n'),
+                pairsToSave.map((qa, idx) => `Q${idx + 1}: ${qa.question}\n\nA${idx + 1}: ${qa.answer}`).join('\n\n---\n\n'),
                 remainingTranscript ? `Transcript:\n${remainingTranscript}` : '',
             ].filter(Boolean).join('\n\n---\n\n');
 
@@ -2214,9 +2301,9 @@ export default function InterviewPage() {
                         job_description: interviewContext.jd,
                         interview_type: interviewContext.type,
                         language: interviewContext.lang,
-                        ai_responses: allQAPairs.map(qa => qa.answer),
+                        ai_responses: pairsToSave.map(qa => qa.answer),
                         duration_minutes: durationMinutes,
-                        questions: allQAPairs.map(qa => qa.question),
+                        questions: pairsToSave.map(qa => qa.question),
                         model_used: answerModel || interviewContext.model
                     },
                     sessionIdRef.current || undefined
@@ -2236,7 +2323,7 @@ export default function InterviewPage() {
         } catch (error) {
             console.error("Failed to save interview:", error);
             sessionEndingRef.current = false;
-            const message = "Could not save this interview. Your transcript is still here. Check your connection and press End Interview to retry.";
+            const message = interviewSaveErrorMessage(error);
             setError(message);
             window.electronAPI?.sendOverlayStatus?.(message, "error");
         } finally {

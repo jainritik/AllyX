@@ -88,7 +88,7 @@ export interface ElectronAPI {
         isRunningFromMountedDmg?: boolean;
     }>;
     requestMicrophoneAccess: () => Promise<{ status: string; granted: boolean }>;
-    onProcessOcr: (callback: (data: { id?: string; imageData: string }) => void) => () => void;
+    onProcessOcr: (callback: (data: { id?: string; imageData: string; captureMode?: "area" | "display" }) => void) => () => void;
     onScannerStateChange: (callback: (active: boolean) => void) => () => void;
     isElectron: boolean;
     platform: string;

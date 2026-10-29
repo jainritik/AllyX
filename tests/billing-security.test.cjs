@@ -5,14 +5,14 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const { createHmac } = require('node:crypto');
 
-function load(file, mocks = {}) {
+function load(file, mocks = {}, globals = {}) {
     const exports = {};
     const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
         compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
     }).outputText;
     vm.runInNewContext(source, {
         exports, require: name => mocks[name] || require(name), process, console, fetch,
-        Request, Response, Headers, Buffer,
+        Request, Response, Headers, Buffer, AbortController, setTimeout, clearTimeout, ...globals,
     });
     return exports;
 }
@@ -137,4 +137,21 @@ test('public policy pages do not expose the previous project owner email', () =>
     const contact = fs.readFileSync('src/lib/support-contact.ts', 'utf8');
     assert.match(contact, /kitirjain@gmail\.com/);
     assert.match(contact, /wa\.me\/918377038800/);
+});
+
+ test('stalled payment response bodies time out and abort the provider request', async () => {
+    const oldId = process.env.RAZORPAY_KEY_ID, oldSecret = process.env.RAZORPAY_KEY_SECRET;
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_mock'; process.env.RAZORPAY_KEY_SECRET = 'mock';
+    try {
+        let signal;
+        const billing = load('src/lib/razorpay-server.ts', {}, {
+            setTimeout: callback => setTimeout(callback, 5),
+            fetch: async (_url, options) => { signal = options.signal; return { ok: true, json: () => new Promise(() => {}) }; },
+        });
+        await assert.rejects(billing.createRazorpayOrder({ amount: 100, receipt: 'test', notes: {} }), /timed out/);
+        assert.equal(signal.aborted, true);
+    } finally {
+        if (oldId === undefined) delete process.env.RAZORPAY_KEY_ID; else process.env.RAZORPAY_KEY_ID = oldId;
+        if (oldSecret === undefined) delete process.env.RAZORPAY_KEY_SECRET; else process.env.RAZORPAY_KEY_SECRET = oldSecret;
+    }
 });

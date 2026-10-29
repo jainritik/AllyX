@@ -118,21 +118,44 @@ export const interviewService = {
             }
 
             if (error?.code === '23505' && sessionId) {
-                const { data: updated, error: updateError } = await supabase
-                    .from('interviews')
-                    .update({ title, transcript, analysis })
-                    .eq('id', sessionId)
-                    .eq('user_id', user.id)
-                    .select()
-                    .single();
-                if (!updateError && updated) return updated as Interview;
-                throw new InterviewServiceError("Failed to update the recovered meeting session", updateError);
+                const recoveryController = new AbortController();
+                const recoveryTimeout = setTimeout(() => recoveryController.abort(), 15000);
+                try {
+                    const { data: updated, error: updateError } = await supabase
+                        .from('interviews')
+                        .update({ title, transcript, analysis })
+                        .eq('id', sessionId)
+                        .eq('user_id', user.id)
+                        .select()
+                        .abortSignal(recoveryController.signal)
+                        .single();
+                    if (!updateError && updated) return updated as Interview;
+                    if (updateError?.code === 'PGRST116' || updateError?.code === '42501') {
+                        const response = await fetch('/api/interviews/recover', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ sessionId, title, transcript, analysis }),
+                            signal: recoveryController.signal,
+                        });
+                        const recovered = await response.json();
+                        if (response.ok && recovered?.id === sessionId && recovered?.user_id === user.id) {
+                            return recovered as Interview;
+                        }
+                        throw new InterviewServiceError("Failed to recover the saved interview", {
+                            status: response.status, message: recovered?.error || 'Save recovery failed',
+                        });
+                    }
+                    throw new InterviewServiceError("Failed to update the recovered meeting session", updateError);
+                } finally {
+                    clearTimeout(recoveryTimeout);
+                }
             }
 
             if (error) {
                 throw new InterviewServiceError("Failed to save meeting session", error);
             }
             
+            if (!data) throw new InterviewServiceError("The database did not confirm the saved session.");
             return data as Interview;
         } catch (error) {
             if (error instanceof InterviewServiceError) throw error;

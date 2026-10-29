@@ -83,6 +83,7 @@ let pendingScannerCapture = null;
 let scannerCaptureSequence = 0;
 let screenCaptureSetupProbePromise = null;
 let screenCaptureVerifiedInProcess = false;
+let scannerOpenPromise = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -328,7 +329,7 @@ function cancelPendingScannerCapture() {
     settlePendingScannerCapture(pendingScannerCapture.id, false);
 }
 
-async function deliverScannerCapture(imageData) {
+async function deliverScannerCapture(imageData, captureMode = 'area') {
     if (!mainAppWindow || mainAppWindow.isDestroyed() || !isInterviewRendererReady || !isInterviewSessionPage()) {
         return false;
     }
@@ -339,7 +340,7 @@ async function deliverScannerCapture(imageData) {
         const timeout = setTimeout(() => settlePendingScannerCapture(id, false), 5000);
         pendingScannerCapture = { id, timeout, resolve };
         try {
-            mainAppWindow.webContents.send('process-ocr-request', { id, imageData });
+            mainAppWindow.webContents.send('process-ocr-request', { id, imageData, captureMode });
         } catch (error) {
             console.error('[Scanner] Could not send captured image to the interview renderer:', error);
             settlePendingScannerCapture(id, false);
@@ -960,6 +961,7 @@ function setupIpcHandlers() {
         if (scannerCaptureInFlight || scannerOcrInFlight) {
             return { active: false, error: 'The previous screen capture is still being read. Wait for it to finish before starting another one.' };
         }
+        if (scannerOpenPromise) return scannerOpenPromise;
         if (isScannerFrameOpen || (scannerFrameWindow && !scannerFrameWindow.isDestroyed())) {
             closeScannerFrame();
             return { active: false };
@@ -968,16 +970,19 @@ function setupIpcHandlers() {
         // In particular, a not-determined status must leave the native consent
         // dialog unobstructed instead of opening a scanner that immediately
         // reports a red capture failure behind it.
-        const setup = await prepareScreenCaptureSetup();
-        if (setup.state !== 'ready') {
-            return {
-                active: false,
-                setupState: setup.state,
-                permissionStatus: setup.permissionStatus,
-                message: screenCaptureSetupMessage(setup.state),
-            };
-        }
-        return createScannerFrame();
+        scannerOpenPromise = (async () => {
+            const setup = await prepareScreenCaptureSetup();
+            if (setup.state !== 'ready') {
+                return {
+                    active: false,
+                    setupState: setup.state,
+                    permissionStatus: setup.permissionStatus,
+                    message: screenCaptureSetupMessage(setup.state),
+                };
+            }
+            return await createScannerFrame();
+        })().finally(() => { scannerOpenPromise = null; });
+        return scannerOpenPromise;
     });
 
     handleTrusted('open-screen-recording-settings', async () => {
@@ -1159,7 +1164,7 @@ function setupIpcHandlers() {
             }
             try {
                 const imageData = constrainNativeCaptureImage(capture.source.thumbnail).toDataURL();
-                const rendererAccepted = await deliverScannerCapture(imageData);
+                const rendererAccepted = await deliverScannerCapture(imageData, 'display');
                 if (!rendererAccepted) {
                     return {
                         success: false,
@@ -1408,7 +1413,8 @@ function setupIpcHandlers() {
         event.returnValue = { interactive: isOverlayInteractive };
     });
     handleTrusted('submit-overlay-question', async (event, value) => {
-        const question = typeof value === 'string' ? value.trim().slice(0, 12000) : '';
+        const question = typeof value === 'string' ? value.trim() : '';
+        if (question.length > 12000) return { success: false, error: 'This question exceeds 12,000 characters. Split it into smaller questions; no text has been submitted.' };
         if (!question || !mainAppWindow || mainAppWindow.isDestroyed()) return { success: false, error: 'Enter a question first.' };
         if (!isInterviewSessionPage() || !isInterviewRendererReady) return { success: false, error: 'Wait for the interview session to finish loading.' };
         mainAppWindow.webContents.send('overlay-manual-question', question);

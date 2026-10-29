@@ -2,7 +2,6 @@
 // desktopCapturer request may trigger a native consent dialog; opening the
 // scanner behind that dialog makes a normal first-use flow look like a failed
 // capture. This helper describes the state before and after that one probe.
-const SETTINGS_REQUIRED_STATUSES = new Set(['denied', 'restricted']);
 
 function normalizePermissionStatus(status) {
     return typeof status === 'string' && status.trim() ? status : 'unknown';
@@ -29,31 +28,38 @@ function resolveScreenCaptureSetup({
         return { state: 'install-required', permissionStatus: status, shouldProbe: false };
     }
 
-    // macOS commonly needs an app restart after it grants Screen & System Audio
-    // Recording for the first time. Prefer that clear state over showing a
-    // scanner with a second capture error behind the native consent prompt.
-    if (grantedDuringProbe) {
-        return { state: 'restart-required', permissionStatus: status, shouldProbe: false };
+    // A managed restriction takes precedence even over cached pixel evidence.
+    if (status === 'restricted') {
+        return { state: 'settings-required', permissionStatus: status, shouldProbe: false };
     }
 
-    // A non-empty native source is authoritative even if getMediaAccessStatus
-    // momentarily lags after a user changes the toggle in System Settings,
-    // including an overly pessimistic denied status from a stale TCC read.
+    // Successful pixels prove this process can capture, including immediately
+    // after consent. Requiring a restart here creates an unnecessary loop.
     if (sourceAvailable || status === 'not-applicable') {
         return { state: 'ready', permissionStatus: status, shouldProbe: false };
     }
 
-    if (SETTINGS_REQUIRED_STATUSES.has(status)) {
+    if (grantedDuringProbe) {
+        return { state: 'restart-required', permissionStatus: status, shouldProbe: false };
+    }
+
+    if (status === 'denied') {
+        // Only an explicit Scan retries a potentially stale TCC read. Passive
+        // status checks stay passive, and failed probes still require consent.
+        if (probeOnGranted && !probeComplete) {
+            return { state: 'capture-probe', permissionStatus: status, shouldProbe: true };
+        }
         return { state: 'settings-required', permissionStatus: status, shouldProbe: false };
     }
 
-    // Reading the status is not a proof that ScreenCaptureKit can return a
-    // usable source. An explicit Capture action asks for one small probe even
-    // after a granted status; passive page loads never set this flag.
     if (status === 'granted') {
-        if (!probeOnGranted) return { state: 'ready', permissionStatus: status, shouldProbe: false };
-        if (!probeComplete) return { state: 'capture-probe', permissionStatus: status, shouldProbe: true };
-        return { state: 'capture-unavailable', permissionStatus: status, shouldProbe: false };
+        if (probeOnGranted && !probeComplete) {
+            return { state: 'capture-probe', permissionStatus: status, shouldProbe: true };
+        }
+        // A tiny setup thumbnail can fail transiently. Let the scanner's real
+        // capture run its bounded retries and native fallback instead of
+        // blocking access to both recovery paths before the frame opens.
+        return { state: 'ready', permissionStatus: status, shouldProbe: false };
     }
 
     if (!probeComplete) {

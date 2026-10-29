@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), Math.min(20000, remainingMs));
                 let response: Response;
+                let responseBody: string;
                 try {
                     response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
                         method: "POST",
@@ -107,12 +108,14 @@ export async function POST(request: NextRequest) {
                         body: groqFormData,
                         signal: controller.signal,
                     });
+                    // Keep the provider deadline active through the body read.
+                    responseBody = await response.text();
                 } finally {
                     clearTimeout(timeout);
                 }
 
                 if (response.ok) {
-                    const data = await response.json();
+                    const data = JSON.parse(responseBody) as { text?: string };
                     const text = typeof data.text === "string" ? data.text.trim() : "";
                     // Silence and known Whisper hallucinations are not a real
                     // transcription. Refund them here before usage is committed
@@ -129,7 +132,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 // If not ok, capture error and try next key
-                const errorBody = await response.text();
+                const errorBody = responseBody;
                 lastError = { status: response.status, body: errorBody };
                 console.warn(`[Transcribe API] Key ${maskedKey} failed (${response.status}). Body: ${errorBody.substring(0, 200)}`);
 

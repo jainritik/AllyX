@@ -36,7 +36,7 @@ test('uses one native consent probe when macOS has not decided yet', () => {
     });
 });
 
-test('asks for a restart when first-use consent is granted during the native probe', () => {
+test('does not require a restart when first-use consent already returned pixels', () => {
     const result = resolveScreenCaptureSetup({
         platform: 'darwin',
         permissionStatus: 'granted',
@@ -45,7 +45,7 @@ test('asks for a restart when first-use consent is granted during the native pro
         grantedDuringProbe: true,
     });
 
-    assert.equal(result.state, 'restart-required');
+    assert.equal(result.state, 'ready');
     assert.equal(result.shouldProbe, false);
 });
 

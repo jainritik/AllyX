@@ -34,7 +34,7 @@ test('an explicit Capture action completes macOS consent setup before opening th
     assert.match(mainSource, /if \(setup\.state !== 'ready'\) \{[\s\S]*?setupState: setup\.state,/);
 
     const toggleStart = mainSource.indexOf("handleTrusted('toggle-scanner-frame'");
-    const scannerOpen = mainSource.indexOf('return createScannerFrame();', toggleStart);
+    const scannerOpen = mainSource.indexOf('return await createScannerFrame();', toggleStart);
     const setupProbe = mainSource.indexOf('const setup = await prepareScreenCaptureSetup();', toggleStart);
     assert.ok(toggleStart >= 0 && setupProbe > toggleStart && scannerOpen > setupProbe, 'setup probe must finish before scanner UI is created');
 
@@ -107,8 +107,8 @@ test('native capture and scanner movement stay in Electron native coordinates', 
 test('the OCR receiver stays subscribed while the interview renderer re-renders', () => {
     assert.match(interviewSource, /const processCapturedImageRef = useRef/);
     assert.match(interviewSource, /processCapturedImageRef\.current = processCapturedImage/);
-    assert.match(interviewSource, /await processCapturedImageRef\.current\(data\.imageData, \{ reserved: true \}\)/);
-    assert.match(interviewSource, /if \(!supportsCoordinatedScannerCapture\(api\)\) \{\s*await processCapturedImageRef\.current\(data\.imageData\);/s);
+    assert.match(interviewSource, /await processCapturedImageRef\.current\(data\.imageData, \{ reserved: true, captureMode: data\.captureMode \}\)/);
+    assert.match(interviewSource, /if \(!supportsCoordinatedScannerCapture\(api\)\) \{\s*await processCapturedImageRef\.current\(data\.imageData, \{ captureMode: data\.captureMode \}\);/s);
     const reserveIndex = interviewSource.indexOf('const processing = await api.setScannerProcessing(true);');
     const acknowledgeIndex = interviewSource.indexOf('await api.acknowledgeScannerCapture(data.id);');
     assert.ok(reserveIndex >= 0 && acknowledgeIndex > reserveIndex, 'native processing is reserved before the capture ACK');
