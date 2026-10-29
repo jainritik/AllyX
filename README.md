@@ -2,9 +2,9 @@
 
 AllyX is a Next.js and Electron practice assistant. It authenticates users with Supabase, transcribes microphone or supported desktop audio through Groq, generates context-aware answers, stores completed practice sessions, and presents answers in a compact desktop overlay.
 
-## Latest local test build
+## Latest testing release
 
-AllyX 1.3.42 for macOS Apple Silicon includes capture, transcription, answer-continuation, interview-save, and network-recovery fixes. See [release notes and verification limits](docs/releases/1.3.42.md). Public installer links remain on the existing published release.
+AllyX 1.3.42 includes capture, transcription, answer-continuation, interview-save, and network-recovery fixes. See [release notes and verification limits](docs/releases/1.3.42.md). Website download links target the 1.3.42 testing release for Apple Silicon, Intel Mac, and Windows.
 
 ## Current capabilities
 
