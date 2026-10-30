@@ -9,6 +9,7 @@ const { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallba
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
+const { bindOverlayShortcuts } = require('./overlay-shortcuts');
 const { windowSources, cropPage } = require('./window-capture');
 const { constrainNativeCaptureImage } = require('./native-capture-image');
 const { captureMacOSRegion } = require('./macos-screen-capture');
@@ -630,6 +631,7 @@ function createFloatingIcon() {
     floatingIconWindow.setIgnoreMouseEvents(!isOverlayInteractive, { forward: true });
     floatingIconWindow.setFocusable(isOverlayInteractive);
 
+    bindOverlayShortcuts(floatingIconWindow, globalShortcut);
     floatingIconWindow.loadFile(path.join(__dirname, 'overlay.html'));
     floatingIconWindow.once('ready-to-show', () => {
         if (canShowInterviewOverlay()) floatingIconWindow?.showInactive();

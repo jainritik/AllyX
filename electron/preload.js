@@ -94,6 +94,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('transcript', wrapper);
     },
 
+    onOverlayKeyboardAction: (callback) => {
+        const wrapper = (_event, action) => callback(action);
+        ipcRenderer.on('overlay-keyboard-action', wrapper);
+        return () => ipcRenderer.removeListener('overlay-keyboard-action', wrapper);
+    },
+    onOverlayShortcutStatus: (callback) => {
+        const wrapper = (_event, unavailable) => callback(unavailable);
+        ipcRenderer.on('overlay-shortcut-status', wrapper);
+        return () => ipcRenderer.removeListener('overlay-shortcut-status', wrapper);
+    },
     onAnswer: (callback) => {
         const wrapper = (event, answer) => callback(answer);
         ipcRenderer.on('answer', wrapper);
