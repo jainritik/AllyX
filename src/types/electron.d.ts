@@ -69,6 +69,9 @@ export interface ElectronAPI {
         restartRequired?: boolean;
         setupPending?: boolean;
     }>;
+    listScannerWindows?: () => Promise<{ success: boolean; windows: { id: string; name: string }[]; error?: string }>;
+    previewScannerWindow?: (id: string) => Promise<{ success: boolean; id?: number; imageData?: string; error?: string }>;
+    captureScannerPage?: (id: number, top: number) => Promise<{ success: boolean; error?: string }>;
     captureScannerDisplay: () => Promise<{
         success: boolean;
         error?: string;

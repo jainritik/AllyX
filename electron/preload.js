@@ -132,6 +132,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- SCREEN CAPTURE API ---
     toggleScannerFrame: () => ipcRenderer.invoke('toggle-scanner-frame'),
     captureScannerArea: () => ipcRenderer.invoke('capture-scanner-area'),
+    listScannerWindows: () => ipcRenderer.invoke('list-scanner-windows'),
+    previewScannerWindow: (id) => ipcRenderer.invoke('preview-scanner-window', id),
+    captureScannerPage: (id, top) => ipcRenderer.invoke('capture-scanner-page', id, top),
     captureScannerDisplay: () => ipcRenderer.invoke('capture-scanner-display'),
     acknowledgeScannerCapture: (captureId) => ipcRenderer.invoke('acknowledge-scanner-capture', captureId),
     setScannerProcessing: (active) => ipcRenderer.invoke('set-scanner-processing', active),

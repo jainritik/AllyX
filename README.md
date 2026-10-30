@@ -4,7 +4,7 @@ AllyX is a Next.js and Electron practice assistant. It authenticates users with 
 
 ## Latest testing release
 
-AllyX 1.3.42 includes capture, transcription, answer-continuation, interview-save, and network-recovery fixes. See [release notes and verification limits](docs/releases/1.3.42.md). Website download links target the 1.3.42 testing release for Apple Silicon, Intel Mac, and Windows.
+AllyX 1.3.43 includes capture, transcription, answer-continuation, interview-save, and network-recovery fixes. See [release notes and verification limits](docs/releases/1.3.43.md). Website download links target the 1.3.43 testing release for Apple Silicon, Intel Mac, and Windows.
 
 ## Current capabilities
 

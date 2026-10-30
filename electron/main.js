@@ -9,8 +9,9 @@ const { isAllowedOAuthAuthorizationUrl, isDesktopOAuthCallback, toAppOAuthCallba
 const { shouldPreventWindowClose, shouldShowInterviewOverlay } = require('./window-lifecycle');
 const { isAllowedAuxiliaryChannel } = require('./ipc-policy');
 const { calculateCaptureCrop } = require('./capture-crop');
+const { windowSources, cropPage } = require('./window-capture');
 const { constrainNativeCaptureImage } = require('./native-capture-image');
-const { captureMacOSMainDisplay, captureMacOSRegion } = require('./macos-screen-capture');
+const { captureMacOSRegion } = require('./macos-screen-capture');
 const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
 const { resolveScreenCaptureSetup } = require('./screen-capture-setup');
@@ -84,6 +85,7 @@ let scannerCaptureSequence = 0;
 let screenCaptureSetupProbePromise = null;
 let screenCaptureVerifiedInProcess = false;
 let scannerOpenPromise = null;
+let pendingWindowPreview = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -168,6 +170,7 @@ function sendSafeModeState(active) {
 }
 
 function closeScannerFrame() {
+    pendingWindowPreview = null;
     isScannerFrameOpen = false;
     if (scannerFrameWindow && !scannerFrameWindow.isDestroyed()) {
         scannerFrameWindow.destroy();
@@ -402,83 +405,6 @@ async function getScannerAreaCapture(display, selectionBounds) {
         try {
             const { image, size } = await captureMacOSRegion({
                 region: selectionBounds,
-                nativeImage,
-            });
-            return {
-                source: { thumbnail: image },
-                size,
-                reason: null,
-                attempts: (electronCapture.attempts || 0) + 1,
-                error: null,
-                sourceCount: 1,
-                sourceDisplayIdCount: 1,
-                displayId: String(display.id),
-                displayCount: screen.getAllDisplays().length,
-                isExactRegion: true,
-                captureMethod: 'macos-fallback',
-            };
-        } catch (error) {
-            return nativeCaptureFailure(display, error);
-        }
-    }
-    return electronCapture;
-}
-
-async function getScannerDisplayCapture(display) {
-    // This is the primary path for the full-display Capture button. It keeps
-    // the read inside the signed Electron application instead of delegating it
-    // to a separately-authorized macOS command-line process.
-    const electronCapture = await getNativeDisplayCapture(display);
-    if (electronCapture.source && electronCapture.size) {
-        return { ...electronCapture, isExactRegion: false, captureMethod: 'electron' };
-    }
-
-    if (process.platform === 'darwin') {
-        const primaryDisplay = screen.getPrimaryDisplay();
-        if (display.id === primaryDisplay.id) {
-            try {
-                // Cmd+Shift+3-equivalent fallback for a primary display.
-                const { image, size } = await captureMacOSMainDisplay({ nativeImage });
-                return {
-                    source: { thumbnail: image },
-                    size,
-                    reason: null,
-                    attempts: (electronCapture.attempts || 0) + 1,
-                    error: null,
-                    sourceCount: 1,
-                    sourceDisplayIdCount: 1,
-                    displayId: String(display.id),
-                    displayCount: screen.getAllDisplays().length,
-                    isExactRegion: true,
-                    captureMethod: 'macos-fallback',
-                };
-            } catch (primaryCaptureError) {
-                try {
-                    const { image, size } = await captureMacOSRegion({
-                        region: display.bounds,
-                        nativeImage,
-                    });
-                    return {
-                        source: { thumbnail: image },
-                        size,
-                        reason: null,
-                        attempts: (electronCapture.attempts || 0) + 2,
-                        error: null,
-                        sourceCount: 1,
-                        sourceDisplayIdCount: 1,
-                        displayId: String(display.id),
-                        displayCount: screen.getAllDisplays().length,
-                        isExactRegion: true,
-                        captureMethod: 'macos-fallback',
-                    };
-                } catch (regionCaptureError) {
-                    return nativeCaptureFailure(display, regionCaptureError);
-                }
-            }
-        }
-        try {
-            const { image, size } = await captureMacOSRegion({
-                region: display.bounds,
                 nativeImage,
             });
             return {
@@ -1132,72 +1058,43 @@ function setupIpcHandlers() {
         }
     });
 
-    // Full-display capture intentionally does not calculate an area crop.
-    // It captures the complete display containing the scanner frame.
-    handleTrusted('capture-scanner-display', async () => {
-        if (scannerCaptureInFlight) {
-            return { success: false, failureCode: 'capture-in-progress', error: 'A screen capture is already being processed. Wait for it to finish.' };
-        }
-        scannerCaptureInFlight = true;
-        let floatingIconWasVisible = false;
+    // Legacy renderers must never silently capture the desktop for this action.
+    handleTrusted('capture-scanner-display', async () => ({ success: false, error: 'Reopen Screen Capture and choose Capture webpage content.' }));
+    const excludedWindowIds = () => BrowserWindow.getAllWindows().filter(w => !w.isDestroyed()).map(w => w.getMediaSourceId());
+    handleTrusted('list-scanner-windows', async () => {
+        if (!scannerFrameWindow || isPresentationSafeMode) return { success: false, windows: [], error: 'Reopen Screen Capture.' };
+        pendingWindowPreview = null;
         try {
-            if (!mainAppWindow || isPresentationSafeMode) return { success: false, error: 'Presentation Safe Mode is active.' };
-            if (!scannerFrameWindow || scannerFrameWindow.isDestroyed()) {
-                return { success: false, error: 'Screen Capture is no longer open. Reopen it and try again.' };
-            }
-            const frameBounds = scannerFrameWindow.getBounds();
-            const display = screen.getDisplayNearestPoint({
-                x: frameBounds.x + Math.floor(frameBounds.width / 2),
-                y: frameBounds.y + Math.floor(frameBounds.height / 2),
-            });
-            if (!display) return { success: false, error: 'AllyX could not identify the display to capture. Reopen Screen Capture and try again.' };
-
-            floatingIconWasVisible = Boolean(floatingIconWindow && !floatingIconWindow.isDestroyed() && floatingIconWindow.isVisible());
-            scannerFrameWindow.hide();
-            if (floatingIconWasVisible) floatingIconWindow?.hide();
-            await new Promise(resolve => setTimeout(resolve, 350));
-            const capture = await getScannerDisplayCapture(display);
-            if (!capture.source || !capture.size) {
-                const result = nativeScreenCaptureFailure(capture);
-                console.warn('[Scanner] No usable full-display image:', result.diagnostics);
-                return result;
-            }
-            try {
-                const imageData = constrainNativeCaptureImage(capture.source.thumbnail).toDataURL();
-                const rendererAccepted = await deliverScannerCapture(imageData, 'display');
-                if (!rendererAccepted) {
-                    return {
-                        success: false,
-                        failureCode: 'renderer-not-ready',
-                        error: 'AllyX was not ready to read the capture. Reopen Screen Capture and try again.',
-                    };
-                }
-                floatingIconWindow?.webContents.send('overlay-status', { message: 'Reading captured display…', tone: 'progress' });
-                closeScannerFrame();
-                return { success: true };
-            } catch (err) {
-                console.error('[Scanner] Could not prepare the captured display image:', err);
-                return nativeScreenCaptureFailure({
-                    reason: 'post-capture-error',
-                    attempts: capture.attempts,
-                    sourceCount: capture.sourceCount,
-                    displayId: String(display.id),
-                    displayCount: screen.getAllDisplays().length,
-                    sourceDisplayIdCount: capture.sourceDisplayIdCount,
-                });
-            }
-        } catch (err) {
-            console.error('[Scanner] Full-display capture failed:', err);
-            return {
-                success: false,
-                failureCode: 'capture-api-error',
-                error: 'Full-display capture could not start. Close and reopen Screen Capture, then try again.',
-            };
-        } finally {
-            scannerCaptureInFlight = false;
-            if (!isPresentationSafeMode && scannerFrameWindow && !scannerFrameWindow.isDestroyed()) scannerFrameWindow.showInactive();
-            if (!isPresentationSafeMode && floatingIconWasVisible && floatingIconWindow && !floatingIconWindow.isDestroyed()) floatingIconWindow.showInactive();
-        }
+            const sources = await windowSources(options => desktopCapturer.getSources(options), excludedWindowIds());
+            return { success: true, windows: sources.map(source => ({ id: source.id, name: source.name })) };
+        } catch { return { success: false, windows: [], error: 'Could not list windows. Check screen recording permission and try again.' }; }
+    });
+    handleTrusted('preview-scanner-window', async (_event, sourceId) => {
+        pendingWindowPreview = null;
+        if (!scannerFrameWindow || isPresentationSafeMode || typeof sourceId !== 'string' || !sourceId.startsWith('window:')) return { success: false, error: 'Choose a browser window.' };
+        try {
+            const sources = await windowSources(options => desktopCapturer.getSources(options), excludedWindowIds(), true);
+            const source = sources.find(item => item.id === sourceId);
+            if (!source || source.thumbnail.isEmpty()) return { success: false, error: 'That window is unavailable. Bring it onscreen, then select it again.' };
+            const image = constrainNativeCaptureImage(source.thumbnail);
+            const id = ++scannerCaptureSequence;
+            pendingWindowPreview = { id, image, frame: scannerFrameWindow, created: Date.now() };
+            return { success: true, id, imageData: image.toDataURL() };
+        } catch { return { success: false, error: 'Could not capture that window. Try selected-area capture.' }; }
+    });
+    handleTrusted('capture-scanner-page', async (_event, previewId, top) => {
+        if (scannerCaptureInFlight) return { success: false, error: 'A capture is already being processed.' };
+        const preview = pendingWindowPreview;
+        if (!preview || preview.id !== previewId || preview.frame !== scannerFrameWindow || !scannerFrameWindow || isPresentationSafeMode || Date.now() - preview.created > 120000) return { success: false, error: 'The preview expired. Select the window again.' };
+        scannerCaptureInFlight = true;
+        try {
+            const imageData = cropPage(preview.image, top).toDataURL();
+            if (!await deliverScannerCapture(imageData, 'area')) return { success: false, error: 'AllyX was not ready to read the capture. Try again.' };
+            pendingWindowPreview = null;
+            closeScannerFrame();
+            return { success: true };
+        } catch (error) { return { success: false, error: error.message || 'Could not capture webpage content.' }; }
+        finally { scannerCaptureInFlight = false; }
     });
 
     handleTrusted('acknowledge-scanner-capture', async (_event, captureId) => ({

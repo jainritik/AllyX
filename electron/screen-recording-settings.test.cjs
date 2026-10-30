@@ -80,11 +80,7 @@ test('native capture failure keeps its recovery actions and waits for renderer d
     assert.match(mainSource, /const image = capture\.isExactRegion[\s\S]*?capture\.source\.thumbnail[\s\S]*?: capture\.source\.thumbnail\.crop\(calculateCaptureCrop\(display\.bounds, capture\.size, selectionBounds\)\);/);
     assert.match(mainSource, /const imageData = constrainNativeCaptureImage\(image\)\.toDataURL\(\)/);
     assert.match(mainSource, /handleTrusted\('capture-scanner-display'/);
-    assert.match(mainSource, /screen\.getDisplayNearestPoint\(/);
-    assert.match(mainSource, /constrainNativeCaptureImage\(capture\.source\.thumbnail\)\.toDataURL\(\)/);
-    assert.match(mainSource, /captureMacOSMainDisplay\(\{ nativeImage \}\)/);
     assert.match(mainSource, /const electronCapture = await getNativeDisplayCapture\(display\);[\s\S]*?if \(electronCapture\.source && electronCapture\.size\)\s*\{[\s\S]*?captureMethod: 'electron'/);
-    assert.match(mainSource, /if \(display\.id === primaryDisplay\.id\)[\s\S]*?captureMacOSMainDisplay\(\{ nativeImage \}\)/);
     assert.match(preloadSource, /acknowledgeScannerCapture:\s*\(captureId\)\s*=>\s*ipcRenderer\.invoke\('acknowledge-scanner-capture', captureId\)/);
     assert.doesNotMatch(preloadSource, /deliverPickerCapture/);
     assert.match(preloadSource, /captureScannerDisplay:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-display'\)/);
@@ -99,7 +95,8 @@ test('native capture and scanner movement stay in Electron native coordinates', 
     assert.match(preloadSource, /captureScannerArea:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('capture-scanner-area'\)/);
     assert.doesNotMatch(preloadSource, /updateScannerBounds/);
     assert.match(scannerSource, /captureScannerArea\(\)/);
-    assert.match(scannerSource, /captureScannerDisplay\(\)/);
+    assert.match(scannerSource, /captureScannerPage/);
+    assert.doesNotMatch(scannerSource, /captureScannerDisplay\(\)/);
     assert.match(scannerSource, /-webkit-app-region:drag/);
     assert.doesNotMatch(scannerSource, /updateScannerBounds|window\.screenX|window\.screenY/);
 });

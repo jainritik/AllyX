@@ -1,6 +1,9 @@
 const SCANNER_CHANNELS = new Set([
     'capture-scanner-area',
     'capture-scanner-display',
+    'list-scanner-windows',
+    'preview-scanner-window',
+    'capture-scanner-page',
     'open-screen-recording-settings',
     'toggle-scanner-frame',
     'relaunch-app',
