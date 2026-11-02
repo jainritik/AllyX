@@ -34,3 +34,24 @@ test('explicit OAuth origins can navigate in the main authentication window', ()
         assert.equal(cancelled, false);
     }
 });
+
+test('checkout origins load only as embedded frames and cannot replace the app', () => {
+    const webContents = new EventEmitter();
+    webContents.setWindowOpenHandler = () => {};
+    allowAppNavigation({ webContents }, 'https://allyx.example', () => {}, [], ['https://api.razorpay.com', 'https://checkout.razorpay.com']);
+    for (const channel of ['will-frame-navigate', 'will-redirect']) {
+        for (const [url, isMainFrame, expected] of [
+            ['https://api.razorpay.com/v1/checkout/public', false, false],
+            ['https://checkout.razorpay.com/v1/checkout', false, false],
+            ['https://api.razorpay.com/v1/checkout/public', true, true],
+            ['https://api.razorpay.com/v1/checkout/public', undefined, true],
+            ['https://api.razorpay.com.attacker.example/', false, true],
+            ['http://api.razorpay.com/v1/checkout/public', false, true],
+            ['https://attacker.example/', false, true],
+        ]) {
+            let cancelled = false;
+            webContents.emit(channel, { url, isMainFrame, preventDefault: () => { cancelled = true; } });
+            assert.equal(cancelled, expected, `${channel}: ${url} main=${isMainFrame}`);
+        }
+    }
+});

@@ -694,7 +694,10 @@ function createMainAppWindow() {
             partition: 'persist:main'
         }
     });
-    allowAppNavigation(mainAppWindow, APP_ORIGIN, url => shell.openExternal(url), OAUTH_NAVIGATION_ORIGINS);
+    allowAppNavigation(mainAppWindow, APP_ORIGIN, url => shell.openExternal(url), OAUTH_NAVIGATION_ORIGINS, [
+        'https://api.razorpay.com',
+        'https://checkout.razorpay.com',
+    ]);
     mainAppWindow.webContents.setUserAgent(DESKTOP_USER_AGENT);
 
     if (process.platform === 'win32') {

@@ -1,7 +1,12 @@
-function allowAppNavigation(window, appOrigin, openExternal, additionalOrigins = []) {
+function allowAppNavigation(window, appOrigin, openExternal, additionalOrigins = [], embeddedOrigins = []) {
     const allowedOrigins = new Set([appOrigin, ...additionalOrigins]);
+    const allowedEmbeddedOrigins = new Set(embeddedOrigins);
     const denyOtherOrigins = (details) => {
-        try { if (allowedOrigins.has(new URL(details.url).origin)) return; } catch { /* deny */ }
+        try {
+            const origin = new URL(details.url).origin;
+            if (allowedOrigins.has(origin)) return;
+            if (details.isMainFrame === false && allowedEmbeddedOrigins.has(origin)) return;
+        } catch { /* deny */ }
         details.preventDefault();
     };
     window.webContents.on('will-frame-navigate', denyOtherOrigins);
