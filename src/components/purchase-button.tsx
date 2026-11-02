@@ -37,7 +37,7 @@ function loadCheckout() {
     return checkoutPromise;
 }
 
-export function PurchaseButton({ planId, className, onSuccess, autoStart = false }: { planId: BillingPlanId; className?: string; onSuccess?: () => void; autoStart?: boolean }) {
+export function PurchaseButton({ planId, className, onSuccess, autoStart = false, offer, label }: { planId: BillingPlanId; className?: string; onSuccess?: () => void; autoStart?: boolean; offer?: "live_validation"; label?: string }) {
     const router = useRouter();
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState("");
@@ -61,7 +61,7 @@ export function PurchaseButton({ planId, className, onSuccess, autoStart = false
         setBusy(true); setMessage("");
         try {
             const orderResponse = await fetch("/api/billing/order", {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }),
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId, ...(offer ? { offer } : {}) }),
             });
             if (orderResponse.status === 401) {
                 const returnPath = `/dashboard/billing?plan=${encodeURIComponent(planId)}`;
@@ -123,7 +123,7 @@ export function PurchaseButton({ planId, className, onSuccess, autoStart = false
     }, [autoStart]);
 
     return <div className="mt-auto">
-        <button type="button" onClick={purchase} disabled={busy} className={className}>{busy ? "Opening checkout…" : "Buy pack"}</button>
+        <button type="button" onClick={purchase} disabled={busy} className={className}>{busy ? "Opening checkout…" : label || "Buy pack"}</button>
         {message && <p role="status" className="mt-3 text-center text-xs">{message}</p>}
     </div>;
 }

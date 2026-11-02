@@ -155,3 +155,60 @@ test('public policy pages do not expose the previous project owner email', () =>
         if (oldSecret === undefined) delete process.env.RAZORPAY_KEY_SECRET; else process.env.RAZORPAY_KEY_SECRET = oldSecret;
     }
 });
+
+test('live validation offer requires the configured account, unexpired enablement, and live credentials', () => {
+    const names = ['ALLYX_LIVE_PAYMENT_VALIDATION_USER_ID', 'ALLYX_LIVE_PAYMENT_VALIDATION_EXPIRES_AT', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'];
+    const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    try {
+        process.env.ALLYX_LIVE_PAYMENT_VALIDATION_USER_ID = 'owner';
+        process.env.ALLYX_LIVE_PAYMENT_VALIDATION_EXPIRES_AT = '2030-01-02T00:00:00Z';
+        process.env.RAZORPAY_KEY_ID = 'rzp_live_mock'; process.env.RAZORPAY_KEY_SECRET = 'mock';
+        const plans = load('src/lib/billing-plans.ts');
+        const { configuredLiveValidationOffer: offer } = load('src/lib/live-payment-validation.ts', { '@/lib/billing-plans': plans });
+        const now = Date.parse('2030-01-01T00:00:00Z');
+        assert.equal(offer({ id: 'owner' }, now).amount, 100);
+        assert.equal(offer({ id: 'owner' }, now).credits, 2);
+        assert.equal(offer({ id: 'other-account' }, now), null);
+        assert.equal(offer({ id: 'owner' }, Date.parse('2030-01-03')), null);
+        process.env.RAZORPAY_KEY_ID = 'rzp_test_mock';
+        assert.equal(offer({ id: 'owner' }, now), null);
+        delete process.env.ALLYX_LIVE_PAYMENT_VALIDATION_USER_ID;
+        assert.equal(offer({ id: 'owner' }, now), null);
+    } finally { for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; } }
+});
+
+test('a foreign account cannot create the restricted ₹1 order, even with a forged amount', async () => {
+    const { NextRequest } = require('next/server');
+    let providerCalls = 0, writes = 0;
+    const route = load('src/app/api/billing/order/route.ts', {
+        '@/lib/api-access': { apiClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'foreign' } } }) } }) },
+        '@/lib/billing-plans': load('src/lib/billing-plans.ts'),
+        '@/lib/live-payment-validation': { availableLiveValidationOffer: async () => null },
+        '@/lib/razorpay-server': {
+            billingAdminClient: () => ({ rpc: async () => { writes++; } }),
+            createRazorpayOrder: async () => { providerCalls++; }, publicRazorpayKey: () => 'rzp_live_mock',
+        },
+    });
+    const result = await route.POST(new NextRequest('https://allyx.invalid/api/billing/order', { method: 'POST', body: JSON.stringify({ planId: 'starter', offer: 'live_validation', amount: 1 }) }));
+    assert.equal(result.status, 403); assert.equal(providerCalls, 0); assert.equal(writes, 0);
+});
+
+test('authorized ₹1 checkout records the same amount and credits used by fulfillment', async () => {
+    const { NextRequest } = require('next/server');
+    const plans = load('src/lib/billing-plans.ts');
+    let created, recorded;
+    const route = load('src/app/api/billing/order/route.ts', {
+        '@/lib/api-access': { apiClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'owner', email: 'test@example.invalid' } } }) } }) },
+        '@/lib/billing-plans': plans,
+        '@/lib/live-payment-validation': { availableLiveValidationOffer: async () => ({ ...plans.BILLING_PLANS.starter, amount: 100 }) },
+        '@/lib/razorpay-server': {
+            billingAdminClient: () => ({ from: name => { assert.equal(name, 'payment_orders'); return { insert: async row => { recorded = row; return { error: null }; } }; } }),
+            createRazorpayOrder: async input => { created = input; return { id: 'order_valid', amount: 100, currency: 'INR' }; },
+            publicRazorpayKey: () => 'rzp_live_mock',
+        },
+    });
+    const result = await route.POST(new NextRequest('https://allyx.invalid/api/billing/order', { method: 'POST', body: JSON.stringify({ planId: 'starter', offer: 'live_validation', amount: 999, credits: 999 }) }));
+    assert.equal(result.status, 200); assert.equal(created.amount, 100);
+    assert.equal(recorded.amount, 100); assert.equal(recorded.credits, 2); assert.equal(recorded.user_id, 'owner');
+    assert.equal(recorded.plan_id, 'starter'); assert.match(recorded.receipt_number, /^allyx_livecheck_/);
+});

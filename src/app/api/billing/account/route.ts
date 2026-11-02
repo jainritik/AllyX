@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiClient } from "@/lib/api-access";
 import { retryPaymentConfirmationEmailsForUser } from "@/lib/payment-confirmation-email";
 
+import { billingAdminClient } from "@/lib/razorpay-server";
+import { configuredLiveValidationOffer, availableLiveValidationOffer } from "@/lib/live-payment-validation";
+
 export async function GET(request: NextRequest) {
     const client = apiClient(request);
     if (!client) return NextResponse.json({ error: "Authentication is not configured" }, { status: 503 });
@@ -15,5 +18,10 @@ export async function GET(request: NextRequest) {
     await retryPaymentConfirmationEmailsForUser(auth.user.id).catch(emailError => {
         console.error("[Billing email retry]", emailError instanceof Error ? emailError.message : emailError);
     });
-    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+    let liveValidationOffer = null;
+    if (configuredLiveValidationOffer(auth.user)) {
+        try { liveValidationOffer = await availableLiveValidationOffer(auth.user, billingAdminClient()); }
+        catch (offerError) { console.error("[Live payment offer]", offerError instanceof Error ? offerError.message : "Unavailable"); }
+    }
+    return NextResponse.json({ ...data, liveValidationOffer }, { headers: { "Cache-Control": "no-store" } });
 }

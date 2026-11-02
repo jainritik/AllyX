@@ -3,6 +3,8 @@ import { apiClient } from "@/lib/api-access";
 import { BILLING_PLANS, isBillingPlanId } from "@/lib/billing-plans";
 import { billingAdminClient, createRazorpayOrder, publicRazorpayKey } from "@/lib/razorpay-server";
 
+import { availableLiveValidationOffer } from "@/lib/live-payment-validation";
+
 export async function POST(request: NextRequest) {
     const client = apiClient(request);
     if (!client) return NextResponse.json({ error: "Authentication is not configured" }, { status: 503 });
@@ -12,15 +14,27 @@ export async function POST(request: NextRequest) {
     const planId: unknown = body?.planId;
     if (!isBillingPlanId(planId)) return NextResponse.json({ error: "Invalid interview pack" }, { status: 400 });
 
-    const plan = BILLING_PLANS[planId];
+    const isLiveValidation = body?.offer === "live_validation";
     try {
-        const receipt = `allyx_${Date.now()}_${auth.user.id.slice(0, 8)}`.slice(0, 40);
+        if (body?.offer && !isLiveValidation) return NextResponse.json({ error: "Invalid offer" }, { status: 400 });
+        const admin = billingAdminClient();
+        const offer = isLiveValidation ? await availableLiveValidationOffer(auth.user, admin) : null;
+        if (isLiveValidation && (!offer || planId !== "starter")) return NextResponse.json({ error: "This live payment offer is unavailable for your account." }, { status: 403 });
+        const plan = offer || BILLING_PLANS[planId];
+        const prefix = isLiveValidation ? "allyx_livecheck" : "allyx";
+        const receipt = `${prefix}_${Date.now()}_${auth.user.id.slice(0, 8)}`.slice(0, 40);
         const order = await createRazorpayOrder({
             amount: plan.amount,
             receipt,
             notes: { account_id: auth.user.id, plan_id: plan.id },
         });
-        const { error: ledgerError } = await billingAdminClient().rpc("record_payment_order", {
+        if (order.amount !== plan.amount || order.currency !== "INR" || !/^order_[A-Za-z0-9]+$/.test(order.id || "")) throw new Error("Payment provider returned an unexpected order");
+        const { error: ledgerError } = isLiveValidation
+            ? await admin.from("payment_orders").insert({
+                order_id: order.id, user_id: auth.user.id, plan_id: plan.id,
+                amount: plan.amount, currency: "INR", credits: plan.credits, receipt_number: receipt,
+            })
+            : await admin.rpc("record_payment_order", {
             requested_order_id: order.id,
             expected_user_id: auth.user.id,
             requested_plan_id: plan.id,
@@ -29,7 +43,7 @@ export async function POST(request: NextRequest) {
         if (ledgerError) throw new Error("Could not record the payment order");
         return NextResponse.json({
             keyId: publicRazorpayKey(), orderId: order.id, amount: plan.amount,
-            currency: "INR", planName: plan.name, accountEmail: auth.user.email || "",
+            currency: "INR", credits: plan.credits, planName: isLiveValidation ? `₹1 live payment check — ${plan.name}` : plan.name, accountEmail: auth.user.email || "",
         }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
         console.error("[Billing order]", error instanceof Error ? error.message : error);

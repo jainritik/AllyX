@@ -24,6 +24,7 @@ type Purchase = {
 };
 
 type BillingAccount = {
+    liveValidationOffer?: { amount: number; displayPrice: string; credits: number; expiresAt: string } | null;
     creditsRemaining: number;
     trialStatus: "available" | "active" | "used";
     trialStartedAt: string | null;
@@ -87,6 +88,12 @@ export default function BillingPage() {
             <p className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
                 Daily fair-use protection for answers and transcription resets at 00:00 UTC. It is separate from your interview credits, which stay available until you use them.
             </p>
+
+            {account.liveValidationOffer && <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-6 dark:border-emerald-800 dark:bg-emerald-950/30">
+                <h2 className="text-xl font-bold">Your live payment check — ₹1</h2>
+                <p className="mt-2 text-sm">Pay ₹1 once to validate real checkout and receive {account.liveValidationOffer.credits} interview credits. Available only for your account until {new Date(account.liveValidationOffer.expiresAt).toLocaleString()}. This is a real payment.</p>
+                <PurchaseButton planId="starter" offer="live_validation" label="Pay ₹1" onSuccess={loadAccount} className="mt-4 rounded-lg bg-emerald-700 px-5 py-3 font-semibold text-white disabled:opacity-50" />
+            </section>}
 
             <section><h2 className="text-xl font-bold text-gray-950 dark:text-white">Buy interview credits</h2><div className="mt-4 grid gap-4 lg:grid-cols-3">{planIds.map(planId => { const plan = BILLING_PLANS[planId]; return <article key={planId} className="flex min-h-56 flex-col rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"><p className="font-semibold text-emerald-600 dark:text-emerald-400">{plan.name}</p><p className="mt-4 text-3xl font-bold">{plan.displayPrice}</p><p className="mt-2 text-sm text-gray-500">{plan.credits} interview credits</p><PurchaseButton planId={planId} autoStart={requestedPlan === planId} onSuccess={loadAccount} className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-950" /></article>; })}</div></section>
 
