@@ -213,3 +213,78 @@ test('authorized ₹1 checkout records the same amount and credits used by fulfi
     assert.equal(recorded.amount, 100); assert.equal(recorded.credits, 2); assert.equal(recorded.user_id, 'owner');
     assert.equal(recorded.plan_id, 'starter'); assert.match(recorded.receipt_number, /^allyx_livecheck_/);
 });
+
+test('webhook-first checkout confirmation reports the purchase, not zero duplicate credits', () => {
+    const { paymentConfirmationMessage } = load('src/lib/payment-confirmation-message.ts');
+    const duplicate = paymentConfirmationMessage({ alreadyProcessed: true, creditsAdded: 0, creditsRemaining: 9974 }, 2);
+    assert.match(duplicate, /Payment confirmed for 2 interview credits/);
+    assert.match(duplicate, /Available balance: 9974/);
+    assert.doesNotMatch(duplicate, /0 interview credits added successfully/);
+    assert.match(paymentConfirmationMessage({ creditsAdded: 2, creditsRemaining: 9974 }, 2), /2 interview credits added successfully/);
+    assert.match(paymentConfirmationMessage({ creditsAdded: 0, debtRepaid: 2, creditsRemaining: 0 }, 2), /2 credits settled an outstanding credit adjustment/);
+    assert.match(paymentConfirmationMessage({}, 2), /Refresh Billing & Credits/);
+});
+
+test('receipt email resend is authenticated and claims only the owned paid order with a cooldown', async () => {
+    let sent = 0;
+    const filters = [];
+    const query = {};
+    for (const name of ['update', 'eq', 'lt', 'select']) query[name] = (...args) => { filters.push([name, ...args]); return query; };
+    query.maybeSingle = async () => ({ data: { order_id: 'order_123' }, error: null });
+    const route = load('src/app/api/billing/receipt/[orderId]/email/route.ts', {
+        '@/lib/api-access': { apiClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'owner' } } }) } }) },
+        '@/lib/razorpay-server': { billingAdminClient: () => ({ from: () => query }) },
+        '@/lib/payment-confirmation-email': { sendPaymentConfirmationEmail: async () => { sent++; return { sent: true }; } },
+    });
+    const result = await route.POST(new Request('https://allyx.invalid'), { params: Promise.resolve({ orderId: 'order_123' }) });
+    assert.equal(result.status, 200);
+    assert.equal(sent, 1);
+    for (const expected of [['eq', 'user_id', 'owner'], ['eq', 'status', 'paid'], ['eq', 'confirmation_email_status', 'sent'], ['lt', 'confirmation_email_attempts', 5]]) {
+        assert.ok(filters.some(item => JSON.stringify(item) === JSON.stringify(expected)));
+    }
+    assert.ok(filters.some(item => item[0] === 'lt' && item[1] === 'confirmation_email_last_attempt_at'));
+    query.maybeSingle = async () => ({ data: null, error: null });
+    assert.equal((await route.POST(new Request('https://allyx.invalid'), { params: Promise.resolve({ orderId: 'order_123' }) })).status, 429);
+    assert.equal(sent, 1);
+    const anonymous = load('src/app/api/billing/receipt/[orderId]/email/route.ts', {
+        '@/lib/api-access': { apiClient: () => null },
+        '@/lib/razorpay-server': {}, '@/lib/payment-confirmation-email': {},
+    });
+    assert.equal((await anonymous.POST(new Request('https://allyx.invalid'), { params: Promise.resolve({ orderId: 'order_123' }) })).status, 401);
+});
+
+test('confirmation email includes the actual discounted amount, credits, balance and receipt', async () => {
+    const previous = Object.fromEntries(['BREVO_SMTP_USER', 'BREVO_SMTP_PASS', 'ALLYX_EMAIL_FROM'].map(key => [key, process.env[key]]));
+    Object.assign(process.env, { BREVO_SMTP_USER: 'test', BREVO_SMTP_PASS: 'test', ALLYX_EMAIL_FROM: 'receipts@example.com' });
+    let mail;
+    const calls = [];
+    try {
+        const sender = load('src/lib/payment-confirmation-email.ts', {
+            nodemailer: { default: { createTransport: () => ({ sendMail: async value => { mail = value; } }) } },
+            '@/lib/support-contact': { supportContact: { email: 'support@example.com' } },
+            '@/lib/razorpay-server': { billingAdminClient: () => ({
+                rpc: async (name, args) => {
+                    calls.push([name, args]);
+                    return { data: name === 'claim_payment_confirmation_email' ? {
+                        userId: 'owner', orderId: 'order_123', paymentId: 'pay_123', planId: 'starter',
+                        amount: 100, currency: 'INR', credits: 2, creditsRemaining: 12, receiptNumber: 'receipt<123>',
+                    } : null, error: null };
+                },
+                auth: { admin: { getUserById: async () => ({ data: { user: { email: 'customer@example.com' } }, error: null }) } },
+            }) },
+        });
+        assert.equal((await sender.sendPaymentConfirmationEmail('order_123')).sent, true);
+        assert.equal(mail.to, 'customer@example.com');
+        assert.match(mail.subject, /₹1\.00.*2 interview credits/);
+        assert.match(mail.text, /Credits added: 2/);
+        assert.match(mail.text, /Credits now available: 12/);
+        assert.match(mail.text, /Order ID: order_123/);
+        assert.match(mail.text, /receipt\/order_123/);
+        assert.match(mail.html, /receipt&lt;123&gt;/);
+        assert.equal(calls.at(-1)[1].delivered, true);
+    } finally {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+    }
+});

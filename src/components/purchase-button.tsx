@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { paymentConfirmationMessage } from "@/lib/payment-confirmation-message";
 import type { BillingPlanId } from "@/lib/billing-plans";
 
 declare global {
@@ -85,7 +86,7 @@ export function PurchaseButton({ planId, className, onSuccess, autoStart = false
                         });
                         const confirmation = await verification.json();
                         if (!verification.ok) throw new Error(confirmation.error || "Payment confirmation failed.");
-                        setMessage(`${confirmation.creditsAdded} interview credits added successfully.`);
+                        setMessage(paymentConfirmationMessage(confirmation, order.credits));
                         onSuccess?.();
                         router.refresh();
                     } catch (error) {

@@ -22,6 +22,17 @@ export default function ReceiptPage() {
     const { orderId } = useParams<{ orderId: string }>();
     const [receipt, setReceipt] = useState<Receipt | null>(null);
     const [error, setError] = useState("");
+    const [emailStatus, setEmailStatus] = useState("");
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const resendEmail = async () => {
+        setSendingEmail(true);
+        try {
+            const response = await fetch(`/api/billing/receipt/${encodeURIComponent(orderId)}/email`, { method: "POST" });
+            const result = await response.json();
+            setEmailStatus(response.ok ? result.message : result.error);
+        } catch { setEmailStatus("Could not request the email. Please try again."); }
+        finally { setSendingEmail(false); }
+    };
 
     useEffect(() => {
         void fetch(`/api/billing/receipt/${encodeURIComponent(orderId)}`, { cache: "no-store" })
@@ -37,7 +48,8 @@ export default function ReceiptPage() {
     if (!receipt) return <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>;
 
     return <div className="mx-auto max-w-2xl">
-        <div className="mb-5 flex justify-end print:hidden"><Button onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print or save PDF</Button></div>
+        <div className="mb-5 flex flex-wrap justify-end gap-3 print:hidden">{receipt.status === "paid" && <Button variant="outline" disabled={sendingEmail} onClick={resendEmail}>{sendingEmail ? "Sending…" : "Resend confirmation email"}</Button>}<Button onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print or save PDF</Button></div>
+        {emailStatus && <p role="status" className="mb-4 text-sm print:hidden">{emailStatus}</p>}
         <article className="rounded-2xl border border-gray-200 bg-white p-8 text-gray-950 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white print:border-0 print:shadow-none">
             <div className="flex items-start justify-between gap-6 border-b border-gray-200 pb-6 dark:border-gray-800"><div><p className="text-sm font-semibold text-emerald-600">AllyX</p><h1 className="mt-2 text-3xl font-bold">Payment receipt</h1></div><div className="text-right text-sm text-gray-500"><p>{receipt.receiptNumber}</p><p className="mt-1">{new Date(receipt.paidAt).toLocaleString()}</p></div></div>
             <dl className="mt-7 grid gap-5 text-sm sm:grid-cols-2">

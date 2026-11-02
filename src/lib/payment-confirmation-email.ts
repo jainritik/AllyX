@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { supportContact } from "@/lib/support-contact";
 import { billingAdminClient } from "@/lib/razorpay-server";
 
 type ConfirmationClaim = {
@@ -59,6 +60,7 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
             port: config.port,
             secure: config.port === 465,
             auth: { user: config.user, pass: config.pass },
+            connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 15_000,
         });
         const receiptUrl = `https://allyx.vercel.app/dashboard/billing/receipt/${encodeURIComponent(claim.orderId)}`;
         const billingUrl = "https://allyx.vercel.app/dashboard/billing";
@@ -70,7 +72,8 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
         await transporter.sendMail({
             from: config.fromEmail,
             to: account.user.email,
-            subject: `Payment confirmed — ${claim.credits} interview credits added`,
+            subject: `AllyX payment confirmed — ${formatAmount(claim.amount, claim.currency)} · ${claim.credits} interview credits`,
+            replyTo: supportContact.email,
             messageId: `<payment-${claim.paymentId}@allyx.vercel.app>`,
             text: [
                 "Your AllyX payment was successful.",
@@ -78,10 +81,13 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
                 `Amount: ${formatAmount(claim.amount, claim.currency)}`,
                 `Credits added: ${claim.credits}`,
                 `Credits now available: ${claim.creditsRemaining}`,
+                `Order ID: ${claim.orderId}`,
                 `Receipt: ${claim.receiptNumber}`,
                 `Payment ID: ${claim.paymentId}`,
                 `View receipt: ${receiptUrl}`,
-                `Billing & Usage: ${billingUrl}`,
+                `Billing & Credits: ${billingUrl}`,
+                "One credit starts one interview. Your credits do not expire.",
+                `Need help? Reply to this email and include your order ID.`,
             ].join("\n"),
             html: `
                 <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#172033">
@@ -93,10 +99,12 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
                         <tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Credits added</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${claim.credits}</strong></td></tr>
                         <tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Credits available</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${claim.creditsRemaining}</strong></td></tr>
                         <tr><td style="padding:10px;border-bottom:1px solid #e5e7eb">Receipt</td><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">${safeReceipt}</td></tr>
+                        <tr><td style="padding:10px">Order ID</td><td style="padding:10px;text-align:right">${escapeHtml(claim.orderId)}</td></tr>
                         <tr><td style="padding:10px">Payment ID</td><td style="padding:10px;text-align:right">${safePayment}</td></tr>
                     </table>
                     <p><a href="${receiptUrl}" style="background:#2563eb;color:white;padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block">View receipt</a></p>
-                    <p style="font-size:13px;color:#64748b">You can review your credits and purchase history in <a href="${billingUrl}">Billing &amp; Usage</a>.</p>
+                    <p style="font-size:13px;color:#64748b">You can review your credits and purchase history in <a href="${billingUrl}">Billing &amp; Credits</a>. One credit starts one interview; your credits do not expire.</p>
+                    <p style="font-size:13px;color:#64748b">Need help? Reply to this email and include your order ID.</p>
                 </div>`,
         });
         const { error: completeError } = await admin.rpc("complete_payment_confirmation_email", {
