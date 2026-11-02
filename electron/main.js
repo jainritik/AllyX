@@ -1417,8 +1417,12 @@ async function initialize() {
     };
     appSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(allowedPermission(wc, permission, details)));
     appSession.setPermissionCheckHandler((wc, permission, _requestingOrigin, details) => allowedPermission(wc, permission, details));
-    session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
-    session.defaultSession.setPermissionCheckHandler(() => false);
+    const allowOverlayPointerLock = (wc, permission) => permission === 'pointerLock'
+        && floatingIconWindow && !floatingIconWindow.isDestroyed()
+        && wc === floatingIconWindow.webContents
+        && wc.getURL() === require('url').pathToFileURL(path.join(__dirname, 'overlay.html')).href;
+    session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(Boolean(allowOverlayPointerLock(wc, permission))));
+    session.defaultSession.setPermissionCheckHandler((wc, permission) => Boolean(allowOverlayPointerLock(wc, permission)));
     createMainAppWindow();
     isInitialized = true;
     if (pendingDesktopOAuthCallback) {
