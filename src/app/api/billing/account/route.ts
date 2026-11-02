@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiClient } from "@/lib/api-access";
 import { retryPaymentConfirmationEmailsForUser } from "@/lib/payment-confirmation-email";
 
-import { billingAdminClient } from "@/lib/razorpay-server";
 import { configuredLiveValidationOffer, availableLiveValidationOffer } from "@/lib/live-payment-validation";
 
 export async function GET(request: NextRequest) {
@@ -20,7 +19,7 @@ export async function GET(request: NextRequest) {
     });
     let liveValidationOffer = null;
     if (configuredLiveValidationOffer(auth.user)) {
-        try { liveValidationOffer = await availableLiveValidationOffer(auth.user, billingAdminClient()); }
+        try { liveValidationOffer = await availableLiveValidationOffer(auth.user); }
         catch (offerError) { console.error("[Live payment offer]", offerError instanceof Error ? offerError.message : "Unavailable"); }
     }
     return NextResponse.json({ ...data, liveValidationOffer }, { headers: { "Cache-Control": "no-store" } });

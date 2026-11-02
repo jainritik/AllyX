@@ -24,7 +24,7 @@ type Purchase = {
 };
 
 type BillingAccount = {
-    liveValidationOffer?: { amount: number; displayPrice: string; credits: number; expiresAt: string } | null;
+    liveValidationOffer?: { amount: number; displayPrice: string; credits: number; expiresAt: null } | null;
     creditsRemaining: number;
     trialStatus: "available" | "active" | "used";
     trialStartedAt: string | null;
@@ -90,8 +90,8 @@ export default function BillingPage() {
             </p>
 
             {account.liveValidationOffer && <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-6 dark:border-emerald-800 dark:bg-emerald-950/30">
-                <h2 className="text-xl font-bold">Your live payment check — ₹1</h2>
-                <p className="mt-2 text-sm">Pay ₹1 once to validate real checkout and receive {account.liveValidationOffer.credits} interview credits. Available only for your account until {new Date(account.liveValidationOffer.expiresAt).toLocaleString()}. This is a real payment.</p>
+                <h2 className="text-xl font-bold">Your testing-account price — ₹1</h2>
+                <p className="mt-2 text-sm">Each ₹1 payment adds {account.liveValidationOffer.credits} interview credits. Your testing account can use this price repeatedly, with no expiry. This is a real payment.</p>
                 <PurchaseButton planId="starter" offer="live_validation" label="Pay ₹1" onSuccess={loadAccount} className="mt-4 rounded-lg bg-emerald-700 px-5 py-3 font-semibold text-white disabled:opacity-50" />
             </section>}
 

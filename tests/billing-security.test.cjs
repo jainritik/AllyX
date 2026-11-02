@@ -156,7 +156,7 @@ test('public policy pages do not expose the previous project owner email', () =>
     }
 });
 
-test('live validation offer requires the configured account, unexpired enablement, and live credentials', () => {
+test('permanent testing price requires the configured account and live credentials', () => {
     const names = ['ALLYX_LIVE_PAYMENT_VALIDATION_USER_ID', 'ALLYX_LIVE_PAYMENT_VALIDATION_EXPIRES_AT', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'];
     const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
     try {
@@ -169,7 +169,8 @@ test('live validation offer requires the configured account, unexpired enablemen
         assert.equal(offer({ id: 'owner' }, now).amount, 100);
         assert.equal(offer({ id: 'owner' }, now).credits, 2);
         assert.equal(offer({ id: 'other-account' }, now), null);
-        assert.equal(offer({ id: 'owner' }, Date.parse('2030-01-03')), null);
+        assert.equal(offer({ id: 'owner' }, Date.parse('2040-01-03')).amount, 100);
+        assert.equal(offer({ id: 'owner' }, now).expiresAt, null);
         process.env.RAZORPAY_KEY_ID = 'rzp_test_mock';
         assert.equal(offer({ id: 'owner' }, now), null);
         delete process.env.ALLYX_LIVE_PAYMENT_VALIDATION_USER_ID;

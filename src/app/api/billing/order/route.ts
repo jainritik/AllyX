@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     try {
         if (body?.offer && !isLiveValidation) return NextResponse.json({ error: "Invalid offer" }, { status: 400 });
         const admin = billingAdminClient();
-        const offer = isLiveValidation ? await availableLiveValidationOffer(auth.user, admin) : null;
+        const offer = isLiveValidation ? await availableLiveValidationOffer(auth.user) : null;
         if (isLiveValidation && (!offer || planId !== "starter")) return NextResponse.json({ error: "This live payment offer is unavailable for your account." }, { status: 403 });
         const plan = offer || BILLING_PLANS[planId];
         const prefix = isLiveValidation ? "allyx_livecheck" : "allyx";
