@@ -418,3 +418,25 @@ test('broken provider streams settle usage reservations instead of leaking them'
         assert.equal(refunds, 0);
     } finally { if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; }
 });
+
+test('uncertain noisy speech is rejected and refunded instead of becoming a wrong answer', async () => {
+    let commits = 0, refunds = 0;
+    const route = load('src/app/api/transcribe/route.ts', { '@/lib/api-access': {
+        authorizeApi: async () => ({ user: { id: 'test' }, reservationId: 'r1' }),
+        commitApiQuota: async () => { commits++; }, refundApiQuota: async () => { refunds++; },
+    } }, async (_url, options) => {
+        assert.equal(options.body.get('response_format'), 'verbose_json');
+        return Response.json({ text: 'invented words', segments: [{ avg_logprob: -1.5, no_speech_prob: 0.9 }] });
+    });
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array([1, 2, 3])], 'audio.webm', { type: 'audio/webm' }));
+    const old = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = 'mock-only';
+    try {
+        const response = await route.POST(new NextRequest('https://allyx.invalid/api/transcribe', { method: 'POST', body: form }));
+        assert.equal(response.status, 422);
+        assert.equal(commits, 0);
+        assert.equal(refunds, 1);
+        assert.match((await response.json()).error, /repeat the question/);
+    } finally { if (old === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = old; }
+});

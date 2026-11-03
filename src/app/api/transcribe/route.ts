@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
                 groqFormData.append("file", audioFile, "audio.webm");
                 groqFormData.append("model", model);
                 groqFormData.append("temperature", "0");
+                groqFormData.append("response_format", "verbose_json");
 
                 if (language) {
                     groqFormData.append("language", language);
@@ -115,7 +116,18 @@ export async function POST(request: NextRequest) {
                 }
 
                 if (response.ok) {
-                    const data = JSON.parse(responseBody) as { text?: string };
+                    const data = JSON.parse(responseBody) as { text?: string; segments?: Array<{ avg_logprob?: number; no_speech_prob?: number; compression_ratio?: number }> };
+                    // Refuse uncertain audio rather than answer a silently altered question.
+                    const unreliable = data.segments?.some(segment =>
+                        (typeof segment.avg_logprob === "number" && segment.avg_logprob < -1
+                            && typeof segment.no_speech_prob === "number" && segment.no_speech_prob > 0.6)
+                        || (typeof segment.compression_ratio === "number" && segment.compression_ratio > 2.4
+                            && typeof segment.avg_logprob === "number" && segment.avg_logprob < -1));
+                    if (unreliable) {
+                        await refundApiQuota(request, reservationId);
+                        quotaReserved = false;
+                        return NextResponse.json({ error: "Audio was unclear or contained background noise. Please repeat the question or type it; no answer was generated from this uncertain segment." }, { status: 422 });
+                    }
                     const text = typeof data.text === "string" ? data.text.trim() : "";
                     // Silence and known Whisper hallucinations are not a real
                     // transcription. Refund them here before usage is committed

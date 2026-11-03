@@ -11,7 +11,7 @@ export default function ScannerFrame() {
     const [contentTop, setContentTop] = useState<number | null>(null);
     const [windowError, setWindowError] = useState('');
     const openWindowPicker = async () => {
-        setWindowMode(true); setIsScanning(true); setPreview(null); setContentTop(null); setWindowError('');
+        setWindowMode(true); setWindows([]); setIsScanning(true); setPreview(null); setContentTop(null); setWindowError('');
         try {
             if (!window.electronAPI?.listScannerWindows) throw new Error('Install the latest AllyX build to capture webpage content. Selected-area capture is still available.');
             const result = await window.electronAPI.listScannerWindows();
@@ -117,10 +117,13 @@ export default function ScannerFrame() {
                 <button disabled={isScanning} onClick={() => { setWindowMode(false); setPreview(null); }} className="rounded border px-2 py-1">Back</button>
             </div>
             <p className="mb-2">Choose your browser window. Then click the preview just below the tabs, address bar, and bookmarks. Only the content below the green line will be read.</p>
-            <select aria-label="Browser window" defaultValue="" disabled={isScanning} onChange={event => { void previewWindow(event.target.value); }} className="w-full bg-slate-800 p-2 mb-2">
-                <option value="">Select a window…</option>
-                {windows.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+            <div className="mb-2 flex items-center justify-between gap-2">
+                <span>{isScanning ? 'Loading window capture…' : `${windows.length} available windows`}</span>
+                <button type="button" disabled={isScanning} onClick={() => { void openWindowPicker(); }} className="rounded border px-2 py-1 disabled:opacity-40">Refresh windows</button>
+            </div>
+            <div role="group" aria-label="Browser windows" className="mb-2 max-h-40 overflow-auto space-y-1">
+                {windows.map(item => <button type="button" key={item.id} disabled={isScanning} onClick={() => { void previewWindow(item.id); }} className="block w-full rounded bg-slate-800 p-2 text-left hover:bg-slate-700 disabled:opacity-40">{item.name}</button>)}
+            </div>
             {preview && <>
                 <button type="button" aria-label="Mark the top edge of webpage content" disabled={isScanning} className="relative block w-full" onClick={event => {
                     const bounds = event.currentTarget.getBoundingClientRect();
