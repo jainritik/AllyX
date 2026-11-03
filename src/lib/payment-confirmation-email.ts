@@ -75,7 +75,9 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
             to: account.user.email,
             subject: `AllyX payment confirmed — ${formatAmount(claim.amount, claim.currency)} · ${claim.credits} interview credits`,
             replyTo: supportContact.email,
-            messageId: `<payment-${claim.paymentId}@allyx.vercel.app>`,
+            // Let Nodemailer generate a unique Message-ID for each delivery.
+            // The database outbox handles deduplication; explicit resends must
+            // not be suppressed by mailbox providers as duplicate messages.
             text: [
                 "Your AllyX payment was successful.",
                 `Plan: ${planLabel(claim.planId, claim.credits)}`,

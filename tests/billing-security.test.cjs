@@ -276,6 +276,7 @@ test('confirmation email includes the actual discounted amount, credits, balance
         });
         assert.equal((await sender.sendPaymentConfirmationEmail('order_123')).sent, true);
         assert.equal(mail.to, 'customer@example.com');
+        assert.equal(mail.messageId, undefined, 'each delivery must receive a fresh Message-ID');
         assert.match(mail.subject, /₹1\.00.*2 interview credits/);
         assert.match(mail.text, /Credits added: 2/);
         assert.match(mail.text, /Credits now available: 12/);
