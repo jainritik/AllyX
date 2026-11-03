@@ -539,9 +539,10 @@ function createScannerFrame() {
         };
         const loadTimeout = setTimeout(() => {
             fail('Screen Capture took too long to open. Check your connection and try again.');
-        }, 10000);
+        }, 30000);
 
-        frame.once('ready-to-show', () => {
+        const showScanner = () => {
+            if (settled) return;
             if (scannerFrameWindow !== frame || isPresentationSafeMode) {
                 fail('Screen Capture is not available right now.');
                 return;
@@ -562,7 +563,11 @@ function createScannerFrame() {
             frame.show();
             broadcastScannerState(true);
             settle({ active: true });
-        });
+        };
+        frame.once('ready-to-show', showScanner);
+        // A hidden transparent window may finish navigation without producing
+        // its first paint. Do not depend exclusively on ready-to-show.
+        frame.webContents.once('did-finish-load', showScanner);
         frame.webContents.once('did-fail-load', (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
             if (!isMainFrame || errorCode === -3) return;
             fail(`Could not open Screen Capture (${errorDescription || errorCode}). Try again.`);

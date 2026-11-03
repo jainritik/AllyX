@@ -8,6 +8,39 @@ const preloadSource = fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8'
 const interviewSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'interview', 'page.tsx'), 'utf8');
 const scannerSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'app', 'scanner-frame', 'page.tsx'), 'utf8');
 
+test('scanner opens after navigation without a first-paint event and shows only once', async () => {
+    const { EventEmitter } = require('node:events');
+    const vm = require('node:vm');
+    let frame, shown = 0;
+    class FakeWindow extends EventEmitter {
+        constructor() {
+            super(); frame = this;
+            this.webContents = new EventEmitter();
+            this.webContents.getURL = () => 'https://allyx.vercel.app/scanner-frame';
+        }
+        setAlwaysOnTop() {}
+        loadURL() { return Promise.resolve(); }
+        show() { shown++; }
+        isDestroyed() { return false; }
+    }
+    const context = {
+        isPresentationSafeMode: false, isInterviewRendererReady: true,
+        isInterviewSessionPage: () => true, scannerFrameWindow: null,
+        screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }) },
+        BrowserWindow: FakeWindow, path, __dirname, ICON_PATH: '', APP_ORIGIN: 'https://allyx.vercel.app',
+        APP_URL: 'https://allyx.vercel.app', allowAppNavigation() {}, shell: {}, process,
+        setTimeout, clearTimeout, URL, broadcastScannerState() {},
+        closeScannerFrame() { frame.emit('closed'); },
+    };
+    vm.createContext(context);
+    vm.runInContext(mainSource.slice(mainSource.indexOf('function createScannerFrame()'), mainSource.indexOf('function broadcastScannerState')), context);
+    const pending = context.createScannerFrame();
+    frame.webContents.emit('did-finish-load');
+    assert.equal((await pending).active, true);
+    frame.emit('ready-to-show');
+    assert.equal(shown, 1);
+});
+
 test('screen-capture recovery opens the macOS Screen Recording settings pane through a trusted IPC handler', () => {
     assert.match(mainSource, /handleTrusted\('open-screen-recording-settings'/);
     assert.match(mainSource, /x-apple\.systempreferences:com\.apple\.preference\.security\?Privacy_ScreenCapture/);

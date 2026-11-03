@@ -2,6 +2,25 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { externalWindows, windowSources, cropPage } = require('./window-capture');
 
+test('an empty window enumeration retries with thumbnails and recovers', async () => {
+    const sizes = [];
+    const sources = await windowSources(async options => {
+        sizes.push(options.thumbnailSize.width);
+        return sizes.length === 1 ? [] : [{ id: 'window:3:0', name: 'Browser' }];
+    }, []);
+    assert.deepEqual(sizes, [0, 150]);
+    assert.equal(sources[0].id, 'window:3:0');
+});
+
+test('persistent empty enumeration fails explicitly and never substitutes a display', async () => {
+    let calls = 0;
+    await assert.rejects(windowSources(async () => {
+        calls++;
+        return [{ id: 'screen:0:0' }, { id: 'window:1:0' }];
+    }, ['window:1:0']), /Window capture is unavailable/);
+    assert.equal(calls, 2);
+});
+
 test('window capture excludes displays and AllyX windows without guessing a source', async () => {
     const sources = [{ id: 'screen:0:0' }, { id: 'window:1:0' }, { id: 'window:2:0' }];
     assert.deepEqual(externalWindows(sources, ['window:1:0']), [{ id: 'window:2:0' }]);

@@ -5,9 +5,17 @@ function externalWindows(sources, excludedIds) {
 }
 
 async function windowSources(getSources, excludedIds, preview = false) {
-    return externalWindows(await getSourcesWithTimeout(getSources, {
-        types: ['window'], thumbnailSize: preview ? { width: 4096, height: 4096 } : { width: 0, height: 0 },
-    }, 8000), excludedIds);
+    // ScreenCaptureKit can return an empty enumeration without an error.
+    // Retry once with pixels requested instead of treating that as proof that
+    // the customer has no windows. Never substitute a whole display.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const size = preview ? 4096 : (attempt === 0 ? 0 : 150);
+        const sources = externalWindows(await getSourcesWithTimeout(getSources, {
+            types: ['window'], thumbnailSize: { width: size, height: size },
+        }, 8000), excludedIds);
+        if (sources.length) return sources;
+    }
+    throw new Error('Window capture is unavailable. Bring your browser onscreen and retry, or use selected-area capture.');
 }
 
 function cropPage(image, top) {
