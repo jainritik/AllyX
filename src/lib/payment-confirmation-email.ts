@@ -1,3 +1,4 @@
+import { allyxEmailSender } from "@/lib/email-sender";
 import nodemailer from "nodemailer";
 import { supportContact } from "@/lib/support-contact";
 import { billingAdminClient } from "@/lib/razorpay-server";
@@ -70,7 +71,7 @@ export async function sendPaymentConfirmationEmail(orderId: string) {
         const amount = escapeHtml(formatAmount(claim.amount, claim.currency));
 
         await transporter.sendMail({
-            from: config.fromEmail,
+            from: allyxEmailSender(config.fromEmail),
             to: account.user.email,
             subject: `AllyX payment confirmed — ${formatAmount(claim.amount, claim.currency)} · ${claim.credits} interview credits`,
             replyTo: supportContact.email,

@@ -1,3 +1,4 @@
+import { allyxEmailSender } from "@/lib/email-sender";
 import nodemailer from "nodemailer";
 import { billingAdminClient } from "@/lib/razorpay-server";
 import { supportContact } from "@/lib/support-contact";
@@ -53,7 +54,7 @@ export async function sendPublicBugReportEmail(report: {
     });
     const contact = [report.email, report.phone].filter(Boolean).join(" · ");
     await transporter.sendMail({
-        from: config.fromEmail,
+        from: allyxEmailSender(config.fromEmail),
         to: config.toEmail,
         replyTo: report.email,
         subject: `[AllyX public bug] ${report.title}`,
@@ -109,7 +110,7 @@ export async function sendBugReportEmail(reportId: string) {
             ? `Attachment (${report.attachmentName || report.attachmentType || "file"}): ${attachmentUrl}`
             : "Attachment: None";
         await transporter.sendMail({
-            from: config.fromEmail,
+            from: allyxEmailSender(config.fromEmail),
             to: config.toEmail,
             replyTo: report.email || undefined,
             subject: `[AllyX bug] ${report.title}`,

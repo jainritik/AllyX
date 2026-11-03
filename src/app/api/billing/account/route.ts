@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { apiClient } from "@/lib/api-access";
 import { retryPaymentConfirmationEmailsForUser } from "@/lib/payment-confirmation-email";
 
@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
         console.error("[Billing account]", error.code);
         return NextResponse.json({ error: "Billing details are temporarily unavailable" }, { status: 503 });
     }
-    await retryPaymentConfirmationEmailsForUser(auth.user.id).catch(emailError => {
+    after(() => retryPaymentConfirmationEmailsForUser(auth.user.id).catch(emailError => {
         console.error("[Billing email retry]", emailError instanceof Error ? emailError.message : emailError);
-    });
+    }));
     let liveValidationOffer = null;
     if (configuredLiveValidationOffer(auth.user)) {
         try { liveValidationOffer = await availableLiveValidationOffer(auth.user); }

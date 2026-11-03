@@ -262,6 +262,7 @@ test('confirmation email includes the actual discounted amount, credits, balance
         const sender = load('src/lib/payment-confirmation-email.ts', {
             nodemailer: { default: { createTransport: () => ({ sendMail: async value => { mail = value; } }) } },
             '@/lib/support-contact': { supportContact: { email: 'support@example.com' } },
+            '@/lib/email-sender': load('src/lib/email-sender.ts'),
             '@/lib/razorpay-server': { billingAdminClient: () => ({
                 rpc: async (name, args) => {
                     calls.push([name, args]);
@@ -288,3 +289,12 @@ test('confirmation email includes the actual discounted amount, credits, balance
         }
     }
 });
+
+ test('customer emails use ALLYX even when configuration contains a personal display name', () => {
+    const { allyxEmailSender } = load('src/lib/email-sender.ts');
+    for (const input of ['Ritik <receipts@example.com>', 'receipts@example.com']) {
+        const sender = allyxEmailSender(input);
+        assert.equal(sender.name, 'ALLYX');
+        assert.equal(sender.address, 'receipts@example.com');
+    }
+ });
