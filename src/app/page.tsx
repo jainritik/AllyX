@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 const features = [
-  { icon: AudioLines, title: "Transcribes the audio you enable", copy: "Uses your microphone and, where your computer supports it, the display you explicitly select for meeting audio." },
+  { icon: AudioLines, title: "Transcribes the audio you enable", copy: "Transcribes microphone and supported meeting audio when you start listening. Review the active audio sources in the desktop app." },
   { icon: MessageSquareText, title: "Answers with your context", copy: "Uses your resume, target role, preferred tone, and recent questions to generate relevant suggestions." },
   { icon: ScanText, title: "Reads text and code", copy: "Capture a selected area or a browser window, crop out browser bars, or paste a technical question." },
   { icon: ShieldCheck, title: "Focused desktop overlay", copy: "Keep suggestions in a compact, movable window with adjustable opacity and click-through controls." },
