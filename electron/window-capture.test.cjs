@@ -48,6 +48,7 @@ test('native webpage handlers deliver only the chosen cropped preview and reject
     const handlers = {}, delivered = [];
     const image = { getSize: () => ({ width: 1600, height: 1000 }), isEmpty: () => false, toDataURL: () => 'preview', crop: rect => ({ toDataURL: () => JSON.stringify(rect) }) };
     const context = {
+        process: { platform: 'linux' },
         handleTrusted: (name, handler) => { handlers[name] = handler; },
         BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, getMediaSourceId: () => 'window:allyx:0' }] },
         desktopCapturer: { getSources: async () => [{ id: 'window:browser:0', name: 'Browser', thumbnail: image }, { id: 'screen:0:0', thumbnail: image }] },

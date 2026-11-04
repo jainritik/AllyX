@@ -4,7 +4,30 @@ const {
     captureMacOSMainDisplay,
     captureMacOSRegion,
     normaliseRegion,
+    listMacOSWindows,
+    captureMacOSWindow,
 } = require('./macos-screen-capture');
+
+test('native window metadata rejects invalid IDs and passes only the app PID to the helper', async () => {
+    const windows = await listMacOSWindows({ helperPath: '/app/window-list', ownPid: 42,
+        execFileImpl: async (file, args, options) => {
+            assert.equal(file, '/app/window-list');
+            assert.deepEqual(args, ['42']);
+            assert.equal(options.timeout, 5000);
+            return { stdout: JSON.stringify([{ id: 'window:123:0', name: 'Chrome' }, { id: 'screen:1:0', name: 'Display' }, { id: 'window:0:0', name: 'Invalid' }]) };
+        } });
+    assert.deepEqual(windows, [{ id: 'window:123:0', name: 'Chrome' }]);
+});
+
+test('native window capture uses only a numeric selected window ID, never the whole display', async () => {
+    const harness = createHarness();
+    await captureMacOSWindow({ sourceId: 'window:123:0', ...harness });
+    assert.deepEqual(harness.calls.commands[0][1].slice(0, -1), ['-x', '-o', '-t', 'png', '-l', '123']);
+    for (const sourceId of ['screen:1:0', 'window:1;whoami:0', 'window:0:0']) {
+        await assert.rejects(captureMacOSWindow({ sourceId, ...harness }), /valid window/);
+    }
+    assert.equal(harness.calls.commands.length, 1);
+});
 
 function createHarness({ image = null, commandError = null, fileSize = 512 } = {}) {
     const calls = { commands: [], removed: [] };

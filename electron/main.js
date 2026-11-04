@@ -12,7 +12,7 @@ const { calculateCaptureCrop } = require('./capture-crop');
 const { bindOverlayShortcuts } = require('./overlay-shortcuts');
 const { windowSources, cropPage } = require('./window-capture');
 const { constrainNativeCaptureImage } = require('./native-capture-image');
-const { captureMacOSRegion } = require('./macos-screen-capture');
+const { captureMacOSRegion, listMacOSWindows, captureMacOSWindow } = require('./macos-screen-capture');
 const { getScreenSourcesWithRetry, getUsableScreenSource } = require('./screen-capture-source');
 const { screenCaptureFailure } = require('./screen-capture-failure');
 const { resolveScreenCaptureSetup } = require('./screen-capture-setup');
@@ -1071,11 +1071,24 @@ function setupIpcHandlers() {
     // Legacy renderers must never silently capture the desktop for this action.
     handleTrusted('capture-scanner-display', async () => ({ success: false, error: 'Reopen Screen Capture and choose Capture webpage content.' }));
     const excludedWindowIds = () => BrowserWindow.getAllWindows().filter(w => !w.isDestroyed()).map(w => w.getMediaSourceId());
+    const listCaptureWindows = async () => {
+        if (process.platform === 'darwin') {
+            try {
+                return await listMacOSWindows({
+                    helperPath: path.join(app.isPackaged ? path.join(process.resourcesPath, 'assets') : path.join(__dirname, 'assets'), `window-list-${process.arch}`),
+                    ownPid: process.pid,
+                });
+            } catch (error) {
+                console.warn('[Scanner] Native window list unavailable:', error.code || error.name);
+            }
+        }
+        return windowSources(options => desktopCapturer.getSources(options), excludedWindowIds());
+    };
     handleTrusted('list-scanner-windows', async () => {
         if (!scannerFrameWindow || isPresentationSafeMode) return { success: false, windows: [], error: 'Reopen Screen Capture.' };
         pendingWindowPreview = null;
         try {
-            const sources = await windowSources(options => desktopCapturer.getSources(options), excludedWindowIds());
+            const sources = await listCaptureWindows();
             return { success: true, windows: sources.map(source => ({ id: source.id, name: source.name })) };
         } catch { return { success: false, windows: [], error: 'Could not list windows. Check screen recording permission and try again.' }; }
     });
@@ -1083,10 +1096,14 @@ function setupIpcHandlers() {
         pendingWindowPreview = null;
         if (!scannerFrameWindow || isPresentationSafeMode || typeof sourceId !== 'string' || !sourceId.startsWith('window:')) return { success: false, error: 'Choose a browser window.' };
         try {
-            const sources = await windowSources(options => desktopCapturer.getSources(options), excludedWindowIds(), true);
+            const sources = process.platform === 'darwin' ? await listCaptureWindows()
+                : await windowSources(options => desktopCapturer.getSources(options), excludedWindowIds(), true);
             const source = sources.find(item => item.id === sourceId);
-            if (!source || source.thumbnail.isEmpty()) return { success: false, error: 'That window is unavailable. Bring it onscreen, then select it again.' };
-            const image = constrainNativeCaptureImage(source.thumbnail);
+            if (!source) return { success: false, error: 'That window is unavailable. Bring it onscreen, then select it again.' };
+            const thumbnail = process.platform === 'darwin'
+                ? (await captureMacOSWindow({ sourceId, nativeImage })).image : source.thumbnail;
+            if (!thumbnail || thumbnail.isEmpty()) return { success: false, error: 'That window is unavailable. Bring it onscreen, then select it again.' };
+            const image = constrainNativeCaptureImage(thumbnail);
             const id = ++scannerCaptureSequence;
             pendingWindowPreview = { id, image, frame: scannerFrameWindow, created: Date.now() };
             return { success: true, id, imageData: image.toDataURL() };

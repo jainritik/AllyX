@@ -2,6 +2,7 @@ appId: com.allyx.ai
 productName: AllyX
 copyright: Copyright (c) 2024 AllyX
 afterSign: scripts/after-sign.mjs
+beforePack: scripts/build-window-helper.mjs
 
 protocols:
   - name: AllyX secure sign-in

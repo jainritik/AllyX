@@ -102,10 +102,25 @@ async function captureMacOSMainDisplay(options) {
     });
 }
 
+async function listMacOSWindows({ helperPath, ownPid, execFileImpl = execFileAsync }) {
+    const { stdout } = await execFileImpl(helperPath, [String(ownPid)], { timeout: 5000, maxBuffer: 1024 * 1024 });
+    const windows = JSON.parse(stdout);
+    if (!Array.isArray(windows)) throw new Error('Invalid macOS window list.');
+    return windows.filter(item => /^window:[1-9]\d*:0$/.test(item?.id) && typeof item.name === 'string');
+}
+
+async function captureMacOSWindow({ sourceId, ...options }) {
+    const match = /^window:([1-9]\d*):0$/.exec(sourceId);
+    if (!match) throw new Error('Choose a valid window.');
+    return captureMacOSImage({ ...options, args: ['-x', '-o', '-t', 'png', '-l', match[1]] });
+}
+
 module.exports = {
     MAX_CAPTURE_BYTES,
     captureMacOSImage,
     captureMacOSMainDisplay,
     captureMacOSRegion,
+    listMacOSWindows,
+    captureMacOSWindow,
     normaliseRegion,
 };

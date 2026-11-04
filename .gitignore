@@ -8,3 +8,5 @@ node_modules/
 .vercel
 dist/
 .env*
+electron/assets/window-list-arm64
+electron/assets/window-list-x64
