@@ -14,7 +14,7 @@ test('scanner opens after navigation without a first-paint event and shows only 
     let frame, shown = 0;
     class FakeWindow extends EventEmitter {
         constructor() {
-            super(); frame = this;
+            super(); FakeWindow.instance = this;
             this.webContents = new EventEmitter();
             this.webContents.getURL = () => 'https://allyx.vercel.app/scanner-frame';
         }
@@ -35,6 +35,7 @@ test('scanner opens after navigation without a first-paint event and shows only 
     vm.createContext(context);
     vm.runInContext(mainSource.slice(mainSource.indexOf('function createScannerFrame()'), mainSource.indexOf('function broadcastScannerState')), context);
     const pending = context.createScannerFrame();
+    frame = FakeWindow.instance;
     frame.webContents.emit('did-finish-load');
     assert.equal((await pending).active, true);
     frame.emit('ready-to-show');
