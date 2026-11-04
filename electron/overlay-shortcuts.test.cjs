@@ -41,3 +41,33 @@ test('overlay keyboard actions scroll the answer without moving the pointer', ()
     assert.match(source, /body\.cursor-hidden \*\{cursor:none !important\}/);
     assert.match(source, /answer.scrollTop=previousScroll/);
 });
+
+test('overlay starts with a visible cursor and Escape restores it after hiding', () => {
+    const fs = require('node:fs'), vm = require('node:vm');
+    const source = fs.readFileSync('electron/overlay.html', 'utf8');
+    assert.match(source, /<body>/);
+    assert.match(source, /aria-label="Hide local cursor" aria-pressed="false"/);
+    const classes = new Set(), attributes = {};
+    let keydown, releases = 0;
+    const button = { setAttribute: (key, value) => { attributes[key] = value; } };
+    const context = {
+        document: {
+            querySelector: () => button,
+            body: { classList: {
+                contains: name => classes.has(name),
+                toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name),
+            } },
+            addEventListener: (name, handler) => { if (name === 'keydown') keydown = handler; },
+        },
+        pointerLock: { release: () => releases++ },
+    };
+    vm.runInNewContext(source.slice(source.indexOf('    const cursorButton='), source.indexOf('    api.onOverlayKeyboardAction(')), context);
+    button.onclick();
+    assert.equal(classes.has('cursor-hidden'), true);
+    assert.equal(attributes['aria-label'], 'Show local cursor');
+    keydown({ key: 'Escape' });
+    assert.equal(classes.has('cursor-hidden'), false);
+    assert.equal(attributes['aria-label'], 'Hide local cursor');
+    assert.equal(attributes['aria-pressed'], 'false');
+    assert.equal(releases, 1);
+});

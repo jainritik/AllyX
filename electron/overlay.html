@@ -14,13 +14,13 @@
     #keyboardHint{font-size:9px;color:#a1a1aa;padding:3px 12px;-webkit-app-region:no-drag}
   </style>
 </head>
-<body class="cursor-hidden">
+<body>
   <section id="panel">
     <header><span class="dot"></span><strong class="title">AllyX OVERLAY</strong><span class="state" id="state">Interactive</span><div class="actions">
-      <button id="cursor" title="Show/hide local cursor: Command/Ctrl+Shift+P. Screen sharing may still show the pointer." aria-label="Show local cursor" aria-pressed="true">◉</button><button id="through" title="Click-through mode; unlock with Command/Ctrl+Shift+O">⇩</button><button id="open" title="Open full application">↗</button><button id="compact" title="Compact or expand">−</button><button id="hide" title="Hide overlay">×</button>
+      <button id="cursor" title="Show/hide local cursor: Command/Ctrl+Shift+P. Screen sharing may still show the pointer." aria-label="Hide local cursor" aria-pressed="false">◉</button><button id="through" title="Click-through mode; unlock with Command/Ctrl+Shift+O">⇩</button><button id="open" title="Open full application">↗</button><button id="compact" title="Compact or expand">−</button><button id="hide" title="Hide overlay">×</button>
     </div></header>
     <div id="notice">Clicks pass through. Press ⌘⇧O on Mac or Ctrl+Shift+O on Windows to interact.</div>
-    <div id="keyboardHint">⌘/Ctrl+Shift: ↑↓ scroll · ←→ top/bottom · P cursor. Cursor hiding is local only.</div>
+    <div id="keyboardHint">⌘/Ctrl+Shift: ↑↓ scroll · ←→ top/bottom · P cursor · Esc restores pointer. Sharing may still show pointer movement.</div>
     <div style="padding:4px 12px;font-size:10px;-webkit-app-region:no-drag"><button id="pointerLock" aria-pressed="false">Lock pointer</button><span id="pointerLockStatus" role="status"></span></div>
     <div class="session-controls"><button id="listen">Start listening</button><span class="audio-note" id="audioNote">Mic + meeting audio</span><button id="end">End interview</button></div>
     <div class="question"><div class="label">LIVE QUESTION</div><div id="question" class="question-text scroll placeholder">Listening for the next question…</div></div>
@@ -39,7 +39,9 @@
     setInteractive(api.getOverlayState().interactive);
     api.onOverlayInteractionChange(setInteractive);
     const cursorButton=document.querySelector('#cursor');
-    const toggleCursor=()=>{const hidden=document.body.classList.toggle('cursor-hidden');cursorButton.setAttribute('aria-pressed',String(hidden));cursorButton.setAttribute('aria-label',hidden?'Show local cursor':'Hide local cursor')};
+    const setCursorHidden=hidden=>{document.body.classList.toggle('cursor-hidden',hidden);cursorButton.setAttribute('aria-pressed',String(hidden));cursorButton.setAttribute('aria-label',hidden?'Show local cursor':'Hide local cursor')};
+    const toggleCursor=()=>setCursorHidden(!document.body.classList.contains('cursor-hidden'));
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'){pointerLock.release();setCursorHidden(false)}});
     cursorButton.onclick=toggleCursor;
     api.onOverlayKeyboardAction(action=>{
       if(action==='toggle-cursor'){toggleCursor();return}
@@ -49,7 +51,7 @@
       if(action==='top')answer.scrollTop=0;
       if(action==='bottom')answer.scrollTop=answer.scrollHeight;
     });
-    api.onOverlayShortcutStatus(unavailable=>{const hint=document.querySelector('#keyboardHint');hint.textContent=unavailable.length?'Shortcut unavailable: '+unavailable.join(', ')+'. Close the conflicting app or use overlay controls.':'⌘/Ctrl+Shift: ↑↓ scroll · ←→ top/bottom · P cursor. Cursor hiding is local only.'});
+    api.onOverlayShortcutStatus(unavailable=>{const hint=document.querySelector('#keyboardHint');hint.textContent=unavailable.length?'Shortcut unavailable: '+unavailable.join(', ')+'. Close the conflicting app or use overlay controls.':'⌘/Ctrl+Shift: ↑↓ scroll · ←→ top/bottom · P cursor · Esc restores pointer. Sharing may still show pointer movement.'});
     api.onTranscript(text=>{question.textContent=text||'Listening for the next question…';question.classList.toggle('placeholder',!text)});
     api.onAnswer(text=>{const previousScroll=answer.scrollTop;renderAnswer(text);answer.scrollTop=previousScroll;answer.classList.toggle('placeholder',!text);if(compact){compact=false;panel.classList.remove('compact');api.resizeOverlay(480,460)}});
     api.onOverlayCapturedText(text=>{manual.value=text;manual.scrollTop=0;if(compact){compact=false;panel.classList.remove('compact');api.resizeOverlay(480,460)}setStatus('Text captured.','progress')});

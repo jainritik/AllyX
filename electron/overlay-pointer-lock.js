@@ -7,7 +7,7 @@ function setupPointerLock({ document, window, answer, button, status }) {
         button.disabled = pending;
         button.textContent = locked() ? 'Unlock pointer' : 'Lock pointer';
         button.setAttribute('aria-pressed', String(locked()));
-        status.textContent = locked() ? 'Pointer locked. Scroll to read; press Escape to unlock.' : 'Lock holds the local pointer while reading. Screen-share appearance depends on the meeting app.';
+        status.textContent = locked() ? 'Reading mode: pointer hidden and clicks locked. Scroll to read; press Escape to restore controls.' : 'Optional reading mode hides your pointer and disables normal clicks. It does not guarantee hiding movement in screen sharing.';
     };
     const release = () => {
         wanted = false;
