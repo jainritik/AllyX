@@ -24,9 +24,9 @@ export const metadata: Metadata = {
 };
 
 const builds = [
-    { id: 'mac', name: 'macOS Apple Silicon', detail: 'M1, M2, M3 and later Apple Silicon Macs', url: desktopDownloads.macArm64 },
-    { id: 'mac-intel', name: 'macOS Intel', detail: 'Intel Macs', url: desktopDownloads.macX64 },
-    { id: 'windows', name: 'Windows x64', detail: 'Windows 10/11, 64-bit', url: desktopDownloads.windowsX64 },
+    { id: 'mac', name: 'macOS Apple Silicon', detail: 'Version 1.3.50 · Apple Silicon Macs (M1 and later)', url: desktopDownloads.macArm64 },
+    { id: 'mac-intel', name: 'macOS Intel', detail: 'Version 1.3.50 · Intel Macs', url: desktopDownloads.macX64 },
+    { id: 'windows', name: 'Windows x64', detail: 'Version 1.3.50 · Windows 10/11, 64-bit', url: desktopDownloads.windowsX64 },
 ];
 
 export default function DownloadPage() {
@@ -34,11 +34,11 @@ export default function DownloadPage() {
         <Navbar />
         <main className="flex-grow max-w-4xl mx-auto w-full px-6 pt-32 pb-20">
             <h1 className="text-4xl font-bold mb-4">Download AllyX desktop</h1>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">Choose the installer that matches your computer.</p>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Choose the installer that matches your computer. These are testing builds; the Mac installers are not Apple-notarized and the Windows installer is not publisher-signed.</p>
             <div className="mb-8"><DesktopAppNotice showDownload={false} /></div>
             <div className="mb-10 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100">
-                <p className="font-semibold">Test your setup before a real session</p>
-                <p className="mt-1">Audio capture and capture privacy depend on your computer, operating system, meeting app, and sharing method. Choose the display carrying the meeting audio, then use a second participant view to verify the overlay behaves as expected.</p>
+                <p className="font-semibold">Check compatibility before a session</p>
+                <p className="mt-1">The capture-to-answer and save flow was tested on an Apple Silicon Mac running macOS 26.6.2. Intel Mac, Windows, and other macOS versions have not completed the same live test. Audio capture and capture privacy depend on your computer, operating system, meeting app, and sharing method. Choose the display carrying the meeting audio, then use a second participant view to verify the overlay behaves as expected.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
                 {builds.map(build => <div id={build.id} key={build.name} className="scroll-mt-28 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6">

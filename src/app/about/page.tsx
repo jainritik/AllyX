@@ -78,7 +78,7 @@ export default function AboutPage() {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-gray-900 dark:text-white">Real-Time Intelligence</h3>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">Suggestions generated as the conversation develops.</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">Listen to the question, then press Stop & answer to generate a suggestion.</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 p-4 bg-zinc-50/80 dark:bg-zinc-950/40 rounded-xl border border-zinc-100 dark:border-white/5">

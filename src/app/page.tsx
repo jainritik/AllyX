@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 const features = [
   { icon: AudioLines, title: "Transcribes the audio you enable", copy: "Uses your microphone and, where your computer supports it, the display you explicitly select for meeting audio." },
   { icon: MessageSquareText, title: "Answers with your context", copy: "Uses your resume, target role, preferred tone, and recent questions to generate relevant suggestions." },
-  { icon: ScanText, title: "Reads text and code", copy: "Capture a selected area or paste a technical question when audio alone is not enough." },
+  { icon: ScanText, title: "Reads text and code", copy: "Capture a selected area or a browser window, crop out browser bars, or paste a technical question." },
   { icon: ShieldCheck, title: "Focused desktop overlay", copy: "Keep suggestions in a compact, movable window with adjustable opacity and click-through controls." },
 ];
 
@@ -37,12 +37,12 @@ const plans = [
 ] satisfies Array<{ id: BillingPlanId | null; name: string; interviews: string; price: string; detail: string; featured: boolean }>;
 
 const faqs = [
-  ["Does AllyX join my meeting?", "No. The desktop app runs locally as a separate assistant and does not appear as a meeting participant or bot. Use it only where meeting, workplace, and assessment rules allow."],
+  ["Does AllyX join my meeting?", "No. AllyX runs as a separate desktop app and does not appear as a meeting participant or bot. Transcription and AI answers require an internet connection and use online services. Use it only where meeting, workplace, and assessment rules allow."],
   ["Which computers are supported?", "The desktop product is designed for Apple Silicon and Intel Macs, plus 64-bit Windows 10 and Windows 11 computers. Each published build will identify its supported systems."],
   ["Can I run an interview session on my phone or in a browser?", "No. Phones and browsers can be used for account setup, billing, and history. Live listening, screen capture, and the answer overlay require the AllyX desktop app on a supported Mac or Windows computer."],
   ["Can I try it before purchasing?", "Each account includes one trial of up to 10 minutes before its first interview-pack purchase. Interview packs provide additional full interview sessions."],
   ["Does it work with technical interviews?", "You can paste questions and code, capture selected screen text, and provide resume and role context for more relevant practice suggestions. Check the rules that apply to your meeting or assessment before using any assistance tool."],
-  ["Will the overlay always be excluded from screen sharing?", "No. Capture privacy depends on your operating system, meeting app, and sharing method. Test with a second participant before relying on it in a real session."],
+  ["Will the overlay always be excluded from screen sharing?", "No. Capture privacy depends on your operating system, meeting app, and sharing method. Cursor hiding and pointer lock affect local controls and do not guarantee hiding pointer movement from others. Test with a second participant before relying on capture privacy."],
   ["Will my interview credits expire?", "Purchased interview credits remain in your account until you use them. Each interview uses one credit, and paid interview sessions do not have a fixed time limit."],
 ];
 
@@ -80,7 +80,7 @@ function ProductPreview() {
 }
 
 export default function Home() {
-  const macUrl = desktopDownloads.macArm64;
+  const macUrl = "/download#mac";
   const windowsUrl = desktopDownloads.windowsX64;
   const softwareSchema = {
     "@context": "https://schema.org",
@@ -89,7 +89,7 @@ export default function Home() {
     applicationCategory: "BusinessApplication",
     applicationSubCategory: "Interview preparation software",
     operatingSystem: "macOS, Windows 10, Windows 11",
-    softwareVersion: "1.3.44",
+    softwareVersion: "1.3.50",
     description: metadata.description,
     url: "https://allyx.vercel.app/",
     downloadUrl: "https://allyx.vercel.app/download",
@@ -150,7 +150,7 @@ export default function Home() {
           {[
             { icon: FileText, title: "Add your context", copy: "Upload your resume and describe the role, preferred answer style, language, and areas you want the AI to emphasize." },
             { icon: MonitorDown, title: "Start the desktop session", copy: "Open the app on macOS or Windows, choose your audio source, and position the overlay where it is comfortable to read." },
-            { icon: WandSparkles, title: "Ask, listen, or capture", copy: "Listen to the complete question, then press Stop & answer; you can also paste a question or select text and code from your screen." },
+            { icon: WandSparkles, title: "Ask, listen, or capture", copy: "Listen to the complete question, then press Stop & answer. For pasted text, press Ask. Screen capture reads the selected content and automatically generates an answer." },
           ].map(({ icon: StepIcon, title, copy }, index) => <article key={title} className="rounded-[1.75rem] border border-white/10 bg-white/[.045] p-7 sm:p-9"><div className="flex items-start gap-5"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-sky-500 text-slate-950"><StepIcon className="h-6 w-6" /></div><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Step {index + 1}</p><h3 className="mt-2 text-2xl font-semibold">{title}</h3><p className="mt-3 leading-7 text-slate-400">{copy}</p></div></div></article>)}</div></div></div></section>
 
         {testimonials.length > 0 && <TestimonialCarousel testimonials={testimonials} />}

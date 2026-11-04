@@ -223,7 +223,7 @@ export default function PrivacyPolicyPage() {
                         <ul className="list-disc ml-6 space-y-1 text-gray-600 dark:text-gray-300">
                             <li>Encryption of data in transit (HTTPS/TLS)</li>
                             <li>Secure database storage with Supabase using Row Level Security (RLS)</li>
-                            <li>Authentication through secure OAuth providers</li>
+                            <li>Authentication through email sign-in codes and supported OAuth providers</li>
                             <li>Regular security audits and updates</li>
                         </ul>
                         <p className="text-gray-600 dark:text-gray-300 mt-4">
