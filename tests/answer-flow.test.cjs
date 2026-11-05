@@ -143,7 +143,7 @@ test('Stop & answer refuses to answer an incomplete audio transcript', async () 
     let consumed = false;
     let message = '';
     const context = {
-        vadTimerRef: ref(null), flushRecorderRef: ref(null), finalizePendingRolloverRef: ref(null), stopDesktopSTT() {},
+        liveStreamRef: ref(null), vadTimerRef: ref(null), flushRecorderRef: ref(null), finalizePendingRolloverRef: ref(null), stopDesktopSTT() {},
         pendingTranscriptionsRef: ref([]), activeTranscriptionTaskRef: ref(null), isTranscriptionDrainActiveRef: ref(false),
         sessionEndingRef: ref(false), failedTranscriptionSequencesRef: ref(new Set([2])),
         questionStateRef: ref({ current: () => 'incomplete question', consume: () => { consumed = true; } }),

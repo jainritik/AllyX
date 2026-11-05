@@ -16,7 +16,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
-    files: ["electron/**/*.js", "electron/**/*.cjs", "tests/**/*.cjs", "main.js"],
+    files: ["electron/**/*.js", "electron/**/*.cjs", "tests/**/*.cjs", "main.js", "preload.js", "macos-screen-capture.js", "screen-capture-source.js"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-var-requires": "off",

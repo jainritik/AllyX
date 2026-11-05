@@ -1,10 +1,10 @@
-const unsignedReleaseBase = "https://github.com/jainritik/AllyX/releases/download/allyx-v1.3.50-unsigned";
+const unsignedReleaseBase = "https://github.com/jainritik/AllyX/releases/download/allyx-v1.3.51-unsigned";
 
 export const desktopDownloads = {
     macArm64: process.env.NEXT_PUBLIC_ALLYX_MAC_ARM64_URL
-        || `${unsignedReleaseBase}/AllyX-1.3.50-arm64.dmg`,
+        || `${unsignedReleaseBase}/AllyX-1.3.51-arm64.dmg`,
     macX64: process.env.NEXT_PUBLIC_ALLYX_MAC_X64_URL
-        || `${unsignedReleaseBase}/AllyX-1.3.50-x64.dmg`,
+        || `${unsignedReleaseBase}/AllyX-1.3.51-x64.dmg`,
     windowsX64: process.env.NEXT_PUBLIC_ALLYX_WINDOWS_X64_URL
-        || `${unsignedReleaseBase}/AllyX-1.3.50-Setup.exe`,
+        || `${unsignedReleaseBase}/AllyX-1.3.51-Setup.exe`,
 };

@@ -24,9 +24,9 @@ export const metadata: Metadata = {
 };
 
 const builds = [
-    { id: 'mac', name: 'macOS Apple Silicon', detail: 'Version 1.3.50 · macOS 12 or later · Apple Silicon (M1 and later)', url: desktopDownloads.macArm64 },
-    { id: 'mac-intel', name: 'macOS Intel', detail: 'Version 1.3.50 · macOS 12 or later · Intel Macs', url: desktopDownloads.macX64 },
-    { id: 'windows', name: 'Windows x64', detail: 'Version 1.3.50 · Windows 10/11, 64-bit', url: desktopDownloads.windowsX64 },
+    { id: 'mac', name: 'macOS Apple Silicon', detail: 'Version 1.3.51 · macOS 12 or later · Apple Silicon (M1 and later)', url: desktopDownloads.macArm64 },
+    { id: 'mac-intel', name: 'macOS Intel', detail: 'Version 1.3.51 · macOS 12 or later · Intel Macs', url: desktopDownloads.macX64 },
+    { id: 'windows', name: 'Windows x64', detail: 'Version 1.3.51 · Windows 10/11, 64-bit', url: desktopDownloads.windowsX64 },
 ];
 
 export default function DownloadPage() {

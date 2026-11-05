@@ -17,7 +17,7 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.razorpay.com https://*.razorpay.com",
+  "connect-src 'self' wss://api.deepgram.com https://*.supabase.co wss://*.supabase.co https://api.razorpay.com https://*.razorpay.com",
   "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com",
   ...(isProduction ? ["upgrade-insecure-requests"] : []),
 ].join("; ");

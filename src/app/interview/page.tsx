@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Video, VideoOff, Loader2, AlertCircle, Sparkles, Trash2, LogOut, Copy, RotateCcw, Monitor, MonitorOff, Scan, ShieldCheck, CircleAlert } from "lucide-react";
 import { createWorker } from 'tesseract.js';
+import { startDeepgramStream, type LiveCaptionStream } from "@/lib/deepgram-stream";
 import { createTranscriptionPool } from "@/lib/transcription-pool";
 import { readAnswerStream } from '@/lib/answer-stream';
 import { buildAnswerContinuationMessages, shouldContinueAnswer } from '@/lib/answer-continuation';
@@ -144,7 +145,10 @@ export default function InterviewPage() {
     const router = useRouter();
     const accountId = useAuth(state => state.user?.id);
     const { showToast } = useConfirmDialog();
+    const liveStreamRef = useRef<LiveCaptionStream | null>(null);
+    const liveStreamAbortRef = useRef<AbortController | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const captionContainerRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const recognitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
     // Browser speech recognition is used only as an immediate on-screen preview.
@@ -217,6 +221,10 @@ export default function InterviewPage() {
     const [transcript, setTranscript] = useState("");
     const [fullTranscript, setFullTranscript] = useState("");
     const [interimTranscript, setInterimTranscript] = useState("");
+    useEffect(() => {
+        const container = captionContainerRef.current;
+        if (container) container.scrollTop = container.scrollHeight;
+    }, [transcript, interimTranscript]);
     const [aiResponse, setAiResponse] = useState("## Ready to Assist\n\nI will transcribe the audio you enable.\n\n**Instructions:**\n1. Press Start listening.\n2. Let the complete question finish and review the transcript.\n3. Press Stop & answer to generate one response.");
     const [isCameraOn, setIsCameraOn] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -1330,6 +1338,83 @@ export default function InterviewPage() {
                 }
             }
 
+            // The analyser mixes microphone and meeting audio, including a display
+            // connected later. Stream that mono mix instead of opening a second mic.
+            const liveDestination = audioContext.createMediaStreamDestination();
+            liveDestination.channelCount = 1;
+            analyser.connect(liveDestination);
+            const liveController = new AbortController();
+            liveStreamAbortRef.current = liveController;
+            let liveReady = false;
+            try {
+                const live = await startDeepgramStream({
+                    stream: liveDestination.stream,
+                    sessionId: sessionIdRef.current,
+                    language: interviewContext.lang,
+                    signal: liveController.signal,
+                    onCaption: (text, final) => {
+                        if (captureEpoch !== captureEpochRef.current) return;
+                        if (final) {
+                            if (text) {
+                                const before = questionStateRef.current.current();
+                                const current = questionStateRef.current.append(text);
+                                const novel = current.slice(before.length).trim();
+                                if (novel) appendFullTranscript(novel);
+                                setTranscript(current.slice(-MAX_TRANSCRIPT_LENGTH));
+                            }
+                            setInterimTranscript("");
+                        } else {
+                            setInterimTranscript(text);
+                        }
+                        setAudioCaptureStatus("hearing");
+                        window.electronAPI?.sendTranscript?.(
+                            [questionStateRef.current.current(), final ? "" : text].filter(Boolean).join(' ').slice(-MAX_TRANSCRIPT_LENGTH)
+                        );
+                    },
+                    onError: message => {
+                        if (!liveReady || captureEpoch !== captureEpochRef.current) return;
+                        failedTranscriptionSequencesRef.current.add(-1);
+                        setError(message);
+                        setInterimTranscript("");
+                        setIsRecording(false);
+                        stopDesktopSTT(false);
+                    },
+                });
+                if (captureEpoch !== captureEpochRef.current || liveController.signal.aborted) {
+                    live?.stop();
+                    liveDestination.stream.getTracks().forEach(track => track.stop());
+                    micStream.getTracks().forEach(track => track.stop());
+                    void audioContext.close().catch(() => undefined);
+                    return false;
+                }
+                if (live) {
+                    liveStreamRef.current = {
+                        finish: () => live.finish(),
+                        stop: () => {
+                            live.stop();
+                            try { analyser.disconnect(liveDestination); } catch { /* context closed */ }
+                            liveDestination.stream.getTracks().forEach(track => track.stop());
+                        },
+                    };
+                    liveReady = true;
+                    setAudioCaptureStatus("waiting");
+                    setIsRecording(true);
+                    return true;
+                }
+            } catch {
+                if (captureEpoch !== captureEpochRef.current || liveController.signal.aborted) {
+                    liveDestination.stream.getTracks().forEach(track => track.stop());
+                    micStream.getTracks().forEach(track => track.stop());
+                    void audioContext.close().catch(() => undefined);
+                    return false;
+                }
+                setError("Live captions are unavailable. Using standard transcription for this recording.");
+            }
+            liveController.abort();
+            if (liveStreamAbortRef.current === liveController) liveStreamAbortRef.current = null;
+            analyser.disconnect(liveDestination);
+            liveDestination.stream.getTracks().forEach(track => track.stop());
+
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             const timeDomainData = new Uint8Array(analyser.fftSize);
             // Lower thresholds recognise ordinary laptop-mic speech while still
@@ -1338,11 +1423,11 @@ export default function InterviewPage() {
             const SPEECH_RMS_THRESHOLD = 0.9;
             const SPEECH_SPECTRUM_THRESHOLD = 2.4;
             const SILENCE_DURATION = 350;
-            // Keep three seconds of context during continuous speech, but send
-            // short phrases promptly after a pause. Stop & answer remains the
-            // only action that submits the complete spoken question.
+            // Publish short rolling captions during continuous speech instead
+            // of waiting for a sentence to end. Stop & answer still submits the
+            // complete confirmed question, independently of caption boundaries.
             const MIN_SEGMENT_DURATION = 800;
-            const MAX_RECORDING_TIME = 3000;
+            const MAX_RECORDING_TIME = 1200;
 
             let mediaRecorder: MediaRecorder | null = null;
             let isSpeaking = false;
@@ -1553,6 +1638,10 @@ export default function InterviewPage() {
         // audio device. A hard stop must never append a caption from the previous
         // practice session after the customer starts another one.
         cancelDeviceRecovery();
+        liveStreamRef.current?.stop();
+        liveStreamRef.current = null;
+        liveStreamAbortRef.current?.abort();
+        liveStreamAbortRef.current = null;
         captureEpochRef.current++;
         vadSpeechActiveRef.current = false;
         if (discardPendingTranscription) invalidateTranscriptionPipeline();
@@ -1597,6 +1686,14 @@ export default function InterviewPage() {
         if (vadTimerRef.current) {
             clearInterval(vadTimerRef.current);
             vadTimerRef.current = null;
+        }
+        const live = liveStreamRef.current;
+        if (live) {
+            try { await live.finish(); }
+            catch {
+                failedTranscriptionSequencesRef.current.add(-1);
+                setError("The final live caption could not be confirmed. Please record the full question again.");
+            }
         }
         const flush = flushRecorderRef.current;
         finalizePendingRolloverRef.current?.();
@@ -1782,7 +1879,7 @@ export default function InterviewPage() {
             // canonical recorder. If Chromium rejects a second audio consumer,
             // its error handler disables this optional preview and keeps the
             // reliable recorder running.
-            if (recognitionRef.current && !previewUnavailableRef.current) {
+            if (recognitionRef.current && !previewUnavailableRef.current && !liveStreamRef.current) {
                 try {
                     if (!isRecognitionActiveRef.current) {
                         recognitionRef.current.start();
@@ -1890,6 +1987,7 @@ export default function InterviewPage() {
 
         if (recognitionRef.current) {
             recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+                if (liveStreamRef.current) return;
                 let interim = '';
                 let finalText = '';
 
@@ -1899,9 +1997,9 @@ export default function InterviewPage() {
                     const transcript = result[0].transcript;
 
                     if (result.isFinal) {
-                        finalText += transcript;
+                        finalText += `${finalText ? ' ' : ''}${transcript}`;
                     } else {
-                        interim = transcript; // Only keep the latest interim
+                        interim += `${interim ? ' ' : ''}${transcript}`;
                     }
                 }
 
@@ -1910,16 +2008,17 @@ export default function InterviewPage() {
                     // It is an immediate visual preview, not verified speech, and
                     // must never become an AI prompt. Final Whisper segments replace
                     // it with the mixed mic + selected meeting-audio transcript.
-                    const liveCaption = isTranscriptionArtifact(interim)
-                        ? ""
-                        : interim.trim();
+                    const previewText = [finalText, interim].filter(Boolean).join(' ').trim();
+                    const liveCaption = isTranscriptionArtifact(previewText) ? "" : previewText;
                     liveCaptionRef.current = "";
-                    setInterimTranscript(liveCaption);
+                    // Keep the recognizer's finished phrase visible until the
+                    // server confirms it; an empty event must not erase captions.
                     if (liveCaption) {
-                        window.electronAPI.sendTranscript?.(liveCaption);
-                    } else {
-                        const confirmedCaption = questionStateRef.current.current().slice(-MAX_TRANSCRIPT_LENGTH);
-                        if (confirmedCaption) window.electronAPI.sendTranscript?.(confirmedCaption);
+                        setInterimTranscript(liveCaption);
+                        const confirmedCaption = questionStateRef.current.current();
+                        window.electronAPI.sendTranscript?.(
+                            [confirmedCaption, liveCaption].filter(Boolean).join(' ').slice(-MAX_TRANSCRIPT_LENGTH)
+                        );
                     }
                     return;
                 }
@@ -1936,7 +2035,7 @@ export default function InterviewPage() {
                         if (novelText) appendFullTranscript(novelText);
                         setTranscript(currentQuestion.slice(-MAX_TRANSCRIPT_LENGTH));
                     }
-                    setInterimTranscript('');
+                    setInterimTranscript(interim);
                 } else if (interim) {
                     setInterimTranscript(interim);
                 }
@@ -2680,11 +2779,11 @@ export default function InterviewPage() {
                             </Button>
                         </div>
                     </div>
-                    <div className="flex-1 rounded-xl p-4 overflow-y-auto text-base font-sans leading-loose bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors">
+                    <div ref={captionContainerRef} role="log" aria-label="Live transcript" aria-live="polite" aria-atomic="false" className="flex-1 rounded-xl p-4 overflow-y-auto text-base font-sans leading-loose bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors">
                         {transcript}
                         {interimTranscript && (
                             <span className="text-gray-500 dark:text-gray-400 italic">
-                                {interimTranscript}
+                                {transcript ? ' ' : ''}{interimTranscript}
                                 <span className="animate-pulse">|</span>
                             </span>
                         )}
