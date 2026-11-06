@@ -26,8 +26,9 @@ export async function startDeepgramStream(options: {
     const recorder = new MediaRecorder(options.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 64000 });
     const socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${params}`, ['bearer', token]);
     let closed = false;
-    let finishing = false;
-    let metadataReceived = false;
+    let closeRequested = false;
+    let hasFinalText = false;
+    let hasPendingText = false;
     let durationTimer: ReturnType<typeof setTimeout> | undefined;
     let finishTimer: ReturnType<typeof setTimeout> | undefined;
     let resolveFinish: (() => void) | undefined;
@@ -48,6 +49,11 @@ export async function startDeepgramStream(options: {
         socket.close();
         rejectOpen?.(new Error('Live connection closed'));
         rejectFinish?.(new Error('Live capture stopped before final transcript arrived'));
+    };
+    const complete = () => {
+        resolveFinish?.();
+        rejectFinish = undefined;
+        stop();
     };
     const fail = (message: string) => {
         if (closed) return;
@@ -73,7 +79,12 @@ export async function startDeepgramStream(options: {
                 fail('The speech service could not transcribe this audio. Please check your Deepgram configuration.');
                 return;
             }
-            if (data.type === 'Metadata' && finishing) metadataReceived = true;
+            // CloseStream's summary follows the last Results message. The
+            // transport close can arrive later (or lose its status code).
+            if (data.type === 'Metadata' && closeRequested && !hasPendingText) {
+                complete();
+                return;
+            }
             if (data.type !== 'Results') return;
             const text = data.channel?.alternatives?.[0]?.transcript;
             if (typeof text !== 'string') return;
@@ -81,6 +92,8 @@ export async function startDeepgramStream(options: {
             const id = `${data.start}:${data.duration}`;
             if (final && seenFinals.has(id)) return;
             if (final) seenFinals.add(id);
+            if (final && text.trim()) hasFinalText = true;
+            hasPendingText = !final && Boolean(text.trim());
             options.onCaption(text.trim(), final);
         } catch {
             fail('The speech service returned an invalid caption. Please start listening again.');
@@ -89,10 +102,8 @@ export async function startDeepgramStream(options: {
     socket.onerror = () => fail('Live captions could not connect. Please check your connection and Deepgram credit.');
     socket.onclose = event => {
         if (closed) return;
-        if (finishing && metadataReceived && event.code === 1000) {
-            resolveFinish?.();
-            rejectFinish = undefined;
-            stop();
+        if (closeRequested && event.code === 1000 && hasFinalText && !hasPendingText) {
+            complete();
         } else {
             fail('Live captions disconnected before completion. Please record the full question again.');
         }
@@ -119,15 +130,17 @@ export async function startDeepgramStream(options: {
         finish() {
             if (finishPromise) return finishPromise;
             if (closed) return Promise.reject(new Error('Live captions are disconnected'));
-            finishing = true;
             clearTimeout(durationTimer);
             finishPromise = new Promise<void>((resolve, reject) => {
                 resolveFinish = resolve;
                 rejectFinish = reject;
-                finishTimer = setTimeout(() => fail('Final live captions timed out. No answer was generated.'), 8000);
+                finishTimer = setTimeout(() => fail('Final live captions timed out. No answer was generated.'), 20000);
                 // ondataavailable runs before onstop, so the final audio precedes CloseStream.
                 recorder.onstop = () => {
-                    if (!closed && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'CloseStream' }));
+                    if (!closed && socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({ type: 'CloseStream' }));
+                        closeRequested = true;
+                    }
                 };
                 recorder.stop();
             });

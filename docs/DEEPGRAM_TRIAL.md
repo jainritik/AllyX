@@ -1,6 +1,6 @@
 # Deepgram streaming trial
 
-Desktop listening uses one mono microphone + selected meeting-audio stream. Audio is sent every 100ms; interim captions are replaced as recognition improves. Final captions enter the saved question buffer. Stop & answer waits for the final audio, provider metadata, and clean socket close. An interrupted finalization blocks automatic answers from incomplete text.
+Desktop listening uses one mono microphone + selected meeting-audio stream. Audio is sent every 100ms; interim captions are replaced as recognition improves. Final captions enter the saved question buffer. Stop & answer flushes the final audio and accepts the provider summary or a normal stream close with finalized speech. Pending speech still blocks an answer. An interrupted finalization blocks automatic answers from incomplete text.
 
 Server-only configuration (local `.env.local`, or the deployed Next.js server's environment):
 

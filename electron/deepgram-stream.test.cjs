@@ -59,3 +59,33 @@ test('backpressure closes capture instead of accumulating delayed captions',asyn
  const s=setup();await connect(s);s.ws.bufferedAmount=1000001;s.recorder.ondataavailable({data:{size:4}});
  assert.equal(s.errors.length,1);assert.equal(s.recorder.state,'inactive');
 });
+
+test('provider summary completes a finalized question without waiting for the socket', async () => {
+    const s = setup();
+    const live = await connect(s);
+    s.ws.result('What is a closure?', true);
+    const finished = live.finish();
+    s.ws.onmessage({ data: JSON.stringify({ type: 'Metadata' }) });
+    await finished;
+    assert.equal(s.errors.length, 0);
+});
+
+test('a normal response to CloseStream accepts finalized speech without separate metadata', async () => {
+    const s = setup();
+    const live = await connect(s);
+    const finished = live.finish();
+    s.ws.result('What is a closure?', true);
+    s.ws.onclose({ code: 1000 });
+    await finished;
+    assert.equal(s.errors.length, 0);
+});
+
+test('a pending tail still blocks an answer even after an earlier final', async () => {
+    const s = setup();
+    const live = await connect(s);
+    s.ws.result('First part', true);
+    s.ws.result('unfinished tail', false, 1);
+    const finished = live.finish();
+    s.ws.onclose({ code: 1000 });
+    await assert.rejects(finished);
+});
